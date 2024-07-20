@@ -57,7 +57,7 @@ def multi_df_to_excel(df_data, df_meta, df_site):
 def render_graphs(df_data, showcols):
     df_show = df_data.set_index('TIMESTAMP')[showcols]                                 # TIMESTAMP is the independent (X-axis) variable for all plots
     
-    fig = (df_show.plot.line(facet_row='variable', height=200 + 200*len(showcols))           # Simplistic attempt at calculating the height depending on number of graphs
+    fig = (df_show.plot.line(facet_row='variable', height=120 + 200*len(showcols))           # Simplistic attempt at calculating the height depending on number of graphs
         .update_yaxes(matches=None, title_text='')                                     # Each graph has its own value range; don't show the axis title 'value'
         .update_xaxes(showticklabels=True)                                             # Repeat the time scale under each graph
         .for_each_annotation(lambda a: a.update(text=a.text.replace('variable=', ''))) # Just print the variable (column) name
