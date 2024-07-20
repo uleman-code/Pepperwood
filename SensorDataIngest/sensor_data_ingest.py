@@ -2,7 +2,8 @@ from dash import Dash, _dash_renderer
 
 import dash_mantine_components as dmc
 
-from layout import layout
+from layout    import layout
+from callbacks import *
 
 _dash_renderer._set_react_version('18.2.0')
 
