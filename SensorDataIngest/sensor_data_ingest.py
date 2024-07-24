@@ -26,4 +26,4 @@ app = Dash(external_stylesheets=stylesheets, suppress_callback_exceptions=True)
 app.layout = dmc.MantineProvider(layout)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
