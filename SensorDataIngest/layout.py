@@ -17,21 +17,24 @@ load_save_columns = [
         ta = 'center',
     ),
     dmc.CardSection(
-        dcc.Upload(
-            id='select-file',
-            children=[
-                dmc.Stack(
-                    children=[
-                        dmc.Text('Drag and drop', h='xs'),
-                        dmc.Text('or', h='sm'),
-                        dmc.Button('Select File'),
-                    ],
-                    align='center',
-                )
-            ],
-            multiple=False,
-            accept='.dat,.csv,.xlsx,.xls',      # NOTE: a string, not a list of strings
-        ),
+        children=
+        [
+            dcc.Upload(
+                id='select-file',
+                children=[
+                    dmc.Stack(
+                        children=[
+                            dmc.Text('Drag and drop', h='xs'),
+                            dmc.Text('or', h='sm'),
+                            dmc.Button('Select File'),
+                        ],
+                        align='center',
+                    )
+                ],
+                multiple=False,
+                accept='.dat,.csv,.xlsx,.xls',      # NOTE: a string, not a list of strings
+            ),
+        ],
         withBorder=True,
         py='xs',
         mt=-10,
@@ -102,7 +105,7 @@ page_main = dmc.Card(
     ],
     # withBorder=True,
     # radius='md'
-),
+)
 
 layout =dmc.AppShell(
     children=[
