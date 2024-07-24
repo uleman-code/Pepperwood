@@ -13,7 +13,7 @@ header = dmc.Group(
     justify='flex-start',
 )
 
-load_save_columns = [
+load_save = [
     dmc.CardSection(
         dmc.Text('Load Data', size='xl', fw=700),
         ta = 'center',
@@ -56,6 +56,9 @@ load_save_columns = [
         inheritPadding=True,
         py='xs',
     ),
+]
+
+columns = [
     dmc.CardSection(
         id='inspect-data',
         children=[
@@ -81,43 +84,44 @@ load_save_columns = [
         ],
         display='none',
         withBorder=True,
-        p='lg',
+        p='sm',
     )
 ]
 
-navbar = dmc.Card(
-    load_save_columns,
-    p='xl',
-)
+navbar = dmc.Card(load_save + columns)
 
 page_main = dmc.Card(
     id='show-data',
     children=[
         dmc.CardSection(
             id='file-info',
+            py='xs',
+            mt=-10,
         ),
         dmc.CardSection(
             id='stacked-graphs',
+            py='xs',
         ),
     ],
+    # p='sm',
 )
 
 layout =dmc.AppShell(
     children=[
         dmc.AppShellHeader(header, px=25),
         dmc.AppShellNavbar(navbar,),
-        dmc.AppShellMain(page_main),
+        dmc.AppShellMain(page_main, pt=-30),
         dcc.Store(
             id='memory-store',
-            storage_type='memory',
+            storage_type='memory',                                      # Contents are cleared with every page load
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
         dcc.Download(id='save-xlsx'),
     ],
     header={'height': 50},
-    padding='xl',
+    # padding='xl',
     navbar={
-        'width': 275,
+        'width': 270,
         'breakpoint': 'md',
         'collapsed': {'mobile': True},
     },
