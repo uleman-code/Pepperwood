@@ -3,9 +3,11 @@ import dash_mantine_components as     dmc
 
 import json
 
+# Build up the elements of an app shell, with header, navigation bar, and main area.
+
 header = dmc.Group(
     [
-        dmc.Burger(id='burger-button', opened=False, hiddenFrom='md'),
+        dmc.Burger(id='burger-button', opened=False, hiddenFrom='md'),      # Won't matter unless on a mobile device
         dmc.Title('Sensor Data Ingest'),
     ],
     justify='flex-start',
@@ -20,17 +22,15 @@ load_save_columns = [
         children=
         [
             dcc.Upload(
+                dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
+                    children=[
+                        dmc.Text('Drag and drop', h='xs'),
+                        dmc.Text('or', h='sm'),
+                        dmc.Button('Select File'),
+                    ],
+                    align='center',
+                ),
                 id='select-file',
-                children=[
-                    dmc.Stack(
-                        children=[
-                            dmc.Text('Drag and drop', h='xs'),
-                            dmc.Text('or', h='sm'),
-                            dmc.Button('Select File'),
-                        ],
-                        align='center',
-                    )
-                ],
                 multiple=False,
                 accept='.dat,.csv,.xlsx,.xls',      # NOTE: a string, not a list of strings
             ),
@@ -74,14 +74,13 @@ load_save_columns = [
                             gap='xs',
                         ),
                         type='hover',
-                        h=570,
+                        h=570,                      # Can fiddle with height based on user feedback
                     ),
                 ],
             ),
         ],
         display='none',
         withBorder=True,
-        # w=250,
         p='lg',
     )
 ]
@@ -96,15 +95,11 @@ page_main = dmc.Card(
     children=[
         dmc.CardSection(
             id='file-info',
-            # withBorder=False,
         ),
         dmc.CardSection(
             id='stacked-graphs',
-            # config={'autosizable': True}, 
         ),
     ],
-    # withBorder=True,
-    # radius='md'
 )
 
 layout =dmc.AppShell(
