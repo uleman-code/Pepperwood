@@ -1,9 +1,9 @@
+'''Static Dash layout: app shell with header, navigation bar, and main area.'''
+
 from   dash                    import dcc
 import dash_mantine_components as     dmc
 
 import json
-
-# Build up the elements of an app shell, with header, navigation bar, and main area.
 
 header = dmc.Group(
     [
