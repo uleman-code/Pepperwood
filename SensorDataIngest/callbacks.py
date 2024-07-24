@@ -36,7 +36,7 @@ def load_file(contents, filename, last_modified, data):
     if contents:
         try:
             df_data, df_meta, df_site = helpers.load_data(contents, filename)
-            _data             = json.loads(data)
+            _data             = {}
             _data['filename'] = filename
             _data['df_data']  = df_data.to_json(orient='split', date_format='iso')
             _data['df_meta']  = df_meta.to_json(orient='split')
@@ -45,7 +45,12 @@ def load_file(contents, filename, last_modified, data):
             children = dmc.Stack(
                 children=[
                     dmc.Text(filename, size='lg', fw=700, h='sm'),
-                    dmc.Text(f'Last modified: {datetime.datetime.fromtimestamp(last_modified)}'),
+                    dmc.Group(
+                        children=[
+                            dmc.Text(f'Last modified: {datetime.datetime.fromtimestamp(last_modified)}'),
+                            dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
+                        ]
+                    )
                 ],
             )
             return json.dumps(_data), children, True, False, False, []
@@ -71,17 +76,19 @@ def load_file(contents, filename, last_modified, data):
 )
 def save_file(n_clicks, data):
     _data   = json.loads(data)
-    df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
-    df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
-    df_site = pd.read_json(io.StringIO(_data['df_site']), orient='split')
-    
-    outfile = str(Path(_data['filename']).with_suffix('.xlsx'))
+    if 'df_data' in _data:
+        df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
+        df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
+        df_site = pd.read_json(io.StringIO(_data['df_site']), orient='split')
+        
+        outfile = str(Path(_data['filename']).with_suffix('.xlsx'))
 
-    _data['unsaved'] = False
-    download = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
-    # download = dcc.send_bytes(multi_df_to_excel, outfile, df_data=df_data, df_meta=df_meta, df_site=df_site)
+        _data['unsaved'] = False
+        get_contents = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
 
-    return download, '', json.dumps(_data)
+        return get_contents, '', json.dumps(_data)
+    else:
+        raise PreventUpdate
 
 @callback(
     Output('select-file'   , 'contents', allow_duplicate=True),
@@ -142,3 +149,13 @@ def draw_plots(showcols, data):
         return dcc.Graph(figure=fig)
     else:
         return []
+
+@callback(
+    Output('saved-badge', 'display'),
+    Input('memory-store', 'data'),
+    prevent_initial_call=True,
+)
+def add_saved_badge(data):
+    _data    = json.loads(data)
+
+    return 'none' if _data['unsaved'] else 'inherit'
