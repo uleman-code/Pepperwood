@@ -1,3 +1,4 @@
+#! ../.venv/bin/python
 '''Main module for the SensorDataIngest package for Pepperwood.'''
 
 from dash import Dash, _dash_renderer
