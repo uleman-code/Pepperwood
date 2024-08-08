@@ -35,8 +35,7 @@ if not logging_dir.exists():
     logging_dir.mkdir()
     warn_logging_dir_created = True
 
-# module_name = Path(__file__).name           # Use this later, after renaming the source file
-module_name = 'ingest'
+module_name = Path(__file__).name
 
 logger = logging.getLogger(module_name.capitalize())
 file_handler     = logging.FileHandler(logging_dir / (module_name + '.log'))
