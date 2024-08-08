@@ -66,3 +66,13 @@ def render_graphs(df_data, showcols):
         )
     
     return fig
+
+def ts_is_regular(timeseries, interval_minutes=15):
+    is_regular = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
+    
+    return is_regular
+
+def seqno_is_regular(seqno_series):
+    is_regular = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
+
+    return is_regular
