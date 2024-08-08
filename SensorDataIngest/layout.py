@@ -15,17 +15,14 @@ header = dmc.Group(
 
 load_save = [
     dmc.CardSection(
-        dmc.Text('Load Data', size='xl', fw=700),
-        ta = 'center',
-    ),
-    dmc.CardSection(
         children=
         [
+            dmc.Text('Load Data', size='lg', fw=700),
             dcc.Upload(
                 dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
                     children=[
                         dmc.Text('Drag and drop', h='xs'),
-                        dmc.Text('or', h='sm'),
+                        dmc.Text('or', h='sm', mt=-5),
                         dmc.Button('Select File'),
                     ],
                     align='center',
@@ -36,8 +33,9 @@ load_save = [
             ),
         ],
         withBorder=True,
+        ta = 'center',
         py='xs',
-        mt=-10,
+        mt=-18,
     ),
     dmc.CardSection(
         dmc.Group(
@@ -51,6 +49,7 @@ load_save = [
                     label='Clear all data from memory',
                 ),
             ],
+            justify='center',
         ),
         withBorder=True,
         inheritPadding=True,
@@ -84,7 +83,7 @@ columns = [
         ],
         display='none',
         withBorder=True,
-        p='sm',
+        pl='xl',
     )
 ]
 
@@ -93,24 +92,49 @@ navbar = dmc.Card(load_save + columns)
 page_main = dmc.Card(
     id='show-data',
     children=[
-        dmc.CardSection(
-            id='file-info',
-            py='xs',
-            mt=-10,
+        dmc.Modal(
+            dmc.Text(id='error-text'),
+            title=dmc.Text(id='error-title', fw=700),
+            id='read-error',
+            zIndex=10000,
         ),
+        dmc.Group([
+            dmc.CardSection(
+                dmc.Stack(
+                    children=[
+                        dmc.Text(id='file-name', size='lg', fw=700, h='sm'),  # Filename in bold
+                        dmc.Group(
+                            children=[
+                                dmc.Text(id='last-modified'),
+                                dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
+                            ]
+                        )
+                    ],
+                ),
+                id='file-info',
+                py='xs',
+                mt=10,
+            ),
+            dmc.CardSection(
+                id='sanity-checks',
+                py='xs',
+            ),
+        ]),
         dmc.CardSection(
             id='stacked-graphs',
             py='xs',
         ),
     ],
-    # p='sm',
 )
 
 layout =dmc.AppShell(
     children=[
         dmc.AppShellHeader(header, px=25),
         dmc.AppShellNavbar(navbar,),
-        dmc.AppShellMain(page_main, pt=-30),
+        dmc.AppShellMain(page_main,
+                         pt=17,
+                         ml=10,
+                        ),
         dcc.Store(
             id='memory-store',
             storage_type='memory',                                      # Contents are cleared with every page load
@@ -119,7 +143,6 @@ layout =dmc.AppShell(
         dcc.Download(id='save-xlsx'),
     ],
     header={'height': 50},
-    # padding='xl',
     navbar={
         'width': 270,
         'breakpoint': 'md',
