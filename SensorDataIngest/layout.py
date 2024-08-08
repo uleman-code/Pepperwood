@@ -98,28 +98,33 @@ page_main = dmc.Card(
             id='read-error',
             zIndex=10000,
         ),
-        dmc.Group([
-            dmc.CardSection(
-                dmc.Stack(
-                    children=[
-                        dmc.Text(id='file-name', size='lg', fw=700, h='sm'),  # Filename in bold
-                        dmc.Group(
-                            children=[
-                                dmc.Text(id='last-modified'),
-                                dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
-                            ]
-                        )
-                    ],
-                ),
-                id='file-info',
-                py='xs',
-                mt=10,
+        dmc.CardSection(
+            dmc.Group(
+                children=[
+                    dmc.Stack(
+                        children=[
+                            dmc.Text(id='file-name', size='lg', fw=700, h='sm'),  # Filename in bold
+                            dmc.Group(
+                                children=[
+                                    dmc.Text(id='last-modified'),
+                                    dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
+                                ]
+                            )
+                        ],
+                        py='xs',
+                        mt=25,
+                    ),
+                    dmc.Stack(
+                        id='sanity-checks',
+                        py='xs',
+                        mt=25,
+                        mr=20,
+                    ),
+                ],
+                justify='space-between',
             ),
-            dmc.CardSection(
-                id='sanity-checks',
-                py='xs',
-            ),
-        ]),
+            withBorder=True,
+        ),
         dmc.CardSection(
             id='stacked-graphs',
             py='xs',
