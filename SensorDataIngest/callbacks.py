@@ -203,3 +203,44 @@ def show_file_info(data):
     else:
         return '', ''
     
+@callback(
+    Output('sanity-checks', 'children'),
+    Output('memory-store' , 'data'),
+    State( 'file-name'    , 'children'),
+    Input( 'memory-store' , 'data'),
+)
+def report_sanity_checks(previous_filename, data):
+    _data = json.loads(data)
+
+    ts_col    = 'TIMESTAMP'
+    seqno_col = 'RECORD'
+    filename  = _data['filename']
+    new_data  = no_update
+
+    if filename:
+        if filename != previous_filename:
+            df_data          = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
+            interval_minutes = 15
+            report           = []
+            
+            # Fill in text elements
+            if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
+                report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
+            else:
+                report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
+            
+            if helpers.seqno_is_regular(df_data[seqno_col]):
+                report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
+            else:
+                report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
+                df_data[seqno_col]  = df_data.index
+                new_data            = _data
+                new_data['df_data'] = df_data.to_json(orient='split', date_format='iso')
+        else:
+            # Do nothing
+            raise PreventUpdate
+    else:
+        report = []
+    
+    return report, new_data
+    
