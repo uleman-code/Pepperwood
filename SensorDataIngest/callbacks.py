@@ -1,4 +1,4 @@
-'''All callbacks for the sensor_data_ingest Dash app.'''
+'''All callbacks for the SensorDataIngest/ingest Dash app.'''
 
 from dash                      import (
                                    dcc, 
@@ -20,13 +20,13 @@ import datetime
 import json
 import io
 
-import helpers                          # Local module implementing dash-independent actions
+import helpers                          # Local module implementing Dash-independent actions
 
-logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')
+logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
 
 @callback(
     Output('memory-store'  , 'data'    , allow_duplicate=True),
-    Output('select-columns', 'value'),
+    # Output('select-columns', 'value'),
     Output('read-error'    , 'opened'),
     Output('error-title'   , 'children'),
     Output('error-text'    , 'children'),
@@ -36,24 +36,24 @@ logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')
     prevent_initial_call=True,
 )
 def load_file(contents, filename, last_modified):
-    '''Load data file and store contents in memory store.
+    '''Take the results of opening a data file and store the contents in the memory store.
     
     Triggered by the Upload component providing the base64-encoded file contents, read the sensor data into a DataFrame,
     along with separate DataFrames for metadata (column descriptions) and site data. Persist the three DataFrames, along
     with the filename, in the memory store. Set the unsaved flag to True (the freshly loaded data has not been saved as
     an Excel file).
 
-    Show the filename and last-modified datetime in the main app area. In addition, enable the Save and Clear buttons and
-    disable the data load area.
-
     Parameters:
-        contents        (str) base64-encoded file contents
-        filename        (str) filename, with extension, without path
-        last_modified   (float) UNIX-style timestamp (seconds since 1970) 
+        contents        (str)   base64-encoded file contents
+        filename        (str)   filename, with extension, without path
+        last_modified   (float) UNIX-style timestamp (seconds since 01-01-1970) 
 
     Returns:
-        data         (str) JSON representation of a dict containing filename, three DataFrames, and the "unsaved" flag
-        file_info    (list) Text components with filename and last-modified datetime, plus a "Saved" badge
+        memory-store/data    (str)  JSON representation of a dict containing filename, three DataFrames, and the "unsaved" flag
+        select-columns/value (list) Empty list to clear the multiselect component
+        read-error/opened    (bool) True in case of error (show error modal), otherwise False
+        error-title/children (str)  In case of error, title for error modal; otherwise an empty string
+        error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
 
     '''
     
@@ -73,12 +73,12 @@ def load_file(contents, filename, last_modified):
             _data['unsaved']       = True
 
             logger.debug('Data initialized. Exiting load_file().')
-            return json.dumps(_data), [], False, '', ''
+            return json.dumps(_data), False, '', ''
         except Exception as e:
             logger.error(f'File Read Error:\n{e}')
-            return no_update, no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+            return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
     else:
-        logger.debug('No contents to process.')
+        logger.debug('No contents to process. Exiting load_file().')
         raise PreventUpdate                 # No file contents: do nothing
 
 @callback(
@@ -89,7 +89,29 @@ def load_file(contents, filename, last_modified):
     prevent_initial_call=True,
 )
 def save_file(n_clicks, data):
+    '''Save the data currently in memory in an Excel (.XLSX) file.
+
+    In response to a button click, take the data from the memory store, download it to the browser, and have
+    the browser write it to a file, of the same name as the original but with a ".xlsx" extension. Depending
+    on the user's browser settings, this either silently saves the file in a pre-designated folder (e.g., Downloads)
+    or opens the OS-native Save File dialog, allowing the user to choose any folder (and change the filename, too).
+
+    NOTE: If the Save File dialog is opened, it's possible that the user clicks Cancel, in which case the file is not
+          saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
+          is always saved.
+    
+    Parameters:
+        n_clicks  (int) The number of times the button has been pressed
+        data      (str) JSON representation of the DataFrames and other data
+    
+    Returns:
+        save-xlsx/data    (dict) Content and filename to be downloaded to the browser
+        memory-store/data (str)  Same as data parameter but with the unsaved flag set to False
+    '''
+
+    logger.debug('Entered save_file().')
     _data   = json.loads(data)
+
     if 'df_data' in _data:
         df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
         df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
@@ -97,24 +119,42 @@ def save_file(n_clicks, data):
         
         outfile = str(Path(_data['filename']).with_suffix('.xlsx'))
 
-        get_contents     = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+        # Dash provides a convenience function to create the required dictionary. That function in turn
+        # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
+        # is a custom function specific to this app.
+        contents         = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
         _data['unsaved'] = False
 
-        return get_contents, json.dumps(_data)
+        logger.debug('File saved. Exiting save_file().')
+        return contents, json.dumps(_data)
     else:
+        logger.debug('Nothing to save. Exiting save_file()')
         raise PreventUpdate
 
 @callback(
     Output('memory-store'  , 'data'    , allow_duplicate=True),
     Output('select-file'   , 'contents', allow_duplicate=True),
-    Output('select-columns', 'value'   , allow_duplicate=True),
     Input( 'clear-button'  , 'n_clicks'),
     prevent_initial_call=True,
 )
 def clear_data(n_clicks):
-    _data=dict(filename='', unsaved=False)
+    '''Clear all data in memory.
+    
+    Triggered by the Clear button.
 
-    return json.dumps(_data), [], []
+    Parameters:
+        n_clicks (int) Number of times the Clear button was pressed
+
+    Returns:
+        memory-store/data    (str) JSON representation of a cleared data store: no DataFrames, filename blank, unsaved flag False
+        select-file/contents (str) Empty string to reset, so a new file upload always results in a contents change, even if
+                                   it's the same file as currently loaded
+    '''
+
+    logger.debug('Called clear_data().')
+    _data = dict(filename='', unsaved=False)
+
+    return json.dumps(_data), []
 
 @callback(
     Output('select-file' , 'disabled', allow_duplicate=True),
@@ -122,46 +162,65 @@ def clear_data(n_clicks):
     prevent_initial_call=True,
 )
 def disable_load_data(data):
+    logger.debug('Entered disable_load_data().')
+
     _data = json.loads(data)
 
     if _data['unsaved']:
+        logger.debug('Data not saved; disable Load Data. Exiting disable_load_data().')
         return True
     else:
+        logger.debug('Data is saved; enable Load Data. Exiting disable_load_data().')
         return False
 
 @callback(
     Output('inspect-data'  , 'display'),
     Output('select-columns', 'label'),
     Output('data-columns'  , 'children'),
+    Output('select-columns', 'value'),
     Input( 'memory-store'  , 'data'),
     prevent_initial_call=True,
 )
 def show_columns(data):
+    logger.debug('Entered show_columns().')
     _data   = json.loads(data)
 
     if 'df_data' in _data:
-        df_data    = pd.read_json(io.StringIO(_data['df_data']), orient='split')
-        checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
-                      if c not in ['TIMESTAMP', 'RECORD']]
-        return 'inherit', f'{len(checkboxes)} Available Columns', checkboxes
+        if _data['unsaved']:
+            logger.debug('DataFrame found. Populating column selection list.')
+            df_data    = pd.read_json(io.StringIO(_data['df_data']), orient='split')
+            checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
+                        if c not in ['TIMESTAMP', 'RECORD']]
+            logger.debug('Exiting show_columns().')
+            return 'inherit', f'{len(checkboxes)} Available Columns', checkboxes, []
+        else:
+            raise PreventUpdate
     else:
-        return 'none', '', []
+        logger.debug('No data; clear column selection element. Exiting show_columns().')
+        return 'none', '', [], []
 
 @callback(
-    Output('stacked-graphs', 'children', allow_duplicate=True),
+    # Output('stacked-graphs', 'children', allow_duplicate=True),
+    Output('stacked-graphs', 'figure'),
+    Output('plot-area'     , 'display'),
     Input( 'select-columns', 'value'),
     State( 'memory-store'  , 'data'),
     prevent_initial_call=True,
 )
 def draw_plots(showcols, data):
+    logger.debug('Entering draw_plots().')
     if showcols:
+        logger.debug('Columns selected; generating graphs.')
         _data   = json.loads(data)
         df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split')
         fig     = helpers.render_graphs(df_data, showcols)
 
-        return dcc.Graph(figure=fig)
+        logger.debug('Exiting draw_plots().')
+        # return dcc.Graph(figure=fig)
+        return fig, 'contents'
     else:
-        return []
+        logger.debug('No columns selected; clear the graphs. Exiting draw_plots().')
+        return {}, 'none'
 
 @callback(
     Output('saved-badge', 'display'),
@@ -170,11 +229,14 @@ def draw_plots(showcols, data):
     prevent_initial_call=True,
 )
 def process_saved(data):
+    logger.debug('Entering process_saved().')
     _data = json.loads(data)
 
     if _data['filename'] and not _data['unsaved']:
+        logger.debug('Data in memory, file saved; show Saved badge. Exiting process_saved().')
         return 'inherit', ''
     else:
+        logger.debug('No data or data unsaved; hide Saved badge. Exiting process_saved().')
         return 'none', no_update
 
 @callback(
@@ -183,8 +245,11 @@ def process_saved(data):
     Input('memory-store' , 'data'),
 )
 def toggle_save_clear(data):
+    logger.debug('Called toggle_save_clear().')
     _data = json.loads(data)
 
+    have_file = bool(_data['filename'])
+    logger.debug(f'{"D" if have_file else "No d"}ata in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
     return (False, False) if _data['filename'] else (True, True)
 
 @callback(
