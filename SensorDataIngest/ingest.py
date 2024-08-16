@@ -35,7 +35,7 @@ if not logging_dir.exists():
     logging_dir.mkdir()
     warn_logging_dir_created = True
 
-module_name = Path(__file__).name
+module_name = Path(__file__).stem
 
 logger = logging.getLogger(module_name.capitalize())
 file_handler     = logging.FileHandler(logging_dir / (module_name + '.log'))
