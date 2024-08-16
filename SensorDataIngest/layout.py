@@ -82,12 +82,11 @@ columns = [
             ),
         ],
         display='none',
-        withBorder=True,
         pl='xl',
     )
 ]
 
-navbar = dmc.Card(load_save + columns)
+navbar = dmc.Card(load_save + columns, withBorder=True)
 
 page_main = dmc.Card(
     id='show-data',
@@ -126,8 +125,12 @@ page_main = dmc.Card(
             withBorder=True,
         ),
         dmc.CardSection(
-            id='stacked-graphs',
+            dcc.Graph(
+                id='stacked-graphs',
+            ),
+            id='plot-area',
             py='xs',
+            display='none',
         ),
     ],
 )
