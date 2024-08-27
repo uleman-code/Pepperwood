@@ -13,7 +13,8 @@ Due to the use of libraries that do not yet support the latest versions of Pytho
     1. On the first screen,
         - Check the box **Add Python 3.12 to PATH**
         - Choose **Install Now**
-    - Beware of long paths (deep hierarchies of directories with long names; may require a policy or registry change).
+    - Beware of long paths.
+        - Deep hierarchies of directories with long names; may require a policy or registry change.
 1. Verify that the Python launcher was installed: Enter the following command in a command window (the C-prompt is only shown for context).<br>
 `C:\> py --list`<br>
 This should show the currently installed version.
