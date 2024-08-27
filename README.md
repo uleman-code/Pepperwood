@@ -1,8 +1,9 @@
 # Sensor Data Ingest
 An interactive application for:
-- Loading files produced by Campbell Scientific data loggers,
-- Visually inspecting the various time series contained in the files,
-- And saving the data, along with column metadata and site information, in Excel workbooks.
+- Loading files produced by Campbell Scientific data loggers
+- Performing several automated sanity checks
+- Visually inspecting the various time series contained in the files
+- Saving the data, along with column metadata and site information, in Excel workbooks
 
 ## Installation
 ### Prerequisite: Python 3.12.2
@@ -14,7 +15,7 @@ Due to the use of libraries that do not yet support the latest versions of Pytho
         - Choose **Install Now**
     - Beware of long paths (deep hierarchies of directories with long names; may require a policy or registry change).
 1. Verify that the Python launcher was installed: Enter the following command in a command window (the C-prompt is only shown for context).<br>
-```C:\> py --list```<br>
+`C:\> py --list`<br>
 This should show the currently installed version.
 
 ### Installing the application itself
@@ -24,11 +25,22 @@ This should show the currently installed version.
     - This creates `…\your-directory\Pepperwood-main`, with files and a subdirectory.
 1. Open a command window (or PowerShell).
     1. Change directory to `…\Pepperwood-main`.
-    1. Create a virtual environment in either type of window (CMD = Command, PS = PowerShell):
-        - **CMD** `python -m venv .`
-        - **PS** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-    1. Activate the virtual environment (again, CMD or PS):
-        - **CMD** `venv\Scripts\activate.bat`
-        - **PS** `venv\Scripts\Activate.ps1`
-    1. Install the required packages:
-        - `pip install -r requirements.txt`
+    1. Create a virtual environment in either type of window (CMD = Command, PS = PowerShell):<br>
+        **CMD** `python -m venv .`<br>
+        **PS** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+    1. Activate the virtual environment (again, Command window or PowerShell):<br>
+        **CMD** `venv\Scripts\activate.bat`<br>
+        **PS** `venv\Scripts\Activate.ps1`
+    1. Install the required packages:<br>
+        `pip install -r requirements.txt`
+
+## Running the application
+Either:
+1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
+1. Issue this command:<br>
+   `python sensor_data_ingest.py`
+   
+or:
+1. In the File Explorer, navigate to `…\Pepperwood-main\SensorDataIngest`.
+1. Double-click on the Python file, `sensor_data_ingest.py`.
+- **Optional:** Make a shortcut/launcher for this.
