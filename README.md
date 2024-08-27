@@ -7,8 +7,8 @@ An interactive application for:
 
 ## Installation
 ### Prerequisite: Python 3.12.2
-Due to the use of libraries that do not yet support the latest versions of Python, this application requires version 3.12.2.
-1. Get the Windows web installer for Python 3.12.2 at https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
+Due to the use of libraries that do not yet support the latest versions of Python,<br>this application requires version 3.12.2.
+1. Get the Windows web installer for Python 3.12.2 at<br>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
 1. Go through the Windows installer process:
     1. On the first screen,
         - Check the box **Add Python 3.12 to PATH**
