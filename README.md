@@ -5,7 +5,7 @@ An interactive application for:
 - Visually inspecting the various time series contained in the files
 - Saving the data, along with column metadata and site information, in Excel workbooks
 
-## Installation
+## Installation (Windows only)
 ### Prerequisite: Python 3.12.2
 Due to the use of libraries that do not yet support the latest versions of Python,<br>this application requires version 3.12.2.
 1. Get the Windows web installer for Python 3.12.2 at<br>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
@@ -35,7 +35,7 @@ This should show the currently installed version.
     1. Install the required packages:<br>
         `pip install -r requirements.txt`
 
-## Running the application
+## Running the application (Windows only)
 Either:
 1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
 1. Issue this command:<br>
