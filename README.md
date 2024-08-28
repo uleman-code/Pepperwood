@@ -40,7 +40,15 @@ Either:
 1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
 1. Issue this command:<br>
    `python sensor_data_ingest.py`
-   
+   - This prints out something like this:
+```
+     Dash is running on http://127.0.0.1:8050/
+    
+     * Serving Flask app 'ingest'
+     * Debug mode: on
+     Ingest|INFO Interactive ingest application started.
+     Ingest|INFO Logging directory is C:\...\Pepperwood\SensorDataIngest\logs.
+```
 or:
 1. In the File Explorer, navigate to `…\Pepperwood-main\SensorDataIngest`.
 1. Double-click on the Python file, `sensor_data_ingest.py`.
