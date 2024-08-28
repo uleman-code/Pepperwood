@@ -39,17 +39,22 @@ This should show the currently installed version.
 Either:
 1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
 1. Issue this command:<br>
-   `python sensor_data_ingest.py`
+   `python ingest.py`
    - This prints out something like this:
 ```
-     Dash is running on http://127.0.0.1:8050/
-    
-     * Serving Flask app 'ingest'
-     * Debug mode: on
-     Ingest|INFO Interactive ingest application started.
-     Ingest|INFO Logging directory is C:\...\Pepperwood\SensorDataIngest\logs.
+Dash is running on http://127.0.0.1:8050/
+
+* Serving Flask app 'ingest'
+* Debug mode: on
+Ingest|INFO Interactive ingest application started.
+Ingest|INFO Logging directory is C:\...\Pepperwood\SensorDataIngest\logs.
 ```
 or:
 1. In the File Explorer, navigate to `…\Pepperwood-main\SensorDataIngest`.
-1. Double-click on the Python file, `sensor_data_ingest.py`.
-- **Optional:** Make a shortcut/launcher for this.
+1. Double-click on the Python file, `ingest.py`.
+    - **Optional:** Make a shortcut/launcher for this.
+
+and then:
+
+3. Point your browser at http://localhost:8050/.
+    - Note: `localhost` is a synonym for `127.0.0.1`, shown in the output snippet above.
