@@ -27,11 +27,11 @@ This should show the currently installed version.
 1. Open a command window (or PowerShell).
     1. Change directory to `…\Pepperwood-main`.
     1. Create a virtual environment in either type of window (CMD = Command, PS = PowerShell):<br>
-        **CMD** `python -m venv .`<br>
+        **CMD** `python -m venv .venv`<br>
         **PS** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
     1. Activate the virtual environment (again, Command window or PowerShell):<br>
-        **CMD** `venv\Scripts\activate.bat`<br>
-        **PS** `venv\Scripts\Activate.ps1`
+        **CMD** `.venv\Scripts\activate.bat`<br>
+        **PS** `.venv\Scripts\Activate.ps1`
     1. Install the required packages:<br>
         `pip install -r requirements.txt`
 
