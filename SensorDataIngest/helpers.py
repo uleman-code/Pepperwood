@@ -35,20 +35,21 @@ def load_data(contents, filename):
         Three DataFrames: data, metadata, site data
     '''
 
-    logger.debug('Entered load_data().')
+    logger.debug(f'Entered load_data(). Uploaded contents: {contents[:80]}')
     _, content_string = contents.split(',')                  # File contents are preceded by a file type string
 
     # TODO: Get these column names from a (configuration?) file.
     # TODO: Figure out what the "UnknownNN" columns are for and give them real names.
     meta_columns = 'Name Alias Sample/Average'.split()
     site_columns = 'Unknown01 SiteId DataLoggerModel Unknown02 DataLoggerOsVersion Unknown03 Unknnown04 SamplingInterval'.split()
-
-    decoded = io.StringIO(base64.b64decode(content_string).decode('utf-8'))
+    b64decoded   = base64.b64decode(content_string)
     logger.debug('Got decoded file contents.')
+
     try:
         if Path(filename).suffix in ['.dat', '.csv']:
             # Assume that the user uploaded a CSV file
             logger.info('Reading CSV data file. Expect additional info in the first four rows.')
+            decoded = io.StringIO(b64decoded.decode('utf-8'))
             df_data = pd.read_csv(decoded, skiprows=[0,2,3], parse_dates=['TIMESTAMP'])     # First pass to read the real data
             decoded.seek(0)
             df_meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T            # Second pass to read the column metadata
@@ -60,9 +61,10 @@ def load_data(contents, filename):
         elif Path(filename).suffix in ['.xlsx', '.xls']:
             # Assume that the user uploaded an excel file
             logger.info('Reading Excel workbook. Expect three worksheets.')
-            df_data = pd.read_excel(io.BytesIO(decoded), sheet_name='Data')
-            df_meta = pd.read_excel(io.BytesIO(decoded), sheet_name='Columns')
-            df_site = pd.read_excel(io.BytesIO(decoded), sheet_name='Site')
+            buffer  = io.BytesIO(b64decoded)
+            df_data = pd.read_excel(buffer, sheet_name='Data')
+            df_meta = pd.read_excel(buffer, sheet_name='Columns')
+            df_site = pd.read_excel(buffer, sheet_name='Site')
         else:
             # This should not happen: the Upload element limits the supported filename extensions.
             logger.error(f'Unsupported file type: {Path(filename).suffix}.')
