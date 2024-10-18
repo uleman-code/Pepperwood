@@ -10,7 +10,7 @@ An interactive application for:
 Due to the use of libraries that do not yet support the latest versions of Python,<br>this application requires version 3.12.2.
 1. Get the Windows web installer for Python 3.12.2 at<br>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
 1. Go through the Windows installer process:
-    1. On the first screen,
+    - On the first screen,
         - Check the box **Add Python 3.12 to PATH**
         - Choose **Install Now**
     - Beware of long paths.
@@ -24,6 +24,7 @@ This should show the currently installed version.
     - The downloaded file is `Pepperwood-main.zip`.
 1. Unzip the downloaded file in a directory of your choice.
     - This creates `…\your-directory\Pepperwood-main`, with files and a subdirectory.
+        - NOTE: if the directory and files already exist, this will overwrite the earlier contents.
 1. Open a command window (or PowerShell).
     1. Change directory to `…\Pepperwood-main`.
     1. Create a virtual environment in either type of window (CMD = Command, PS = PowerShell):<br>
