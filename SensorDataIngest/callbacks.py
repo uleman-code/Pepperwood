@@ -225,7 +225,7 @@ def show_columns(data):
             checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
                         if c not in ['TIMESTAMP', 'RECORD']] 
             logger.debug('Exiting show_columns().')
-            return 'contents', f'{len(checkboxes)} Available Columns', checkboxes, []
+            return 'flex', f'{len(checkboxes)} Available Columns', checkboxes, []
         else:
             raise PreventUpdate
     else:

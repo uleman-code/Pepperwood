@@ -79,14 +79,18 @@ columns = [
                         h=570,                      # Can fiddle with height based on user feedback
                     ),
                 ],
+                # h='100vh',
+                # display='flex',
             ),
         ],
-        display='none',
-        pl='xl',
+        # h='100dvh',
+        display='flex',
+        inheritPadding=True,
+        styles={'height':'100vh'},
     )
 ]
 
-navbar = dmc.Card(load_save + columns, withBorder=True)
+navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
 page_main = dmc.Card(
     id='show-data',
