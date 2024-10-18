@@ -58,35 +58,31 @@ load_save = [
 ]
 
 columns = [
-    dmc.CardSection(
-        id='inspect-data',
-        children=[
-            dmc.CheckboxGroup(
-                id='select-columns',
-                description=
-                [
-                    dmc.Text('Graphs are shown in the order', size='xs',),
-                    dmc.Text('in which you you select the columns.', size='xs',),
-                ],
-                children=[
-                    dmc.Space(h='sm'),
-                    dmc.ScrollArea(
+    dmc.ScrollArea(
+        dmc.CardSection(
+            id='inspect-data',
+            children=[
+                dmc.CheckboxGroup(
+                    id='select-columns',
+                    description=
+                    [
+                        dmc.Text('Graphs are shown in the order', size='xs',),
+                        dmc.Text('in which you you select the columns.', size='xs',),
+                    ],
+                    children=[
+                        dmc.Space(h='sm'),
                         dmc.Stack(
                             id='data-columns',
                             gap='xs',
                         ),
-                        type='hover',
-                        h=570,                      # Can fiddle with height based on user feedback
-                    ),
-                ],
-                # h='100vh',
-                # display='flex',
-            ),
-        ],
-        # h='100dvh',
-        display='flex',
-        inheritPadding=True,
-        styles={'height':'100vh'},
+                    ],
+                    pt='lg',           # For some reason, without this the ScrollArea hides the top of the text
+                ),
+            ],
+            display='none',
+            inheritPadding=True,
+        ),
+        scrollbars='y',                # This may be too rigid in case very long column names are possible
     )
 ]
 
