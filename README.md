@@ -7,16 +7,16 @@ An interactive application for:
 
 ## Installation (Windows only)
 ### Prerequisite: Python 3.12.2
-Due to the use of libraries that do not yet support the latest versions of Python,<br>this application requires version 3.12.2.
-1. Get the Windows web installer for Python 3.12.2 at<br>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
+Due to the use of libraries that do not yet support the latest versions of Python,<br/>this application requires version 3.12.2.
+1. Get the Windows web installer for Python 3.12.2 at<br/>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
 1. Go through the Windows installer process:
     - On the first screen,
         - Check the box **Add Python 3.12 to PATH**
         - Choose **Install Now**
     - Beware of long paths.
         - Deep hierarchies of directories with long names; may require a policy or registry change.
-1. Verify that the Python launcher was installed: Enter the following command in a command window (the C-prompt is only shown for context).<br>
-`C:\> py --list`<br>
+1. Verify that the Python launcher was installed: Enter the following command in a command window.<br/>
+`py --list`<br/>
 This should show the currently installed version.
 
 ### Installing the application itself
@@ -27,21 +27,21 @@ This should show the currently installed version.
         - NOTE: if the directory and files already exist, this will overwrite the earlier contents.
 1. Open a command window (or PowerShell).
     1. Change directory to `…\Pepperwood-main`.
-    1. Create a virtual environment in either type of window (CMD = Command, PS = PowerShell):<br>
-        **CMD** `python -m venv .venv`<br>
+    1. (**SKIP IF UPDATING AN EXISTING INSTALLATION**) Create a virtual environment in either type of window <br/>(CMD = Command, PS = PowerShell):<br/>
+        **CMD** `python -m venv .venv`<br/>
         **PS** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-    1. Activate the virtual environment (again, Command window or PowerShell):<br>
-        **CMD** `.venv\Scripts\activate.bat`<br>
+    1. Activate the virtual environment (again, Command window or PowerShell):<br/>
+        **CMD** `.venv\Scripts\activate.bat`<br/>
         **PS** `.venv\Scripts\Activate.ps1`
-    1. Install the required packages:<br>
+    1. Install the required packages:<br/>
         `pip install -r requirements.txt`
 
 ## Running the application (Windows only)
 Either:
 1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
-1. Issue this command:<br>
-   `python ingest.py`
-   - This prints out something like this:
+1. Issue this command:<br/>
+   `python ingest.py`<br/>
+   This prints out something like this:
 ```
 Dash is running on http://127.0.0.1:8050/
 
