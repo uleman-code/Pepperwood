@@ -28,7 +28,7 @@ load_save = [
                     align='center',
                 ),
                 id='select-file',
-                multiple=False,
+                multiple=True,
                 accept='.dat,.csv,.xlsx,.xls',      # NOTE: a string, not a list of strings
             ),
         ],

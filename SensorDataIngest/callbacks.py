@@ -34,7 +34,7 @@ logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child log
     State( 'select-file'   , 'last_modified'),
     prevent_initial_call=True,
 )
-def load_file(contents, filename, last_modified):
+def load_file(all_contents, filenames, last_modified):
     '''Take the results of opening a data file and store the contents in the memory store.
     
     Triggered by the Upload component providing the base64-encoded file contents, read the sensor data into a DataFrame,
@@ -43,9 +43,9 @@ def load_file(contents, filename, last_modified):
     an Excel file).
 
     Parameters:
-        contents        (str)   base64-encoded file contents
-        filename        (str)   filename, with extension, without path
-        last_modified   (float) UNIX-style timestamp (seconds since 01-01-1970) 
+        all_contents    (list[str])   base64-encoded file contents for all files
+        filenames       (list[str])   filenames, with extension, without path
+        last_modified   (list[float]) UNIX-style timestamps (seconds since 01-01-1970 00:00:00) 
 
     Returns:
         memory-store/data    (str)  JSON representation of a dict containing filename, three DataFrames, and the "unsaved" flag
@@ -55,8 +55,14 @@ def load_file(contents, filename, last_modified):
 
     '''
     
-    logger.debug(f'Entered load_file(). contents{" not" if contents else ""} empty. filename={filename}')
-    if contents:
+    logger.debug(f'Entered load_file(). Contents{" not" if all_contents else ""} empty. Filenames: {", ".join(filenames) if all_contents else "none"}.')
+    if not all_contents:
+        logger.debug('No contents to process. Exiting load_file().')
+        raise PreventUpdate                 # No file contents: do nothing
+
+    # As a first step toward batch processing, allow for multiple files in principle, but limit the 
+    # number of files actually processed to just one.
+    for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
         try:
             df_data, df_meta, df_site = helpers.load_data(contents, filename)
 
@@ -64,7 +70,7 @@ def load_file(contents, filename, last_modified):
             # NOTE: there are several ways of JSONifying a DataFrame (orient parameter); "split" is lossless and efficient.
             _data                  = {}
             _data['filename']      = filename
-            _data['last_modified'] = last_modified
+            _data['last_modified'] = modified
             _data['df_data']       = df_data.to_json(orient='split', date_format='iso')
             _data['df_meta']       = df_meta.to_json(orient='split')
             _data['df_site']       = df_site.to_json(orient='split')
@@ -75,9 +81,6 @@ def load_file(contents, filename, last_modified):
         except Exception as e:
             logger.error(f'File Read Error:\n{e}')
             return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
-    else:
-        logger.debug('No contents to process. Exiting load_file().')
-        raise PreventUpdate                 # No file contents: do nothing
 
 @callback(
     Output('save-xlsx'   , 'data'    ),
