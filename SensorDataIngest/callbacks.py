@@ -71,18 +71,13 @@ def load_file(all_contents, filenames, last_modified):
         try:
             id = str(uuid.uuid4())
             frame_store[id] = {}
-            frames = frame_store[id]
-            # df_data, df_meta, df_site = helpers.load_data(contents, filename) 
+            frames          = frame_store[id]
             frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
 
             # Build up the dict structure to be stored from scratch, regardless of what may have been stored before.
-            # NOTE: there are several ways of JSONifying a DataFrame (orient parameter); "split" is lossless and efficient.
             _data                  = {}
             _data['filename']      = filename
             _data['last_modified'] = modified
-            # _data['df_data']       = df_data.to_json(orient='split', date_format='iso')
-            # _data['df_meta']       = df_meta.to_json(orient='split')
-            # _data['df_site']       = df_site.to_json(orient='split')
             _data['frame_id']      = id
             _data['unsaved']       = True
 
@@ -103,7 +98,7 @@ def load_file(all_contents, filenames, last_modified):
 def save_file(n_clicks, data):
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
-    In response to a button click, take the data from the memory store, download it to the browser, and have
+    In response to a button click, take the data from the in-memory frame store, download it to the browser, and have
     the browser write it to a file, of the same name as the original but with a ".xlsx" extension. Depending
     on the user's browser settings, this either silently saves the file in a pre-designated folder (e.g., Downloads)
     or opens the OS-native Save File dialog, allowing the user to choose any folder (and change the filename, too).
@@ -124,12 +119,8 @@ def save_file(n_clicks, data):
     logger.debug('Enter.')
     _data   = json.loads(data)
 
-    # if 'df_data' in _data:
     if 'frame_id' in _data:
         id = _data['frame_id']
-        # df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
-        # df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
-        # df_site = pd.read_json(io.StringIO(_data['df_site']), orient='split')
         df_data = frame_store[id]['data']
         df_meta = frame_store[id]['meta']
         df_site = frame_store[id]['site']
@@ -184,7 +175,7 @@ def clear_data(n_clicks, data):
     return json.dumps(_data), []
 
 @callback(
-    Output('select-file' , 'disabled', allow_duplicate=True),
+    Output('select-file' , 'disabled'),
     Input( 'memory-store', 'data'),
     prevent_initial_call=True,
 )
@@ -204,12 +195,6 @@ def disable_load_data(data):
     logger.debug(f'Data {"not" if uns else "is"} saved; {"dis" if uns else "en"}able Load Data.')
     logger.debug('Exit.')
     return uns
-    # if _data['unsaved']:
-    #     logger.debug('Data not saved; disable Load Data. Exiting disable_load_data().')
-    #     return True
-    # else:
-    #     logger.debug('Data is saved; enable Load Data. Exiting disable_load_data().')
-    #     return False
 
 @callback(
     Output('inspect-data'  , 'display'),
@@ -250,7 +235,6 @@ def show_columns(data):
             logger.debug('DataFrame found. Populating column selection list.')
             id      = _data['frame_id']
             df_data = frame_store[id]['data']
-            # df_data    = pd.read_json(io.StringIO(_data['df_data']), orient='split')
 
             # Skip the timestamp and record number columns; these are not data columns.
             # TODO: Try to find a way to get these names from the metadata, in case they're not
@@ -294,7 +278,6 @@ def draw_plots(showcols, data):
         _data   = json.loads(data)
         id      = _data['frame_id']
         df_data = frame_store[id]['data']
-        # df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split')
         fig     = helpers.render_graphs(df_data, showcols)
 
         logger.debug('Exit.')
@@ -396,7 +379,6 @@ def show_file_info(data):
     
 @callback(
     Output('sanity-checks', 'children'),
-    # Output('memory-store' , 'data'),
     State( 'file-name'    , 'children'),
     Input( 'memory-store' , 'data'),
     prevent_initial_call=True,
@@ -425,7 +407,6 @@ def report_sanity_checks(previous_filename, data):
     ts_col    = 'TIMESTAMP'
     seqno_col = 'RECORD'
     filename  = _data['filename']
-    # new_data  = no_update
     report    = []
 
     if filename:
@@ -433,9 +414,7 @@ def report_sanity_checks(previous_filename, data):
             logger.debug('New data found. Running and reporting sanity checks.')
             id               = _data['frame_id']
             df_data          = frame_store[id]['data']
-            # df_data          = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
             interval_minutes = 15             # TODO: Get this from the metadata
-            # report           = []
             
             # Fill in text elements
             if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
@@ -450,15 +429,12 @@ def report_sanity_checks(previous_filename, data):
 
                 # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
                 df_data[seqno_col]  = df_data.index
-                # new_data            = _data
-                # new_data['df_data'] = df_data.to_json(orient='split', date_format='iso')
-        else:                                 # New data is the same as the old data, so do nothing
+        else:
             logger.debug('No change in data. Skipping sanity checks, leaving current reports unchanged.')
+            logger.debug('Exit.')
             raise PreventUpdate
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
-    #     report = []
     
-    # return report, new_data
     logger.debug('Exit.')
     return report    
