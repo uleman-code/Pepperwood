@@ -19,8 +19,11 @@ import logging
 import datetime
 import json
 import io
+import uuid
 
 import helpers                          # Local module implementing Dash-independent actions
+
+frame_store = {}
 
 logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
 
@@ -48,35 +51,43 @@ def load_file(all_contents, filenames, last_modified):
         last_modified   (list[float]) UNIX-style timestamps (seconds since 01-01-1970 00:00:00) 
 
     Returns:
-        memory-store/data    (str)  JSON representation of a dict containing filename, three DataFrames, and the "unsaved" flag
+        memory-store/data    (str)  JSON representation of a dict containing filename, a reference to the three DataFrames, and the "unsaved" flag
         read-error/opened    (bool) True in case of error (show error modal), otherwise False
         error-title/children (str)  In case of error, title for error modal; otherwise an empty string
         error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
 
     '''
     
-    logger.debug(f'Entered load_file(). Contents{" not" if all_contents else ""} empty. Filenames: {", ".join(filenames) if all_contents else "none"}.')
+    logger.debug('Enter.')
+    logger.debug(f'Contents{" not" if all_contents else ""} empty. Filenames: {", ".join(filenames) if all_contents else "none"}.')
     if not all_contents:
-        logger.debug('No contents to process. Exiting load_file().')
+        logger.debug('No contents to process.')
+        logger.debug('Exit.')
         raise PreventUpdate                 # No file contents: do nothing
 
     # As a first step toward batch processing, allow for multiple files in principle, but limit the 
     # number of files actually processed to just one.
     for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
         try:
-            df_data, df_meta, df_site = helpers.load_data(contents, filename)
+            id = str(uuid.uuid4())
+            frame_store[id] = {}
+            frames = frame_store[id]
+            # df_data, df_meta, df_site = helpers.load_data(contents, filename) 
+            frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
 
             # Build up the dict structure to be stored from scratch, regardless of what may have been stored before.
             # NOTE: there are several ways of JSONifying a DataFrame (orient parameter); "split" is lossless and efficient.
             _data                  = {}
             _data['filename']      = filename
             _data['last_modified'] = modified
-            _data['df_data']       = df_data.to_json(orient='split', date_format='iso')
-            _data['df_meta']       = df_meta.to_json(orient='split')
-            _data['df_site']       = df_site.to_json(orient='split')
+            # _data['df_data']       = df_data.to_json(orient='split', date_format='iso')
+            # _data['df_meta']       = df_meta.to_json(orient='split')
+            # _data['df_site']       = df_site.to_json(orient='split')
+            _data['frame_id']      = id
             _data['unsaved']       = True
 
-            logger.debug('Data initialized. Exiting load_file().')
+            logger.debug('Data initialized.')
+            logger.debug('Exit.')
             return json.dumps(_data), False, '', ''
         except Exception as e:
             logger.error(f'File Read Error:\n{e}')
@@ -103,20 +114,25 @@ def save_file(n_clicks, data):
     
     Parameters:
         n_clicks  (int) The number of times the button has been pressed
-        data      (str) JSON representation of the DataFrames and other data
+        data      (str) JSON representation of the data currently loaded
     
     Returns:
         save-xlsx/data    (dict) Content and filename to be downloaded to the browser
         memory-store/data (str)  Same as data parameter but with the unsaved flag set to False
     '''
 
-    logger.debug('Entered save_file().')
+    logger.debug('Enter.')
     _data   = json.loads(data)
 
-    if 'df_data' in _data:
-        df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
-        df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
-        df_site = pd.read_json(io.StringIO(_data['df_site']), orient='split')
+    # if 'df_data' in _data:
+    if 'frame_id' in _data:
+        id = _data['frame_id']
+        # df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
+        # df_meta = pd.read_json(io.StringIO(_data['df_meta']), orient='split')
+        # df_site = pd.read_json(io.StringIO(_data['df_site']), orient='split')
+        df_data = frame_store[id]['data']
+        df_meta = frame_store[id]['meta']
+        df_site = frame_store[id]['site']
         
         outfile = str(Path(_data['filename']).with_suffix('.xlsx'))
 
@@ -126,34 +142,44 @@ def save_file(n_clicks, data):
         contents         = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
         _data['unsaved'] = False
 
-        logger.debug('File saved. Exiting save_file().')
+        logger.debug('File saved.')
+        logger.debug('Exit.')
         return contents, json.dumps(_data)
     else:
-        logger.debug('Nothing to save. Exiting save_file()')
+        logger.debug('Nothing to save.')
+        logger.debug('Exit.')
         raise PreventUpdate
 
 @callback(
-    Output('memory-store'  , 'data'    , allow_duplicate=True),
-    Output('select-file'   , 'contents', allow_duplicate=True),
-    Input( 'clear-button'  , 'n_clicks'),
+    Output('memory-store', 'data'    , allow_duplicate=True),
+    Output('select-file' , 'contents', allow_duplicate=True),
+    Input( 'clear-button', 'n_clicks'),
+    State( 'memory-store', 'data'),
     prevent_initial_call=True,
 )
-def clear_data(n_clicks):
+def clear_data(n_clicks, data):
     '''Clear all data in memory.
     
     Triggered by the Clear button.
 
     Parameters:
         n_clicks (int) Number of times the Clear button was pressed
+        data     (str) JSON representation of the data currently loaded
 
     Returns:
-        memory-store/data    (str) JSON representation of a cleared data store: no DataFrames, filename blank, unsaved flag False
-        select-file/contents (str) Empty string to reset, so a new file upload always results in a contents change, even if
-                                   it's the same file as currently loaded
+        memory-store/data    (str)  JSON representation of a cleared data store: no DataFrames, filename blank, unsaved flag False
+        select-file/contents (list) Empty to reset, so a new file upload always results in a contents change, even if
+                                    it's the same file(s) as currently loaded
     '''
 
-    logger.debug('Called clear_data().')
+    logger.debug('Enter.')
+    _data = json.loads(data)
+
+    # In addition to clearing out the in-memory store, must also clear the dataframes.
+    id    = _data['frame_id']
+    del frame_store[id]
     _data = dict(filename='', unsaved=False)
+    logger.debug('Exit.')
 
     return json.dumps(_data), []
 
@@ -166,22 +192,24 @@ def disable_load_data(data):
     '''Disable the Load Data element when new data is loaded; re-enable when data is cleared or saved.
 
     Parameters:
-        data (str) JSON representation of the DataFrames and other data; this function only looks at the unsaved flag.
+        data (str) JSON representation of the data currently loaded
 
     Returns:
         select-file/disabled (bool) True if unsaved data in memory; False otherwise (no data or data was saved).
     '''
 
-    logger.debug('Entered disable_load_data().')
+    logger.debug('Enter.')
     _data = json.loads(data)
-
-    # This could just be "return _data['unsaved']" but with logging an explicit if-else is clearer.
-    if _data['unsaved']:
-        logger.debug('Data not saved; disable Load Data. Exiting disable_load_data().')
-        return True
-    else:
-        logger.debug('Data is saved; enable Load Data. Exiting disable_load_data().')
-        return False
+    uns   = _data['unsaved']
+    logger.debug(f'Data {"not" if uns else "is"} saved; {"dis" if uns else "en"}able Load Data.')
+    logger.debug('Exit.')
+    return uns
+    # if _data['unsaved']:
+    #     logger.debug('Data not saved; disable Load Data. Exiting disable_load_data().')
+    #     return True
+    # else:
+    #     logger.debug('Data is saved; enable Load Data. Exiting disable_load_data().')
+    #     return False
 
 @callback(
     Output('inspect-data'  , 'display'),
@@ -205,7 +233,7 @@ def show_columns(data):
     did a Save.
 
     Parameters:
-        data      (str) JSON representation of the DataFrames and other data
+        data (str) JSON representation of the data currently loaded
         
     Returns:
         inspect-data/display  (str)  Show the column selection part of the Navbar if there's data; otherwise blank it 
@@ -214,25 +242,28 @@ def show_columns(data):
         select-columns/value  (list) Reset the current selection (uncheck all boxes)
     '''
 
-    logger.debug('Entered show_columns().')
+    logger.debug('Enter.')
     _data   = json.loads(data)
 
-    if 'df_data' in _data:
+    if 'frame_id' in _data:
         if _data['unsaved']:
             logger.debug('DataFrame found. Populating column selection list.')
-            df_data    = pd.read_json(io.StringIO(_data['df_data']), orient='split')
+            id      = _data['frame_id']
+            df_data = frame_store[id]['data']
+            # df_data    = pd.read_json(io.StringIO(_data['df_data']), orient='split')
 
             # Skip the timestamp and record number columns; these are not data columns.
             # TODO: Try to find a way to get these names from the metadata, in case they're not
             #       the same across data loggers or across time.
             checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
                         if c not in ['TIMESTAMP', 'RECORD']] 
-            logger.debug('Exiting show_columns().')
+            logger.debug('Exit.')
             return 'flex', f'{len(checkboxes)} Available Columns', checkboxes, []
         else:
             raise PreventUpdate
     else:
-        logger.debug('No data; clear column selection element. Exiting show_columns().')
+        logger.debug('No data; clear column selection element.')
+        logger.debug('Exit.')
         return 'none', '', [], []
 
 @callback(
@@ -249,7 +280,7 @@ def draw_plots(showcols, data):
 
     Parameters:
         showcols (list) Column names, in the order in which they were selected
-        data     (str) JSON representation of the DataFrames and other data
+        data     (str)  JSON representation of the data currently loaded
 
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
@@ -257,17 +288,20 @@ def draw_plots(showcols, data):
                                        (otherwise you see an empty set of axes)
     '''
     
-    logger.debug('Entering draw_plots().')
+    logger.debug('Enter.')
     if showcols:
         logger.debug('Columns selected; generating graphs.')
         _data   = json.loads(data)
-        df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split')
+        id      = _data['frame_id']
+        df_data = frame_store[id]['data']
+        # df_data = pd.read_json(io.StringIO(_data['df_data']), orient='split')
         fig     = helpers.render_graphs(df_data, showcols)
 
-        logger.debug('Exiting draw_plots().')
+        logger.debug('Exit.')
         return fig, 'contents'
     else:
-        logger.debug('No columns selected; clear the graphs. Exiting draw_plots().')
+        logger.debug('No columns selected; clear the graphs.')
+        logger.debug('Exit.')
         return {}, 'none'
 
 @callback(
@@ -283,44 +317,48 @@ def process_saved(data):
     even if it's the same file as before.
 
     Parameters:
-        data      (str) JSON representation of the DataFrames and other data
+        data (str) JSON representation of the data currently loaded
 
     Returns
         saved-badge/display  (str) Show ('contents') the SAVED badge if data was saved; otherwise hide it ('none')
         select-file/contents (str) Clear ('') the Upload contents if data was saved; otherwise no change
     '''
     
-    logger.debug('Entering process_saved().')
+    logger.debug('Enter.')
     _data = json.loads(data)
 
     if _data['filename'] and not _data['unsaved']:
-        logger.debug('Data in memory, file saved; show Saved badge. Exiting process_saved().')
+        logger.debug('Data in memory, file saved; show Saved badge.')
+        logger.debug('Exit.')
         return 'inline', ''
     else:
-        logger.debug('No data or data unsaved; hide Saved badge. Exiting process_saved().')
+        logger.debug('No data or data unsaved; hide Saved badge.')
+        logger.debug('Exit.')
         return 'none', no_update
 
 @callback(
     Output('save-button' , 'disabled'),
     Output('clear-button', 'disabled'),
     Input('memory-store' , 'data'),
+    prevent_initial_call=True,
 )
 def toggle_save_clear(data):
     '''If there's data in memory, enable the Save and Clear buttons; otherwise, disable them.
 
     Parameters:
-        data (str) JSON representation of the DataFrames and other data (this function only cares about the filename member)
+        data (str) JSON representation of the data currently loaded (this function only cares about the filename member)
 
     Returns:
         save-button/disabled   True to disable (no data); False to enable (data in memory)
         clear-button/disabled  True to disable (no data); False to enable (data in memory)
     '''
     
-    logger.debug('Called toggle_save_clear().')
+    logger.debug('Enter.')
     _data = json.loads(data)
 
     have_file = bool(_data['filename'])
     logger.debug(f'{"D" if have_file else "No d"}ata in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
+    logger.debug('Exit.')
 
     return (False, False) if have_file else (True, True)
 
@@ -328,36 +366,40 @@ def toggle_save_clear(data):
     Output('file-name'     , 'children'),
     Output('last-modified' , 'children'),
     Input('memory-store'   , 'data'),
+    prevent_initial_call=True,
 )
 def show_file_info(data):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
-        data (str) JSON representation of the DataFrames and other data (this function only cares about the filename member)
+        data (str) JSON representation of the data currently loaded (this function only cares about the filename member)
 
     Returns:
         file-name/children      (str) The name of the currently loaded file (no path)
         last-modified/children  (str) A report of the last-modified timestamp of the currently loaded file
     '''
 
-    logger.debug('Entered show_file_info().')
+    logger.debug('Enter.')
     _data = json.loads(data)
 
     if _data['filename']:
         filename      = _data['filename']
         last_modified = f'Last modified: {datetime.datetime.fromtimestamp(_data['last_modified'])}'
         
-        logger.debug('Data in memory; report file information. Exiting show_file_info().')
+        logger.debug('Data in memory; report file information.')
+        logger.debug('Exit.')
         return filename, last_modified
     else:
-        logger.debug('No data in memory; clear file information. Exiting show_file_info().')
+        logger.debug('No data in memory; clear file information.')
+        logger.debug('Exit.')
         return '', ''
     
 @callback(
     Output('sanity-checks', 'children'),
-    Output('memory-store' , 'data'),
+    # Output('memory-store' , 'data'),
     State( 'file-name'    , 'children'),
     Input( 'memory-store' , 'data'),
+    prevent_initial_call=True,
 )
 def report_sanity_checks(previous_filename, data):
     '''Perform sanity checks on the data and report the results in a separate area of the app shell.
@@ -368,10 +410,14 @@ def report_sanity_checks(previous_filename, data):
 
     Parameters:
         previous-filename (str) The filename from before the change that triggered this call
-        data              (str) JSON representation of the DataFrames and other data
+        data              (str) JSON representation of the data currently loaded
 
     Returns:
+        sanity-checks/children  The results of a few simple sanity checks
+        # memory-store/data
     '''
+
+    logger.debug('Enter.')
     _data = json.loads(data)
 
     # Get the names of the timestamp and sequence-number coluns.
@@ -379,13 +425,17 @@ def report_sanity_checks(previous_filename, data):
     ts_col    = 'TIMESTAMP'
     seqno_col = 'RECORD'
     filename  = _data['filename']
-    new_data  = no_update
+    # new_data  = no_update
+    report    = []
 
     if filename:
         if filename != previous_filename:     # New data is different from the old data, so rerun the checks and update the report
-            df_data          = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
+            logger.debug('New data found. Running and reporting sanity checks.')
+            id               = _data['frame_id']
+            df_data          = frame_store[id]['data']
+            # df_data          = pd.read_json(io.StringIO(_data['df_data']), orient='split') 
             interval_minutes = 15             # TODO: Get this from the metadata
-            report           = []
+            # report           = []
             
             # Fill in text elements
             if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
@@ -400,12 +450,15 @@ def report_sanity_checks(previous_filename, data):
 
                 # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
                 df_data[seqno_col]  = df_data.index
-                new_data            = _data
-                new_data['df_data'] = df_data.to_json(orient='split', date_format='iso')
+                # new_data            = _data
+                # new_data['df_data'] = df_data.to_json(orient='split', date_format='iso')
         else:                                 # New data is the same as the old data, so do nothing
+            logger.debug('No change in data. Skipping sanity checks, leaving current reports unchanged.')
             raise PreventUpdate
-    else:                                     # No data, so clear the report
-        report = []
+    else:                                     
+        logger.debug('No data loaded. Clear the sanity check reports.')
+    #     report = []
     
-    return report, new_data
-    
+    # return report, new_data
+    logger.debug('Exit.')
+    return report    
