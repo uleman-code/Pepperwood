@@ -40,8 +40,8 @@ module_name = Path(__file__).stem
 logger = logging.getLogger(module_name.capitalize())
 file_handler     = logging.FileHandler(logging_dir / (module_name + '.log'))
 stream_handler   = logging.StreamHandler()
-file_formatter   = logging.Formatter('{asctime}|{name}|{levelname} {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
-stream_formatter = logging.Formatter('{name}|{levelname} {message}', style='{')
+file_formatter   = logging.Formatter('{asctime}|{levelname}|{name}|{funcName} {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
+stream_formatter = logging.Formatter('{levelname}|{name}: {message}', style='{')
 
 file_handler.setLevel('DEBUG')
 file_handler.setFormatter(file_formatter)
