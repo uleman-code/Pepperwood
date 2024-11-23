@@ -35,7 +35,8 @@ def load_data(contents, filename):
         Three DataFrames: data, metadata, site data
     '''
 
-    logger.debug(f'Entered load_data(). Uploaded contents: {contents[:80]}')
+    logger.debug('Enter.')
+    logger.debug(f'Uploaded contents: {contents[:80]}')
     _, content_string = contents.split(',')                  # File contents are preceded by a file type string
 
     # TODO: Get these column names from a (configuration?) file.
@@ -73,7 +74,8 @@ def load_data(contents, filename):
         logger.error(f'Error reading file {filename}. {e}')
         raise
 
-    logger.debug('DataFrames for data, metadata, and site data populated. Exiting load_data().')
+    logger.debug('DataFrames for data, metadata, and site data populated.')
+    logger.debug('Exit.')
     return df_data, df_meta, df_site
 
 def multi_df_to_excel(df_data, df_meta, df_site):
@@ -90,7 +92,7 @@ def multi_df_to_excel(df_data, df_meta, df_site):
         A byte string containing the full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     '''
 
-    logger.debug('Entered multi_df_to_excel().')
+    logger.debug('Enter.')
     buffer = io.BytesIO()
 
     # TODO: Should these worksheet names be data-driven (e.g., from a configuration file)?
@@ -109,7 +111,8 @@ def multi_df_to_excel(df_data, df_meta, df_site):
                 col_idx      = df.columns.get_loc(column)
                 xl.sheets[sheet].set_column(col_idx, col_idx, column_width)
 
-    logger.debug('Excel file buffer written. Exiting multi_df_to_excel().')
+    logger.debug('Excel file buffer written.')
+    logger.debug('Exit.')
     return buffer.getvalue()            # Must return a byte string, not the IO buffer itself
 
 def render_graphs(df_data, showcols):
@@ -125,7 +128,7 @@ def render_graphs(df_data, showcols):
         A Plotly Figure containing all graphs
     '''
 
-    logger.debug('Entered render_graphs().')
+    logger.debug('Enter.')
     df_show = df_data.set_index('TIMESTAMP')[showcols]                                 # TIMESTAMP is the independent (X-axis) variable for all plots
     
     # Using Plotly facet graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
@@ -137,7 +140,8 @@ def render_graphs(df_data, showcols):
         .update_layout(legend_title_text='Variable')
         )
     
-    logger.debug('Plot generated. Exiting render_graphs().')
+    logger.debug('Plot generated.')
+    logger.debug('Exit.')
     return fig
 
 def ts_is_regular(timeseries, interval_minutes=15):
@@ -151,9 +155,10 @@ def ts_is_regular(timeseries, interval_minutes=15):
         (bool) True if interval between all pairs of consecutive values equals interval_minutes; otherwise False
     '''
 
-    logger.debug('ts_is_regular() called.')
+    logger.debug('Enter.')
     is_regular = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
-    
+    logger.debug('Exit.')
+
     return is_regular
 
 def seqno_is_regular(seqno_series):
@@ -166,7 +171,8 @@ def seqno_is_regular(seqno_series):
         (bool) True if difference between all pairs of consecutive values is one; otherwise False
     '''
 
-    logger.debug('seqno_is_regular() called.')
+    logger.debug('Enter.')
     is_regular = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
+    logger.debug('Exit.')
 
     return is_regular
