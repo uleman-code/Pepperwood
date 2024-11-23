@@ -105,6 +105,7 @@ page_main = dmc.Card(
                             dmc.Text(id='file-name', size='lg', fw=700, h='sm'),  # Filename in bold
                             dmc.Group(
                                 children=[
+                                    dmc.LoadingOverlay(id='wait-please', visible=False),
                                     dmc.Text(id='last-modified'),
                                     dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
                                 ]
