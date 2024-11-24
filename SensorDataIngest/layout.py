@@ -10,7 +10,7 @@ header = dmc.Group(
         dmc.Burger(id='burger-button', opened=False, hiddenFrom='md'),      # Won't matter unless on a mobile device
         dmc.Title('Sensor Data Ingest'),
     ],
-    justify='flex-start',
+    justify='center',
 )
 
 load_save = [
@@ -88,6 +88,38 @@ columns = [
 
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
+def file_info(n=None):
+    suffix = '' if n is None else '-' + str(n)
+    return  dmc.CardSection(
+                dmc.Group(
+                    children=[
+                        dmc.Stack(
+                            children=[
+                                dmc.Text(id=f'file-name{suffix}', size='lg', fw=700, h='sm'),  # Filename in bold
+                                dmc.Group(
+                                    children=[
+                                        dmc.LoadingOverlay(id=f'wait-please{suffix}', visible=False),
+                                        dmc.Text(id=f'last-modified{suffix}'),
+                                        dmc.Badge('Saved', id=f'saved-badge{suffix}', ml='sm', display='none'),
+                                    ]
+                                )
+                            ],
+                            py='xs',
+                            mt=25,
+                        ),
+                        dmc.Stack(
+                            id=f'sanity-checks{suffix}',
+                            py='xs',
+                            mt=25,
+                            mr=20,
+                        ),
+                    ],
+                    justify='space-between',
+                ),
+                id=f'file-info{suffix}',
+                withBorder=True,
+            )
+
 page_main = dmc.Card(
     id='show-data',
     children=[
@@ -97,34 +129,7 @@ page_main = dmc.Card(
             id='read-error',
             zIndex=10000,
         ),
-        dmc.CardSection(
-            dmc.Group(
-                children=[
-                    dmc.Stack(
-                        children=[
-                            dmc.Text(id='file-name', size='lg', fw=700, h='sm'),  # Filename in bold
-                            dmc.Group(
-                                children=[
-                                    dmc.LoadingOverlay(id='wait-please', visible=False),
-                                    dmc.Text(id='last-modified'),
-                                    dmc.Badge('Saved', id='saved-badge', ml='sm', display='none'),
-                                ]
-                            )
-                        ],
-                        py='xs',
-                        mt=25,
-                    ),
-                    dmc.Stack(
-                        id='sanity-checks',
-                        py='xs',
-                        mt=25,
-                        mr=20,
-                    ),
-                ],
-                justify='space-between',
-            ),
-            withBorder=True,
-        ),
+        file_info(),
         dmc.CardSection(
             dcc.Graph(
                 id='stacked-graphs',
