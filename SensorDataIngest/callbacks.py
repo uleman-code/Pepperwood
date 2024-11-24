@@ -89,38 +89,15 @@ def load_file(all_contents, filenames, last_modified):
             return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
-    Output('wait-please' , 'visible' ),
-    Input( 'save-button' , 'n_clicks'),
-)
-def prepare_save(n_clicks):
-    '''Show the busy indicator before starting the file export process.
-    
-    In response to a button click, show the busy indicator, which in turn will trigger the 
-    save_file() callback. A subsequent callback, triggered by a change in the "unsaved" flag,
-    will turn the busy indicator off.
-
-    Parameters:
-        n_clicks  (int) The number of times the button has been pressed
-    
-    Returns:
-        wait-please/visible (bool) True: show the (LoadingOverlay) busy indicator
-    '''
-
-    logger.debug('Enter.')
-    logger.debug('Exit.')
-    if n_clicks:
-        return True
-    else:
-        raise PreventUpdate
-
-@callback(
     Output('save-xlsx'   , 'data'    ),
     Output('memory-store', 'data'    , allow_duplicate=True),
-    Input( 'wait-please' , 'visible' ),
+    # Input( 'wait-please' , 'visible' ),
+    Input( 'save-button' , 'n_clicks'),
     State( 'memory-store', 'data'    ),
     prevent_initial_call=True,
+    running=[(Output('wait-please', 'visible'), True, False)]       # Show the busy indicator (LoadingOverlay)
 )
-def save_file(visible, data):
+def save_file(n_clicks, data):
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the in-memory frame store, download it to the browser, and have
@@ -133,8 +110,8 @@ def save_file(visible, data):
           is always saved.
     
     Parameters:
-        visible (bool) Whether the busy indicator has been turned on in response to a Save button click
-        data    (str)  JSON representation of the data currently loaded
+        n_clicks (int) The number of times the button has been pressed
+        data     (str) JSON representation of the data currently loaded
     
     Returns:
         save-xlsx/data    (dict) Content and filename to be downloaded to the browser
@@ -144,7 +121,7 @@ def save_file(visible, data):
     logger.debug('Enter.')
     _data   = json.loads(data)
 
-    if visible and 'frame_id' in _data:
+    if 'frame_id' in _data:
         id = _data['frame_id']
         df_data = frame_store[id]['data']
         df_meta = frame_store[id]['meta']
@@ -314,13 +291,13 @@ def draw_plots(showcols, data):
 
 @callback(
     Output('saved-badge', 'display'),
-    Output('wait-please', 'visible', allow_duplicate=True,),
+    # Output('wait-please', 'visible', allow_duplicate=True,),
     Output('select-file', 'contents'),
     Input('memory-store', 'data'),
     prevent_initial_call=True,
 )
 def process_saved(data):
-    '''Respond to a Save action by showing a SAVED badge and turning off the busy indicator.
+    '''Respond to a Save action by showing a SAVED badge.
 
     Also clear the contents of the Upload element, so any new file load results in a data refresh,
     even if it's the same file as before.
@@ -330,7 +307,6 @@ def process_saved(data):
 
     Returns
         saved-badge/display  (str)  Show ('contents') the SAVED badge if data was saved; otherwise hide it ('none')
-        wait-please/visible  (bool) False: hide the (LoadingOverlay) busy indicator
         select-file/contents (str)  Clear ('') the Upload contents if data was saved; otherwise no change
     '''
     
@@ -340,11 +316,11 @@ def process_saved(data):
     if _data['filename'] and not _data['unsaved']:
         logger.debug('Data in memory, file saved; show Saved badge.')
         logger.debug('Exit.')
-        return 'inline', False, ''
+        return 'inline', ''
     else:
         logger.debug('No data or data unsaved; hide Saved badge.')
         logger.debug('Exit.')
-        return 'none', False, no_update
+        return 'none', no_update
 
 @callback(
     Output('save-button' , 'disabled'),
