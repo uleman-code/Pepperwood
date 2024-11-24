@@ -38,7 +38,7 @@ logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child log
     prevent_initial_call=True,
 )
 def load_file(all_contents, filenames, last_modified):
-    '''Take the results of opening a data file and store the contents in the memory store.
+    '''If one file was opened, load it. If multiple files, load, check, and save the entire batch.
     
     Triggered by the Upload component providing the base64-encoded file contents, read the sensor data into a DataFrame,
     along with separate DataFrames for metadata (column descriptions) and site data. Persist the three DataFrames, along
@@ -59,7 +59,8 @@ def load_file(all_contents, filenames, last_modified):
     '''
     
     logger.debug('Enter.')
-    logger.debug(f'Contents{" not" if all_contents else ""} empty. Filenames: {", ".join(filenames) if all_contents else "none"}.')
+    logger.debug(f'Files loaded: {", ".join(filenames)}.' if all_contents else 'No files loaded.')
+    
     if not all_contents:
         logger.debug('No contents to process.')
         logger.debug('Exit.')
@@ -67,7 +68,11 @@ def load_file(all_contents, filenames, last_modified):
 
     # As a first step toward batch processing, allow for multiple files in principle, but limit the 
     # number of files actually processed to just one.
-    for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
+    if len(all_contents) == 1:
+        contents = all_contents[0]
+        filename = filenames[0]
+        modified = last_modified[0]
+
         try:
             id = str(uuid.uuid4())
             frame_store[id] = {}
@@ -87,6 +92,9 @@ def load_file(all_contents, filenames, last_modified):
         except Exception as e:
             logger.error(f'File Read Error:\n{e}')
             return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+    else:
+        for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
+            raise PreventUpdate
 
 @callback(
     Output('save-xlsx'   , 'data'    ),
