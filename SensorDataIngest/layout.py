@@ -95,10 +95,10 @@ def file_info(n=None):
                     children=[
                         dmc.Stack(
                             children=[
+                                dmc.LoadingOverlay(id=f'wait-please{suffix}', visible=False),
                                 dmc.Text(id=f'file-name{suffix}', size='lg', fw=700, h='sm'),  # Filename in bold
                                 dmc.Group(
                                     children=[
-                                        dmc.LoadingOverlay(id=f'wait-please{suffix}', visible=False),
                                         dmc.Text(id=f'last-modified{suffix}'),
                                         dmc.Badge('Saved', id=f'saved-badge{suffix}', ml='sm', display='none'),
                                     ]
@@ -155,6 +155,7 @@ layout =dmc.AppShell(
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
         dcc.Download(id='save-xlsx'),
+        dmc.Button(id='file-counter', display='none', n_clicks=None),
     ],
     header={'height': 50},
     navbar={
