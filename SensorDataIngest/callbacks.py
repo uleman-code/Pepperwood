@@ -12,11 +12,11 @@ from   dash.exceptions         import PreventUpdate
 from   dash_iconify            import DashIconify
 import dash_mantine_components as     dmc
 
-from   pathlib import Path
-import pandas  as     pd
+from   datetime import datetime
+from   pathlib  import Path
+import pandas   as     pd
 
 import logging
-import datetime
 import json
 import io
 import uuid
@@ -61,40 +61,80 @@ def load_file(all_contents, filenames, last_modified):
     logger.debug('Enter.')
     logger.debug(f'Files loaded: {", ".join(filenames)}.' if all_contents else 'No files loaded.')
     
-    if not all_contents:
-        logger.debug('No contents to process.')
+    if len(all_contents) != 1:
+        logger.debug('No contents or multiple files; nothing to show interactively.')
         logger.debug('Exit.')
-        raise PreventUpdate                 # No file contents: do nothing
+        raise PreventUpdate
 
-    # As a first step toward batch processing, allow for multiple files in principle, but limit the 
-    # number of files actually processed to just one.
-    if len(all_contents) == 1:
-        contents = all_contents[0]
-        filename = filenames[0]
-        modified = last_modified[0]
+    contents = all_contents[0]
+    filename = filenames[0]
+    modified = last_modified[0]
 
-        try:
-            id = str(uuid.uuid4())
-            frame_store[id] = {}
-            frames          = frame_store[id]
-            frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
+    try:
+        id = str(uuid.uuid4())
+        frame_store[id] = {}
+        frames          = frame_store[id]
+        frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
 
-            # Build up the dict structure to be stored from scratch, regardless of what may have been stored before.
-            _data                  = {}
-            _data['filename']      = filename
-            _data['last_modified'] = modified
-            _data['frame_id']      = id
-            _data['unsaved']       = True
+        # Build up the dict structure to be stored from scratch, regardless of what may have been stored before.
+        _data                  = {}
+        _data['filename']      = filename
+        _data['last_modified'] = modified
+        _data['frame_id']      = id
+        _data['unsaved']       = True
 
-            logger.debug('Data initialized.')
-            logger.debug('Exit.')
-            return json.dumps(_data), False, '', ''
-        except Exception as e:
-            logger.error(f'File Read Error:\n{e}')
-            return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
-    else:
-        for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
-            raise PreventUpdate
+        logger.debug('Data initialized.')
+        logger.debug('Exit.')
+        return json.dumps(_data), False, '', ''
+    except Exception as e:
+        logger.error(f'File Read Error:\n{e}')
+        return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+
+@callback(
+    Output('file-name'     , 'children', allow_duplicate=True),
+    Output('last-modified' , 'children', allow_duplicate=True),
+    Output('file-counter'  , 'n_clicks'),
+    Input('select-file'    , 'filename'),
+    prevent_initial_call=True,
+)
+def prepare_batch(filenames):
+    '''Set up for batch operation.
+    '''
+
+    logger.debug('Enter.')
+    if len(filenames) <= 1:
+        logger.debug('Not a batch.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+    
+    start_time = datetime.now()
+    logger.debug('Exit.')
+    return 'Batch mode operation', f'Started at {start_time}', 0
+
+@callback(
+    Output('read-error'    , 'opened'  , allow_duplicate=True),
+    Output('error-title'   , 'children', allow_duplicate=True),
+    Output('error-text'    , 'children', allow_duplicate=True),
+    Input( 'select-file'   , 'contents'),
+    State( 'select-file'   , 'filename'),
+    State( 'select-file'   , 'last_modified'),
+    prevent_initial_call=True,
+)
+def process_batch(all_contents, filenames, last_modified):
+    '''Process all files in batch, without user involvement.
+    '''
+
+    logger.debug('Enter.')
+
+    if len(all_contents) <= 1:
+        logger.debug('Only one file or none at all; not a batch.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+
+    logger.debug(f'Files loaded: {", ".join(filenames)}.')
+    
+    for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
+        raise PreventUpdate
 
 @callback(
     Output('save-xlsx'   , 'data'    ),
@@ -378,7 +418,7 @@ def show_file_info(data):
 
     if _data['filename']:
         filename      = _data['filename']
-        last_modified = f'Last modified: {datetime.datetime.fromtimestamp(_data['last_modified'])}'
+        last_modified = f'Last modified: {datetime.fromtimestamp(_data['last_modified'])}'
         
         logger.debug('Data in memory; report file information.')
         logger.debug('Exit.')
