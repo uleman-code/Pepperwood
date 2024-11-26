@@ -5,6 +5,7 @@ from dash                      import (
                                    Input, 
                                    State, 
                                    Output, 
+                                   Patch,
                                    callback,
                                    no_update,
                                 )
@@ -21,6 +22,7 @@ import json
 import io
 import uuid
 
+import layout                           # Dash layout including one or more functions for dynamic component creation
 import helpers                          # Local module implementing Dash-independent actions
 
 frame_store = {}
@@ -107,34 +109,63 @@ def prepare_batch(filenames):
         logger.debug('Exit.')
         raise PreventUpdate
     
+    logger.debug(f'Files loaded: {", ".join(filenames)}.')
     start_time = datetime.now()
     logger.debug('Exit.')
     return 'Batch mode operation', f'Started at {start_time}', 0
 
 @callback(
+    Output('file-counter', 'n_clicks'     , allow_duplicate=True),
+    Output('show-data'   , 'children'     ),
+    Input( 'file-counter', 'n_clicks'     ),
+    State( 'select-file' , 'filename'     ),
+    State( 'select-file' , 'last_modified'),
+    prevent_initial_call=True,
+)
+def next_in_batch(current_n, filenames, last_modified):
+    '''Increment the file counter if there are more files. This triggers the next batch item.
+    '''
+
+    logger.debug('Enter.')
+    logger.debug(f'Current file counter is {current_n}.')
+
+    if current_n + 1 >= len(filenames):
+        logger.debug('Reached the end of the batch; stop operation.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+    
+    this_file_info                                                          = layout.file_info(current_n)
+    this_file_info.children[0].children[0].children[1].children             = filenames[current_n]
+    this_file_info.children[0].children[0].children[2].children[0].children = last_modified[current_n]
+
+    return Patch().append(this_file_info), current_n + 1
+
+@callback(
     Output('read-error'    , 'opened'  , allow_duplicate=True),
     Output('error-title'   , 'children', allow_duplicate=True),
     Output('error-text'    , 'children', allow_duplicate=True),
-    Input( 'select-file'   , 'contents'),
+    Input( 'file-counter'  , 'n_clicks'),
+    State( 'select-file'   , 'contents'),
     State( 'select-file'   , 'filename'),
     State( 'select-file'   , 'last_modified'),
     prevent_initial_call=True,
 )
-def process_batch(all_contents, filenames, last_modified):
+def process_batch(current_n, all_contents, filenames, last_modified):
     '''Process all files in batch, without user involvement.
     '''
 
     logger.debug('Enter.')
+    logger.debug(f'Current file counter is {current_n}.')
 
     if len(all_contents) <= 1:
         logger.debug('Only one file or none at all; not a batch.')
         logger.debug('Exit.')
         raise PreventUpdate
 
-    logger.debug(f'Files loaded: {", ".join(filenames)}.')
+    logger.debug(f'Processing file {filenames[current_n]}.')    
     
-    for contents, filename, modified in list(zip(all_contents, filenames, last_modified))[:1]:
-        raise PreventUpdate
+    return no_update,
+    raise PreventUpdate
 
 @callback(
     Output('save-xlsx'   , 'data'    ),
