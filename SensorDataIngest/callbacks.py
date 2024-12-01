@@ -13,6 +13,7 @@ from   dash.exceptions         import PreventUpdate
 from   dash_iconify            import DashIconify
 import dash_mantine_components as     dmc
 
+from   layout   import make_file_info
 from   datetime import datetime
 from   pathlib  import Path
 import pandas   as     pd
@@ -22,12 +23,10 @@ import json
 import io
 import uuid
 
-import layout                           # Dash layout including one or more functions for dynamic component creation
 import helpers                          # Local module implementing Dash-independent actions
 
+logger      = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
 frame_store = {}
-
-logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
 
 @callback(
     Output('memory-store'  , 'data'    , allow_duplicate=True),
@@ -95,38 +94,93 @@ def load_file(all_contents, filenames, last_modified):
 @callback(
     Output('file-name'     , 'children', allow_duplicate=True),
     Output('last-modified' , 'children', allow_duplicate=True),
-    Output('file-counter'  , 'n_clicks'),
+    Output('file-counter'  , 'data'    , allow_duplicate=True),
     Input('select-file'    , 'filename'),
     prevent_initial_call=True,
 )
-def prepare_batch(filenames):
+def batch_header(filenames):
     '''Set up for batch operation.
     '''
 
     logger.debug('Enter.')
-    if len(filenames) <= 1:
+    if len(filenames) < 2:
         logger.debug('Not a batch.')
         logger.debug('Exit.')
         raise PreventUpdate
     
     logger.debug(f'Files loaded: {", ".join(filenames)}.')
-    start_time = datetime.now()
+    start_time   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    file_counter = dict(val=0)
     logger.debug('Exit.')
-    return 'Batch mode operation', f'Started at {start_time}', 0
+    return 'Batch mode operation', f'Started at {start_time}', json.dumps(file_counter)
+
+# @callback(
+#     Output('show-data'   , 'children'     ),
+#     Output('next-file'   , 'data'         , allow_duplicate=True),
+#     Input( 'file-counter', 'data'         ),
+#     State( 'select-file' , 'filename'     ),
+#     State( 'select-file' , 'last_modified'),
+#     prevent_initial_call=True,
+# )
+# def next_in_batch(file_counter, filenames, last_modified):
+#     '''Increment the file counter if there are more files. This triggers the next batch item.
+#     '''
+
+#     logger.debug('Enter.')
+#     current_n = json.loads(file_counter)['val']
+#     logger.debug(f'Current file counter is {current_n}.')
+
+#     if current_n + 1 >= len(filenames):
+#         logger.debug('Reached the end of the batch; stop operation.')
+#         logger.debug('Exit.')
+#         raise PreventUpdate
+    
+#     this_file_info = make_file_info(current_n)
+#     this_file_info.children.children[0].children[1].children             = filenames[current_n]
+#     this_file_info.children.children[0].children[2].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[current_n])}'
+
+#     show_data = Patch()
+#     show_data.append(this_file_info)
+
+#     next_file = dict(val=current_n + 1)
+
+#     logger.debug('Exit.')
+#     return show_data, json.dumps(next_file)
+
+# @callback(
+#     # Output('next-file'   , 'n_clicks', allow_duplicate=True),
+#     # Input( 'file-counter', 'n_clicks'),
+#     Output('file-counter', 'data', allow_duplicate=True),
+#     Input( 'next-file'   , 'data'),
+#     prevent_initial_call=True,
+# )
+# def increment_file_counter(next_file):
+#     logger.debug('Enter.')
+#     current_n   = json.loads(next_file)['val']
+#     logger.debug(f'Next file: {current_n}')
+
+#     file_counter = dict(val=current_n + 1)
+#     logger.debug('Exit.')
+#     return json.dumps(file_counter)
 
 @callback(
-    Output('file-counter', 'n_clicks'     , allow_duplicate=True),
     Output('show-data'   , 'children'     ),
-    Input( 'file-counter', 'n_clicks'     ),
-    State( 'select-file' , 'filename'     ),
+    Output('next-file'   , 'data'         , allow_duplicate=True),
+    Input( 'select-file' , 'filename'     ),
     State( 'select-file' , 'last_modified'),
     prevent_initial_call=True,
 )
-def next_in_batch(current_n, filenames, last_modified):
+def setup_batch(filenames, last_modified):
     '''Increment the file counter if there are more files. This triggers the next batch item.
     '''
 
     logger.debug('Enter.')
+    if len(filenames) < 2:
+        logger.debug('Not a batch.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+ 
+    current_n = json.loads(file_counter)['val']
     logger.debug(f'Current file counter is {current_n}.')
 
     if current_n + 1 >= len(filenames):
@@ -134,37 +188,45 @@ def next_in_batch(current_n, filenames, last_modified):
         logger.debug('Exit.')
         raise PreventUpdate
     
-    this_file_info                                                          = layout.file_info(current_n)
-    this_file_info.children[0].children[0].children[1].children             = filenames[current_n]
-    this_file_info.children[0].children[0].children[2].children[0].children = last_modified[current_n]
+    this_file_info = make_file_info(current_n)
+    this_file_info.children.children[0].children[1].children             = filenames[current_n]
+    this_file_info.children.children[0].children[2].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[current_n])}'
 
-    return Patch().append(this_file_info), current_n + 1
+    show_data = Patch()
+    show_data.append(this_file_info)
+
+    next_file = dict(val=current_n + 1)
+
+    logger.debug('Exit.')
+    return show_data, json.dumps(next_file)
 
 @callback(
     Output('read-error'    , 'opened'  , allow_duplicate=True),
     Output('error-title'   , 'children', allow_duplicate=True),
     Output('error-text'    , 'children', allow_duplicate=True),
-    Input( 'file-counter'  , 'n_clicks'),
+    Input( 'file-counter'  , 'data'    ),
     State( 'select-file'   , 'contents'),
     State( 'select-file'   , 'filename'),
-    State( 'select-file'   , 'last_modified'),
+    State( 'show-data'     , 'children'),
     prevent_initial_call=True,
 )
-def process_batch(current_n, all_contents, filenames, last_modified):
+def process_batch(file_counter, all_contents, filenames, show_data):
     '''Process all files in batch, without user involvement.
     '''
 
     logger.debug('Enter.')
+    current_n = json.loads(file_counter)['val']
     logger.debug(f'Current file counter is {current_n}.')
+    # logger.debug(f'Show-data area: {show_data}')
 
     if len(all_contents) <= 1:
         logger.debug('Only one file or none at all; not a batch.')
         logger.debug('Exit.')
         raise PreventUpdate
 
-    logger.debug(f'Processing file {filenames[current_n]}.')    
+    logger.debug(f'Processing file {filenames[current_n]}.')
+    logger.debug('Exit.')
     
-    return no_update,
     raise PreventUpdate
 
 @callback(

@@ -23,7 +23,7 @@ load_save = [
                     children=[
                         dmc.Text('Drag and drop', h='xs'),
                         dmc.Text('or', h='sm', mt=-5),
-                        dmc.Button('Select File'),
+                        dmc.Button('Select File(s)'),
                     ],
                     align='center',
                 ),
@@ -88,7 +88,7 @@ columns = [
 
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
-def file_info(n=None):
+def make_file_info(n=None):
     suffix = '' if n is None else '-' + str(n)
     return  dmc.CardSection(
                 dmc.Group(
@@ -118,6 +118,7 @@ def file_info(n=None):
                 ),
                 id=f'file-info{suffix}',
                 withBorder=True,
+                mt=-25 if n is not None else None,
             )
 
 page_main = dmc.Card(
@@ -129,7 +130,7 @@ page_main = dmc.Card(
             id='read-error',
             zIndex=10000,
         ),
-        file_info(),
+        make_file_info(),
         dmc.CardSection(
             dcc.Graph(
                 id='stacked-graphs',
@@ -141,7 +142,7 @@ page_main = dmc.Card(
     ],
 )
 
-layout =dmc.AppShell(
+layout = dmc.AppShell(
     children=[
         dmc.AppShellHeader(header, px=25),
         dmc.AppShellNavbar(navbar,),
@@ -155,7 +156,18 @@ layout =dmc.AppShell(
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
         dcc.Download(id='save-xlsx'),
-        dmc.Button(id='file-counter', display='none', n_clicks=None),
+        dcc.Store(
+            id='file-counter',
+            storage_type='memory',
+            data=json.dumps(dict(val=None)),
+        ),
+        dcc.Store(
+            id='next-file',
+            storage_type='memory',
+            data=json.dumps(dict(val=None)),
+        ),
+        # dmc.Button(id='file-counter', display='none', n_clicks=None),
+        # dmc.Button(id='next-file', display='none', n_clicks=None),
     ],
     header={'height': 50},
     navbar={
