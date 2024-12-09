@@ -95,7 +95,12 @@ def make_file_info(n=None):
                     children=[
                         dmc.Stack(
                             children=[
-                                dmc.LoadingOverlay(id=f'wait-please{suffix}', visible=False),
+                                # dmc.LoadingOverlay(
+                                #     id=f'wait-please{suffix}',
+                                #     visible=False,
+                                #     loaderProps={'size': 'sm'},
+                                #     overlayProps={'blur': 0},
+                                # ),
                                 dmc.Text(id=f'file-name{suffix}', size='lg', fw=700, h='sm'),  # Filename in bold
                                 dmc.Group(
                                     children=[
@@ -106,6 +111,12 @@ def make_file_info(n=None):
                             ],
                             py='xs',
                             mt=25,
+                        ),
+                        dmc.Loader(
+                            id=f'wait-please{suffix}',
+                            display='none',
+                            mt=25,
+                            styles={'justify-content': 'start'},
                         ),
                         dmc.Stack(
                             id=f'sanity-checks{suffix}',
@@ -159,12 +170,12 @@ layout = dmc.AppShell(
         dcc.Store(
             id='file-counter',
             storage_type='memory',
-            data=json.dumps(dict(val=None)),
+            # data=json.dumps(dict(val=None)),
         ),
         dcc.Store(
             id='next-file',
             storage_type='memory',
-            data=json.dumps(dict(val=None)),
+            # data=json.dumps(dict(val=None)),
         ),
         # dmc.Button(id='file-counter', display='none', n_clicks=None),
         # dmc.Button(id='next-file', display='none', n_clicks=None),
