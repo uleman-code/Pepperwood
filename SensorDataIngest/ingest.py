@@ -3,7 +3,8 @@
 
 import logging
 
-from dash import Dash, _dash_renderer
+from dash   import Dash, CeleryManager, _dash_renderer
+# from celery import Celery
 
 import dash_mantine_components as dmc
 
@@ -60,7 +61,16 @@ def main():
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
+    # if 'REDIS_URL' in os.environ:
+    #     redis_url = f'redis://{os.environ["REDIS_URL"]}'
+    #     logger.info(f'Using Celery as background callback manager, with Redis at {redis_url}.')
+    #     celery_app = Celery(__name__, broker=redis_url, backend=redis_url)
+    #     background_callback_manager = CeleryManager(celery_app)
+    # else:
+    #     raise KeyError('Redis connection info was not provided. REDIS_URL is a required environment variable whose value is the URL of a running Redis instance.')
+
     # Standard creation of a Dash app with Dash Mantine Components.
+    # app = Dash(external_stylesheets=stylesheets, background_callback_manager=background_callback_manager)
     app = Dash(external_stylesheets=stylesheets)
     app.layout = dmc.MantineProvider(layout)
     
