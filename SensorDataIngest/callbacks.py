@@ -8,6 +8,8 @@ from dash                      import (
                                    Patch,
                                    callback,
                                    no_update,
+                                   set_props,
+                                   callback_context,
                                 )
 from   dash.exceptions         import PreventUpdate
 from   dash_iconify            import DashIconify
@@ -20,8 +22,9 @@ import pandas   as     pd
 
 import logging
 import json
-import io
+import os
 import uuid
+import time
 
 import helpers                          # Local module implementing Dash-independent actions
 
@@ -92,151 +95,13 @@ def load_file(all_contents, filenames, last_modified):
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
-    Output('file-name'     , 'children', allow_duplicate=True),
-    Output('last-modified' , 'children', allow_duplicate=True),
-    Output('file-counter'  , 'data'    , allow_duplicate=True),
-    Input('select-file'    , 'filename'),
-    prevent_initial_call=True,
-)
-def batch_header(filenames):
-    '''Set up for batch operation.
-    '''
-
-    logger.debug('Enter.')
-    if len(filenames) < 2:
-        logger.debug('Not a batch.')
-        logger.debug('Exit.')
-        raise PreventUpdate
-    
-    logger.debug(f'Files loaded: {", ".join(filenames)}.')
-    start_time   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    file_counter = dict(val=0)
-    logger.debug('Exit.')
-    return 'Batch mode operation', f'Started at {start_time}', json.dumps(file_counter)
-
-# @callback(
-#     Output('show-data'   , 'children'     ),
-#     Output('next-file'   , 'data'         , allow_duplicate=True),
-#     Input( 'file-counter', 'data'         ),
-#     State( 'select-file' , 'filename'     ),
-#     State( 'select-file' , 'last_modified'),
-#     prevent_initial_call=True,
-# )
-# def next_in_batch(file_counter, filenames, last_modified):
-#     '''Increment the file counter if there are more files. This triggers the next batch item.
-#     '''
-
-#     logger.debug('Enter.')
-#     current_n = json.loads(file_counter)['val']
-#     logger.debug(f'Current file counter is {current_n}.')
-
-#     if current_n + 1 >= len(filenames):
-#         logger.debug('Reached the end of the batch; stop operation.')
-#         logger.debug('Exit.')
-#         raise PreventUpdate
-    
-#     this_file_info = make_file_info(current_n)
-#     this_file_info.children.children[0].children[1].children             = filenames[current_n]
-#     this_file_info.children.children[0].children[2].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[current_n])}'
-
-#     show_data = Patch()
-#     show_data.append(this_file_info)
-
-#     next_file = dict(val=current_n + 1)
-
-#     logger.debug('Exit.')
-#     return show_data, json.dumps(next_file)
-
-# @callback(
-#     # Output('next-file'   , 'n_clicks', allow_duplicate=True),
-#     # Input( 'file-counter', 'n_clicks'),
-#     Output('file-counter', 'data', allow_duplicate=True),
-#     Input( 'next-file'   , 'data'),
-#     prevent_initial_call=True,
-# )
-# def increment_file_counter(next_file):
-#     logger.debug('Enter.')
-#     current_n   = json.loads(next_file)['val']
-#     logger.debug(f'Next file: {current_n}')
-
-#     file_counter = dict(val=current_n + 1)
-#     logger.debug('Exit.')
-#     return json.dumps(file_counter)
-
-@callback(
-    Output('show-data'   , 'children'     ),
-    Output('next-file'   , 'data'         , allow_duplicate=True),
-    Input( 'select-file' , 'filename'     ),
-    State( 'select-file' , 'last_modified'),
-    prevent_initial_call=True,
-)
-def setup_batch(filenames, last_modified):
-    '''Increment the file counter if there are more files. This triggers the next batch item.
-    '''
-
-    logger.debug('Enter.')
-    if len(filenames) < 2:
-        logger.debug('Not a batch.')
-        logger.debug('Exit.')
-        raise PreventUpdate
- 
-    current_n = json.loads(file_counter)['val']
-    logger.debug(f'Current file counter is {current_n}.')
-
-    if current_n + 1 >= len(filenames):
-        logger.debug('Reached the end of the batch; stop operation.')
-        logger.debug('Exit.')
-        raise PreventUpdate
-    
-    this_file_info = make_file_info(current_n)
-    this_file_info.children.children[0].children[1].children             = filenames[current_n]
-    this_file_info.children.children[0].children[2].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[current_n])}'
-
-    show_data = Patch()
-    show_data.append(this_file_info)
-
-    next_file = dict(val=current_n + 1)
-
-    logger.debug('Exit.')
-    return show_data, json.dumps(next_file)
-
-@callback(
-    Output('read-error'    , 'opened'  , allow_duplicate=True),
-    Output('error-title'   , 'children', allow_duplicate=True),
-    Output('error-text'    , 'children', allow_duplicate=True),
-    Input( 'file-counter'  , 'data'    ),
-    State( 'select-file'   , 'contents'),
-    State( 'select-file'   , 'filename'),
-    State( 'show-data'     , 'children'),
-    prevent_initial_call=True,
-)
-def process_batch(file_counter, all_contents, filenames, show_data):
-    '''Process all files in batch, without user involvement.
-    '''
-
-    logger.debug('Enter.')
-    current_n = json.loads(file_counter)['val']
-    logger.debug(f'Current file counter is {current_n}.')
-    # logger.debug(f'Show-data area: {show_data}')
-
-    if len(all_contents) <= 1:
-        logger.debug('Only one file or none at all; not a batch.')
-        logger.debug('Exit.')
-        raise PreventUpdate
-
-    logger.debug(f'Processing file {filenames[current_n]}.')
-    logger.debug('Exit.')
-    
-    raise PreventUpdate
-
-@callback(
     Output('save-xlsx'   , 'data'    ),
     Output('memory-store', 'data'    , allow_duplicate=True),
     # Input( 'wait-please' , 'visible' ),
     Input( 'save-button' , 'n_clicks'),
     State( 'memory-store', 'data'    ),
     prevent_initial_call=True,
-    running=[(Output('wait-please', 'visible'), True, False)]       # Show the busy indicator (LoadingOverlay)
+    running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (LoadingOverlay)
 )
 def save_file(n_clicks, data):
     '''Save the data currently in memory in an Excel (.XLSX) file.
@@ -286,12 +151,15 @@ def save_file(n_clicks, data):
 
 @callback(
     Output('memory-store', 'data'    , allow_duplicate=True),
-    Output('select-file' , 'contents', allow_duplicate=True),
+    Output('show-data'   , 'children', allow_duplicate=True),
+    # Output('select-file' , 'contents', allow_duplicate=True),
     Input( 'clear-button', 'n_clicks'),
-    State( 'memory-store', 'data'),
+    Input( 'select-file' , 'filename'),
+    State( 'memory-store', 'data'    ),
+    State( 'show-data'   , 'children'),
     prevent_initial_call=True,
 )
-def clear_data(n_clicks, data):
+def clear_data(n_clicks, filenames, data, show_data):
     '''Clear all data in memory.
     
     Triggered by the Clear button.
@@ -307,15 +175,22 @@ def clear_data(n_clicks, data):
     '''
 
     logger.debug('Enter.')
-    _data = json.loads(data)
+    if callback_context.triggered_id == 'clear-button' or len(filenames) > 1:
+        _data = json.loads(data)
 
-    # In addition to clearing out the in-memory store, must also clear the dataframes.
-    id    = _data['frame_id']
-    del frame_store[id]
-    _data = dict(filename='', unsaved=False)
-    logger.debug('Exit.')
+        # In addition to clearing out the in-memory store, must also clear the dataframes.
+        if hasattr(_data, 'frame_id'):
+            id = _data['frame_id']
+            del frame_store[id]
 
-    return json.dumps(_data), []
+        _data = dict(filename='', unsaved=False)
+        logger.debug('Exit.')
+
+        # return json.dumps(_data), []
+        return json.dumps(_data), show_data[:3]
+    else:
+        logger.debug('Exit.')
+        raise PreventUpdate
 
 @callback(
     Output('select-file' , 'disabled'),
@@ -490,12 +365,13 @@ def toggle_save_clear(data):
     return (False, False) if have_file else (True, True)
 
 @callback(
-    Output('file-name'     , 'children'),
-    Output('last-modified' , 'children'),
-    Input('memory-store'   , 'data'),
+    Output('file-name'    , 'children'),
+    Output('last-modified', 'children'),
+    Input( 'memory-store' , 'data'    ),
+    State( 'file-name'    , 'children'),
     prevent_initial_call=True,
 )
-def show_file_info(data):
+def show_file_info(data, filename):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
@@ -581,4 +457,153 @@ def report_sanity_checks(previous_filename, data):
         logger.debug('No data loaded. Clear the sanity check reports.')
     
     logger.debug('Exit.')
-    return report    
+    return report
+
+@callback(
+    Output('file-name'    , 'children', allow_duplicate=True),
+    Output('last-modified', 'children', allow_duplicate=True),
+    Output('next-file'    , 'data'    , allow_duplicate=True),
+    Input( 'select-file'  , 'filename'),
+    prevent_initial_call=True,
+)
+def batch_header(filenames):
+    '''Set up for batch operation.
+    '''
+
+    logger.debug('Enter.')
+    if len(filenames) < 2:
+        logger.debug('Not a batch.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+    
+    logger.debug(f'Files loaded: {", ".join(filenames)}.')
+    start_time   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    next_file = 0
+    logger.debug('Exit.')
+    return 'Batch mode operation', f'Started at {start_time}', next_file
+
+@callback(
+    Output('show-data'   , 'children'          ),
+    Output('file-counter', 'data'              ),
+    Input( 'next-file'   , 'modified_timestamp'),
+    State( 'next-file'   , 'data'              ),
+    State( 'select-file' , 'filename'          ),
+    State( 'select-file' , 'last_modified'     ),
+    prevent_initial_call=True,
+)
+def next_in_batch(mod_ts, next_file, filenames, last_modified):
+    '''Increment the file counter if there are more files. This triggers the next batch item.
+    '''
+
+    logger.debug('Enter.')
+    ts = datetime.fromtimestamp(0.001*mod_ts).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]     # To milliseconds
+    logger.debug(f'Next file index is {next_file}, last incremented at {ts}.')
+
+    this_file_info = make_file_info(next_file)
+    this_file_info.children.children[0].children[0].children             = filenames[next_file]
+    this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file])}'
+    this_file_info.children.children[1].display                          = 'flex'
+    this_file_info.children.children[1].type                             = 'dots'
+
+    show_data = Patch()
+    show_data.append(this_file_info)
+
+    logger.debug('Exit.')
+    return show_data, next_file
+
+@callback(
+    # Output('next-file'   , 'n_clicks', allow_duplicate=True),
+    # Input( 'file-counter', 'n_clicks'),
+    Output('next-file'   , 'data'              , allow_duplicate=True),
+    Input( 'file-counter', 'modified_timestamp'),
+    State( 'file-counter', 'data'              ),
+    State( 'select-file',  'filename'          ),
+    prevent_initial_call=True,
+    background=False,
+)
+def increment_file_counter(mod_ts, file_counter, filenames):
+    logger.debug('Enter.')
+    ts = datetime.fromtimestamp(0.001*mod_ts).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]     # To milliseconds
+    logger.debug(f'File counter is {file_counter}, last incremented at {ts}')
+    next_file = file_counter + 1
+
+    if next_file >= len(filenames):
+        logger.debug('Reached the end of the batch; stop operation.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+    
+    logger.debug('Exit.')
+    return next_file
+
+# @callback(
+#     Output('show-data'   , 'children'     ),
+#     Output('next-file'   , 'data'         , allow_duplicate=True),
+#     Input( 'select-file' , 'filename'     ),
+#     State( 'select-file' , 'last_modified'),
+#     prevent_initial_call=True,
+# )
+# def setup_batch(filenames, last_modified):
+#     '''Increment the file counter if there are more files. This triggers the next batch item.
+#     '''
+
+#     logger.debug('Enter.')
+#     if len(filenames) < 2:
+#         logger.debug('Not a batch.')
+#         logger.debug('Exit.')
+#         raise PreventUpdate
+ 
+#     current_n = json.loads(file_counter)['val']
+#     logger.debug(f'Current file counter is {current_n}.')
+
+#     if current_n + 1 >= len(filenames):
+#         logger.debug('Reached the end of the batch; stop operation.')
+#         logger.debug('Exit.')
+#         raise PreventUpdate
+    
+#     this_file_info = make_file_info(current_n)
+#     this_file_info.children.children[0].children[1].children             = filenames[current_n]
+#     this_file_info.children.children[0].children[2].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[current_n])}'
+
+#     show_data = Patch()
+#     show_data.append(this_file_info)
+
+#     next_file = dict(val=current_n + 1)
+
+#     logger.debug('Exit.')
+#     return show_data, json.dumps(next_file)
+
+@callback(
+    # Output('read-error'  , 'opened'            , allow_duplicate=True),
+    # Output('error-title' , 'children'          , allow_duplicate=True),
+    # Output('error-text'  , 'children'          , allow_duplicate=True),
+    # Output('show-data'   , 'children'          , allow_duplicate=True),
+    # Output('last-modified', 'children'           , allow_duplicate=True),
+    Input( 'file-counter', 'modified_timestamp'),
+    State( 'file-counter', 'data'              ),
+    # State( 'select-file' , 'contents'          ),
+    State( 'select-file' , 'filename'          ),
+    State( 'show-data'   , 'children'          ),
+    prevent_initial_call=True,
+)
+def process_batch(mod_ts, file_counter, filenames, show_data):     #, all_contents, show_data):
+    '''Process all files in batch, without user involvement.
+    '''
+
+    logger.debug('Enter.')
+    logger.debug(f'Processing file {file_counter}: {filenames[file_counter]}.')
+    # logger.debug(show_data)
+    time.sleep(1)
+    # new_data = Patch()
+    # new_data[file_counter+3].children.children[1].display                         = 'none'
+    # new_data[file_counter+3].children.children[0].children[1].children[1].display = 'inline'
+    # new_data[file_counter+3].children = dmc.Text(f'   File counter is {file_counter}.')
+    # new_data.append(f'   File counter is {file_counter}.')
+    set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    set_props(f'saved-badge-{file_counter}', {'display': 'inline'})
+    logger.debug('Exit.')
+    
+    # return new_data
+    # return f'File counter is {file_counter}.'
+    # return no_update
+    # raise PreventUpdate
+
