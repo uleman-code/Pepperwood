@@ -162,7 +162,7 @@ layout = dmc.AppShell(
                          ml=10,
                         ),
         dcc.Store(
-            id='memory-store',
+            id='files-status',
             storage_type='memory',                                      # Contents are cleared with every page load
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
