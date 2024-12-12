@@ -4,6 +4,7 @@
 import logging
 
 from dash   import Dash, CeleryManager, _dash_renderer
+from dash_extensions.enrich import DashProxy, ServersideOutputTransform
 # from celery import Celery
 
 import dash_mantine_components as dmc
@@ -71,7 +72,8 @@ def main():
 
     # Standard creation of a Dash app with Dash Mantine Components.
     # app = Dash(external_stylesheets=stylesheets, background_callback_manager=background_callback_manager)
-    app = Dash(external_stylesheets=stylesheets)
+    # app = Dash(external_stylesheets=stylesheets)
+    app = DashProxy(transforms=[ServersideOutputTransform()])
     app.layout = dmc.MantineProvider(layout)
     
     app.run(debug=True)
