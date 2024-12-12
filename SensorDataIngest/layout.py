@@ -1,6 +1,7 @@
 '''Static Dash layout: app shell with header, navigation bar, and main area.'''
 
-from   dash                    import dcc
+# from   dash                    import dcc
+from   dash_extensions.enrich  import dcc
 import dash_mantine_components as     dmc
 
 import json
@@ -17,7 +18,7 @@ load_save = [
     dmc.CardSection(
         children=
         [
-            dmc.Text('Load Data', size='lg', fw=700),
+            dmc.Text('Load Data', id='load-label', size='lg', fw=700),
             dcc.Upload(
                 dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
                     children=[
@@ -166,19 +167,16 @@ layout = dmc.AppShell(
             storage_type='memory',                                      # Contents are cleared with every page load
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
+        dcc.Store(id='frame-store'),
         dcc.Download(id='save-xlsx'),
         dcc.Store(
             id='file-counter',
             storage_type='memory',
-            # data=json.dumps(dict(val=None)),
         ),
         dcc.Store(
             id='next-file',
             storage_type='memory',
-            # data=json.dumps(dict(val=None)),
         ),
-        # dmc.Button(id='file-counter', display='none', n_clicks=None),
-        # dmc.Button(id='next-file', display='none', n_clicks=None),
     ],
     header={'height': 50},
     navbar={
