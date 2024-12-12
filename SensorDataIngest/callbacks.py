@@ -1,15 +1,25 @@
 '''All callbacks for the SensorDataIngest/ingest Dash app.'''
 
 from dash                      import (
-                                   dcc, 
-                                   Input, 
-                                   State, 
-                                   Output, 
+                                #    dcc, 
+                                #    Input, 
+                                #    State, 
+                                #    Output, 
                                    Patch,
+                                #    callback,
+                                #    no_update,
+                                   set_props,
+                                #    callback_context,
+                                )
+from dash_extensions.enrich    import (
+                                   dcc,
+                                   Input,
+                                   State,
+                                   Output,
                                    callback,
                                    no_update,
-                                   set_props,
                                    callback_context,
+                                   Serverside,
                                 )
 from   dash.exceptions         import PreventUpdate
 from   dash_iconify            import DashIconify
@@ -32,11 +42,12 @@ logger      = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Chil
 frame_store = {}
 
 @callback(
-    Output('files-status'  , 'data'    , allow_duplicate=True),
-    Output('read-error'    , 'opened'),
+    # Output('files-status'  , 'data'    , allow_duplicate=True),
+    Output('frame-store'   , 'data'    ),
+    Output('read-error'    , 'opened'  ),
     Output('error-title'   , 'children'),
     Output('error-text'    , 'children'),
-    Input( 'files-status'   , 'data'),
+    Input( 'files-status'  , 'data'    ),
     State( 'select-file'   , 'contents'),
     # State( 'select-file'   , 'last_modified'),
     prevent_initial_call=True,
@@ -67,31 +78,40 @@ def load_file(files_status, all_contents):
     # filenames = files_status['filename']
     # logger.debug(f'Files loaded: {", ".join(filenames)}.' if all_contents else 'None.')
     
-    if len(all_contents) != 1:
-        logger.debug('No contents or multiple files; nothing to show interactively.')
+    # if len(all_contents) != 1:
+    filename = files_status['filename']
+    unsaved  = files_status['unsaved']
+
+    if isinstance(filename, list) or not filename:
+        logger.debug('Zero or multiple files; nothing to show interactively.')
         logger.debug('Exit.')
         raise PreventUpdate
 
+    if not unsaved:
+        logger.debug('File was just saved; no change to loaded data.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+
+    logger.debug(f'Current contents: {type(all_contents)}, {len(all_contents)} elements or characters.')
     contents = all_contents[0]
-    filename = files_status['filename']
     # modified = last_modified[0]
 
     try:
-        id = str(uuid.uuid4())
-        frame_store[id] = {}
-        frames          = frame_store[id]
+        # id = str(uuid.uuid4())
+        # frame_store[id] = {}
+        frames = {}
         frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
 
         # Build up the dict structure to be stored from scratch, regardless of what may have been stored before.
         # data                  = {}
         # data['filename']      = filename
         # data['last_modified'] = modified
-        files_status['frame_id'] = id
+        # files_status['frame_id'] = id
         # files_status['unsaved']  = True
 
         logger.debug('Data initialized.')
         logger.debug('Exit.')
-        return files_status, False, '', ''
+        return Serverside(frames, key='Frames'), False, '', ''
     except Exception as e:
         logger.error(f'File Read Error:\n{e}')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
@@ -102,10 +122,11 @@ def load_file(files_status, all_contents):
     # Input( 'wait-please' , 'visible' ),
     Input( 'save-button' , 'n_clicks'),
     State( 'files-status', 'data'    ),
+    State( 'frame-store' , 'data'    ),
     prevent_initial_call=True,
     running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (LoadingOverlay)
 )
-def save_file(n_clicks, data):
+def save_file(n_clicks, files_status, frames):
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the in-memory frame store, download it to the browser, and have
@@ -129,42 +150,45 @@ def save_file(n_clicks, data):
     logger.debug('Enter.')
     # data   = json.loads(data)
 
-    if 'frame_id' in data:
-        id = data['frame_id']
-        df_data = frame_store[id]['data']
-        df_meta = frame_store[id]['meta']
-        df_site = frame_store[id]['site']
+    if frames and 'data' in frames:
+        # id = files_status['frame_id']
+        df_data = frames['data']
+        df_meta = frames['meta']
+        df_site = frames['site']
         
-        outfile = str(Path(data['filename']).with_suffix('.xlsx'))
+        outfile = str(Path(files_status['filename']).with_suffix('.xlsx'))
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
         # is a custom function specific to this app.
-        contents         = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
-        data['unsaved'] = False
+        contents                = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+        files_status['unsaved'] = False
 
         logger.debug('File saved.')
         logger.debug('Exit.')
-        return contents, data
+        return contents, files_status
     else:
         logger.debug('Nothing to save.')
         logger.debug('Exit.')
         raise PreventUpdate
 
 @callback(
-    Output('files-status' , 'data'    , allow_duplicate=True),
-    Output('show-data'    , 'children', allow_duplicate=True),
-    Output('file-name'    , 'children', allow_duplicate=True),
-    Output('last-modified', 'children', allow_duplicate=True),
-    Output('sanity-checks', 'children', allow_duplicate=True),
-    Output('select-file'  , 'contents', allow_duplicate=True),
-    Input( 'clear-button' , 'n_clicks'),
-    Input( 'select-file'  , 'filename'),
-    State( 'files-status' , 'data'    ),
-    State( 'show-data'    , 'children'),
+    Output('files-status' , 'data'      , allow_duplicate=True),
+    Output('frame-store'  , 'clear_data'),
+    Output('show-data'    , 'children'  , allow_duplicate=True),
+    Output('file-name'    , 'children'  , allow_duplicate=True),
+    Output('last-modified', 'children'  , allow_duplicate=True),
+    Output('sanity-checks', 'children'  , allow_duplicate=True),
+    Output('select-file'  , 'contents'  , allow_duplicate=True),
+    Input( 'clear-button' , 'n_clicks'  ),
+    Input( 'select-file'  , 'contents'  ),
+    State( 'select-file'  , 'filename'  ),
+    # State( 'files-status' , 'data'      ),
+    # State( 'frame-store'  , 'data'    ),
+    State( 'show-data'    , 'children'  ),
     prevent_initial_call=True,
 )
-def clear_data(n_clicks, filenames, files_status, show_data):
+def clear_data(n_clicks, in_contents, filenames, show_data):
     '''Clear all data in memory and on the screen, triggered by the Clear button or the loading of (a) new file(s).
     
     Parameters:
@@ -180,15 +204,17 @@ def clear_data(n_clicks, filenames, files_status, show_data):
     logger.debug('Enter.')
     # data = json.loads(data)
 
-    # In addition to clearing out the in-memory store, must also clear the dataframes.
-    if 'frame_id' in files_status:
-        logger.debug('Clearing the frame store.')
-        id = files_status['frame_id']
-        del frame_store[id]
+    # # In addition to clearing out the in-memory store, must also clear the dataframes.
+    # # if 'Frames' in frames:
+    # logger.debug('Clearing the frame store.')
+    # frame_store = {}
+        # id = files_status['frame_id']
+        # del frame_store[id]
 
     if callback_context.triggered_id == 'clear-button':
-        data     = dict(filename='', unsaved=False)
-        contents = []
+        logger.debug('Responding to Clear button click. Reset files-status and select-file contents.')
+        status   = dict(filename='', unsaved=False)
+        contents = ['']
     else:
         if len(filenames) == 1:
             fntext = fn = filenames[0]
@@ -196,17 +222,18 @@ def clear_data(n_clicks, filenames, files_status, show_data):
             fn     = filenames
             fntext = ', '.join(filenames)
         
-        logger.debug(f'Files loaded: {fntext}.')
-        data     = dict(filename=fn, unsaved=True)
+        logger.debug(f'File(s) loaded: {fntext}.')
+        status   = dict(filename=fn, unsaved=True)
         contents = no_update
 
     logger.debug('Exit.')
 
     # return data, []
-    return data, show_data[:3], None, None, None, contents
+    return status, True, show_data[:3], None, None, None, contents
 
 @callback(
     Output('select-file' , 'disabled'),
+    Output('load-label'  , 'c'),
     Input( 'files-status', 'data'),
     prevent_initial_call=True,
 )
@@ -222,20 +249,21 @@ def disable_loaddata(data):
 
     logger.debug('Enter.')
     # data = json.loads(data)
-    uns   = data['unsaved']
-    logger.debug(f'Data {"not" if uns else "is"} saved; {"dis" if uns else "en"}able Load Data.')
+    uns = data['unsaved']
+    logger.debug(f'Data {"not" if uns else "is"} saved{"" if uns else " or cleared"}; {"dis" if uns else "en"}able Load Data.')
     logger.debug('Exit.')
-    return uns
+    return uns, 'gray' if uns else 'black'
 
 @callback(
-    Output('inspect-data'  , 'display'),
-    Output('select-columns', 'label'),
+    Output('inspect-data'  , 'display' ),
+    Output('select-columns', 'label'   ),
     Output('data-columns'  , 'children'),
-    Output('select-columns', 'value'),
-    Input( 'files-status'  , 'data'),
+    Output('select-columns', 'value'   ),
+    Input( 'frame-store'   , 'data'    ),
+    State( 'files-status'  , 'data'    ),
     prevent_initial_call=True,
 )
-def show_columns(data):
+def show_columns(frames, status):
     ''' When data is loaded, populate the column selection element with checkboxes for all data columns in the df_data DataFrame.
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
@@ -261,11 +289,11 @@ def show_columns(data):
     logger.debug('Enter.')
     # data   = json.loads(data)
 
-    if 'frame_id' in data:
-        if data['unsaved']:
+    if frames and 'data' in frames:
+        if status['unsaved']:
             logger.debug('DataFrame found. Populating column selection list.')
-            id      = data['frame_id']
-            df_data = frame_store[id]['data']
+            # id      = data['frame_id']
+            df_data = frames['data']
 
             # Skip the timestamp and record number columns; these are not data columns.
             # TODO: Try to find a way to get these names from the metadata, in case they're not
@@ -282,13 +310,14 @@ def show_columns(data):
         return 'none', '', [], []
 
 @callback(
-    Output('stacked-graphs', 'figure'),
+    Output('stacked-graphs', 'figure' ),
     Output('plot-area'     , 'display'),
-    Input( 'select-columns', 'value'),
-    State( 'files-status'  , 'data'),
+    Input( 'select-columns', 'value'  ),
+    # State( 'files-status'  , 'data'),
+    State( 'frame-store'   , 'data'   ),
     prevent_initial_call=True,
 )
-def draw_plots(showcols, data):
+def draw_plots(showcols, frames):
     '''Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
@@ -307,8 +336,8 @@ def draw_plots(showcols, data):
     if showcols:
         logger.debug('Columns selected; generating graphs.')
         # data   = json.loads(data)
-        id      = data['frame_id']
-        df_data = frame_store[id]['data']
+        # id      = data['frame_id']
+        df_data = frames['data']
         fig     = helpers.render_graphs(df_data, showcols)
 
         logger.debug('Exit.')
@@ -321,7 +350,7 @@ def draw_plots(showcols, data):
 @callback(
     Output('saved-badge', 'display'),
     # Output('wait-please', 'visible', allow_duplicate=True,),
-    Output('select-file', 'contents'),
+    # Output('select-file', 'contents'),
     Input('files-status', 'data'),
     prevent_initial_call=True,
 )
@@ -345,11 +374,11 @@ def process_saved(data):
     if data['filename'] and not data['unsaved']:
         logger.debug('Data in memory, file saved; show Saved badge.')
         logger.debug('Exit.')
-        return 'inline', ''
+        return 'inline'     # , ''
     else:
         logger.debug('No data or data unsaved; hide Saved badge.')
         logger.debug('Exit.')
-        return 'none', no_update
+        return 'none'       # , no_update
 
 @callback(
     Output('save-button' , 'disabled'),
@@ -385,7 +414,7 @@ def toggle_save_clear(data):
     State( 'select-file'  , 'last_modified'),
     prevent_initial_call=True,
 )
-def show_file_info(data, last_modified):
+def show_file_info(files_status, last_modified):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
@@ -399,25 +428,26 @@ def show_file_info(data, last_modified):
     logger.debug('Enter.')
     # data = json.loads(data)
 
-    if data['filename']:
-        filename = data['filename']
+    filename = files_status['filename']
+    if isinstance(filename, str) and filename:
         modified = f'Last modified: {datetime.fromtimestamp(last_modified[0])}'
         
         logger.debug('Data in memory; report file information.')
         logger.debug('Exit.')
         return filename, modified
     else:
-        logger.debug('No data in memory; clear file information.')
+        logger.debug('No data in memory; nothing to do.')
         logger.debug('Exit.')
-        return '', ''
+        raise PreventUpdate
     
 @callback(
     Output('sanity-checks', 'children'),
     # State( 'file-name'    , 'children'),
-    Input( 'files-status' , 'data'),
+    # Input( 'files-status' , 'data'),
+    Input( 'frame-store'  , 'data'    ),
     prevent_initial_call=True,
 )
-def report_sanity_checks(files_status):
+def report_sanity_checks(frames):
     '''Perform sanity checks on the data and report the results in a separate area of the app shell.
 
     Currently only checking for drop-outs or irregularities in the time and record sequences; other checks to be added.
@@ -443,11 +473,11 @@ def report_sanity_checks(files_status):
     # filename  = files_status['filename']
     report    = []
 
-    if 'frame_id' in files_status:
+    if frames and 'data' in frames:
         # if filename != previous_filename:     # New data is different from the old data, so rerun the checks and update the report
         logger.debug('New data found. Running and reporting sanity checks.')
-        id               = files_status['frame_id']
-        df_data          = frame_store[id]['data']
+        # id               = files_status['frame_id']
+        df_data          = frames['data']
         interval_minutes = 15             # TODO: Get this from the metadata
         
         # Fill in text elements
@@ -477,16 +507,17 @@ def report_sanity_checks(files_status):
     Output('file-name'    , 'children', allow_duplicate=True),
     Output('last-modified', 'children', allow_duplicate=True),
     Output('next-file'    , 'data'    , allow_duplicate=True),
-    Input( 'select-file'  , 'filename'),
+    Input( 'files-status' , 'data'    ),
     prevent_initial_call=True,
 )
-def batch_header(filenames):
+def batch_header(files_status):
     '''Set up for batch operation.
     '''
 
     logger.debug('Enter.')
-    if len(filenames) < 2:
-        logger.debug('Not a batch.')
+    filenames = files_status['filename']
+    if isinstance(filenames, str):
+        logger.debug('No file or a single filename: not a batch.')
         logger.debug('Exit.')
         raise PreventUpdate
     
