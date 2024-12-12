@@ -1,6 +1,5 @@
 '''Static Dash layout: app shell with header, navigation bar, and main area.'''
 
-# from   dash                    import dcc
 from   dash_extensions.enrich  import dcc
 import dash_mantine_components as     dmc
 
@@ -96,12 +95,6 @@ def make_file_info(n=None):
                     children=[
                         dmc.Stack(
                             children=[
-                                # dmc.LoadingOverlay(
-                                #     id=f'wait-please{suffix}',
-                                #     visible=False,
-                                #     loaderProps={'size': 'sm'},
-                                #     overlayProps={'blur': 0},
-                                # ),
                                 dmc.Text(id=f'file-name{suffix}', size='lg', fw=700, h='sm'),  # Filename in bold
                                 dmc.Group(
                                     children=[
@@ -159,8 +152,8 @@ layout = dmc.AppShell(
         dmc.AppShellHeader(header, px=25),
         dmc.AppShellNavbar(navbar,),
         dmc.AppShellMain(page_main,
-                         pt=17,
-                         ml=10,
+                            pt=17,
+                            ml=10,
                         ),
         dcc.Store(
             id='files-status',
