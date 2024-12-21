@@ -164,19 +164,11 @@ layout = dmc.AppShell(
                         ),
         dcc.Store(
             id='files-status',
-            storage_type='memory',                                      # Contents are cleared with every page load
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
         dcc.Store(id='frame-store'),
-        # dcc.Download(id='save-xlsx'),
-        dcc.Store(
-            id='file-counter',
-            # storage_type='memory',
-        ),
-        dcc.Store(
-            id='next-file',
-            # storage_type='memory',
-        ),
+        dcc.Store(id='file-counter'),
+        dcc.Store(id='next-file'),
     ],
     header={'height': 50},
     navbar={
