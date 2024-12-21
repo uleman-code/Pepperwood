@@ -55,7 +55,7 @@ def load_data(contents, filename):
             decoded.seek(0)
             df_meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T            # Second pass to read the column metadata
             decoded.seek(0)
-            df_site = pd.read_csv(decoded, header=None, nrows=1)                            # Third pass to read the site data
+            df_site = pd.read_csv(decoded, header=None, nrows=1).iloc[:,:len(site_columns)]                            # Third pass to read the site data
             df_meta.columns = meta_columns
             df_site.columns = site_columns
             
