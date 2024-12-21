@@ -5,20 +5,22 @@ The callbacks rely on functions from another module, helpers.py, for operations 
 do not depend on or affect Dash elements.
 '''
 
-from dash_extensions.enrich    import (
+from   dash_extensions.enrich  import (
                                    dcc,
                                    Input,
                                    State,
                                    Output,
+                                   ALL,
                                    callback,
                                    no_update,
                                    callback_context,
                                    Serverside,
-                                )
-from dash                      import (             # A few definitions are not yet surfaced by dash-extensions
+                                   Trigger,
+                               )
+from   dash                    import (             # A few definitions are not yet surfaced by dash-extensions
                                    Patch,
                                    set_props,
-                                )
+                               )
 from   dash.exceptions         import PreventUpdate
 import dash_mantine_components as     dmc
 
@@ -27,7 +29,6 @@ from   datetime import datetime
 from   pathlib  import Path
 
 import logging
-import time
 
 import helpers                          # Local module implementing Dash-independent actions
 
@@ -42,7 +43,6 @@ frame_store = {}
     Input( 'files-status'  , 'data'    ),
     State( 'select-file'   , 'contents'),
 )
-# def load_file(all_contents, filenames, last_modified):
 def load_file(files_status, all_contents):
     '''If one file was opened, load it.
     
@@ -104,14 +104,15 @@ def load_file(files_status, all_contents):
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
-    Output('save-xlsx'   , 'data'    ),
-    Output('files-status', 'data'    , allow_duplicate=True),
-    Input( 'save-button' , 'n_clicks'),
-    State( 'files-status', 'data'    ),
-    State( 'frame-store' , 'data'    ),
+    Output( 'save-xlsx'   , 'data'    ),
+    Output( 'files-status', 'data'    , allow_duplicate=True),
+    Output( 'select-file' , 'contents', allow_duplicate=True),
+    Trigger('save-button' , 'n_clicks'),
+    State(  'files-status', 'data'    ),
+    State(  'frame-store' , 'data'    ),
     running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (Loader) while saving
 )
-def save_file(n_clicks, files_status, frames):
+def save_file(files_status, frames):
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -124,13 +125,14 @@ def save_file(n_clicks, files_status, frames):
           is always saved.
     
     Parameters:
-        n_clicks     (int)             The number of times the Save button has been pressed (not used, other than as the trigger)
         files_status (dict)            Filename(s) and (un)saved status
         frames       (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
     
     Returns:
-        save-xlsx/data    (dict) Content and filename to be downloaded to the browser
-        files-status/data (str)  Same as files_status parameter but with the unsaved flag set to False
+        save-xlsx/data       (dict) Content and filename to be downloaded to the browser
+        files-status/data    (str)  Same as files_status parameter but with the unsaved flag set to False
+        select-file/contents (list) Empty to reset, so a new file upload always results in a contents change, even if
+                                    it's the same file(s) as previously loaded
     '''
 
     logger.debug('Enter.')
@@ -150,25 +152,25 @@ def save_file(n_clicks, files_status, frames):
 
         logger.debug('File saved.')
         logger.debug('Exit.')
-        return contents, files_status
+        return contents, files_status, []
     else:
         logger.debug('Nothing to save.')
         logger.debug('Exit.')
         raise PreventUpdate
 
 @callback(
-    Output('files-status' , 'data'      , allow_duplicate=True),
-    Output('select-file'  , 'contents'  , allow_duplicate=True),
-    Output('frame-store'  , 'clear_data'),
-    Output('show-data'    , 'children'  , allow_duplicate=True),
-    Output('file-name'    , 'children'  , allow_duplicate=True),
-    Output('last-modified', 'children'  , allow_duplicate=True),
-    Input( 'clear-button' , 'n_clicks'  ),
-    Input( 'select-file'  , 'contents'  ),
-    State( 'select-file'  , 'filename'  ),
-    State( 'show-data'    , 'children'  ),
+    Output( 'files-status' , 'data'      , allow_duplicate=True),
+    Output( 'select-file'  , 'contents'  , allow_duplicate=True),
+    Output( 'frame-store'  , 'clear_data'),
+    Output( 'show-data'    , 'children'  , allow_duplicate=True),
+    Output( 'file-name'    , 'children'  , allow_duplicate=True),
+    Output( 'last-modified', 'children'  , allow_duplicate=True),
+    Trigger('clear-button' , 'n_clicks'  ),
+    Input(  'select-file'  , 'contents'  ),
+    State(  'select-file'  , 'filename'  ),
+    State(  'show-data'    , 'children'  ),
 )
-def clear_load(n_clicks, in_contents, filenames, show_data):
+def clear_load(all_contents, filenames, show_data):
     '''Clear all data in memory and on the screen, triggered by the Clear button or the loading of (a) new file(s) in the Upload component.
 
     If new file(s), set the filename and unsaved flag in files-status, which in turn triggers all the follow-on chain
@@ -180,8 +182,6 @@ def clear_load(n_clicks, in_contents, filenames, show_data):
           way to guarantee the execution order of callbacks triggered by the same trigger.
     
     Parameters:
-        n_clicks    (int)           Number of times the Clear button was pressed (not used, other than as trigger)
-        in_contents (list[str])     Base64-encoded file contents (not used, other than as trigger)
         filenames   (list[str])     The selected filename(s), provided by the Upload component
         show_data   (list[objects]) The layout of the main app area, consisting of a list of CardSections
 
@@ -200,8 +200,8 @@ def clear_load(n_clicks, in_contents, filenames, show_data):
     if callback_context.triggered_id == 'clear-button':
         logger.debug('Responding to Clear button click. Reset files-status and select-file contents.')
         status   = dict(filename='', unsaved=False)
-        contents = ['']           # Other callbacks may rely on getting a list with at least one element
-    else:
+        contents = []
+    elif all_contents:
         if len(filenames) == 1:
             fntext = fn = filenames[0]      # Make life easier for callbacks processing a single file
         else:
@@ -211,6 +211,8 @@ def clear_load(n_clicks, in_contents, filenames, show_data):
         logger.debug(f'File(s) loaded: {fntext}.')
         status   = dict(filename=fn, unsaved=True)
         contents = no_update                # This was triggered by a new file, so don't mess with the contents
+    else:
+        raise PreventUpdate                 # Contents cleared by another callback; nothing to do
 
     logger.debug('Exit.')
 
@@ -233,14 +235,14 @@ def toggle_loaddata(status):
 
     Returns:
         select-file/disabled (bool) True if unsaved data in memory; False otherwise (no data or data was saved)
-        load-label/c         (str)  Color for the Load Data area label: black for enabled, gray for diabled
+        load-label/c         (str)  Color for the Load Data area label: dimmed for disabled, black for enabled
     '''
 
     logger.debug('Enter.')
     unsaved = status['unsaved']
     logger.debug(f'Data {"not" if unsaved else "is"} saved{"" if unsaved else " or cleared"}; {"dis" if unsaved else "en"}able Load Data.')
     logger.debug('Exit.')
-    return unsaved, 'gray' if unsaved else 'black'
+    return unsaved, 'dimmed' if unsaved else 'black'
 
 @callback(
     Output('inspect-data'  , 'display' ),
@@ -345,16 +347,19 @@ def show_badge(files_status):
     
     logger.debug('Enter.')
 
-    # To show the badge, there must be a file loaded and it must be saved. 
+    # To show the badge, there must be a single file loaded and it must be saved. 
     # (The unsaved flag is also False if there nothing loaded.)
-    if files_status['filename'] and not files_status['unsaved']:
-        logger.debug('Data in memory, file saved; show Saved badge.')
-        logger.debug('Exit.')
-        return 'inline'
+    filename = files_status['filename']
+    if filename and isinstance(filename, str):
+        unsaved = files_status['unsaved']
+        logger.debug(f'Single file loaded, file {"not " if unsaved else ""}saved; {"hide" if unsaved else "show"} Saved badge.')
+        retval  = 'none' if unsaved else 'inline'
     else:
-        logger.debug('No data or data unsaved; hide Saved badge.')
-        logger.debug('Exit.')
-        return 'none'
+        logger.debug('Zero or multiple files loaded; nothing to do.')
+        retval = no_update
+
+    logger.debug('Exit.')
+    return retval
 
 @callback(
     Output('save-button' , 'disabled'),
@@ -367,7 +372,7 @@ def toggle_save_clear(files_status):
     Batches have their own logic and use of these buttons.
 
     Parameters:
-        data (str) JSON representation of the data currently loaded (this function only cares about the filename member)
+        files_status (dict) Filename(s) and (un)saved status
 
     Returns:
         save-button/disabled   True to disable (no data); False to enable (data in memory)
@@ -392,7 +397,7 @@ def show_file_info(files_status, last_modified):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
-        files_status (dict) Filename(s) and (un)saved status
+        files_status  (dict) Filename(s) and (un)saved status
         last_modified (list[int]) File last-modified timestamps (there should only be one element in the list)
 
     Returns:
@@ -404,7 +409,7 @@ def show_file_info(files_status, last_modified):
 
     filename = files_status['filename']
     if isinstance(filename, str) and filename:         # Make sure there's only one file
-        modified = f'Last modified: {datetime.fromtimestamp(last_modified[0])}'
+        modified = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         
         logger.debug('Data in memory; show file information.')
         logger.debug('Exit.')
@@ -472,8 +477,17 @@ def report_sanity_checks(frames):
     Output('next-file'    , 'data'    , allow_duplicate=True),
     Input( 'files-status' , 'data'    ),
 )
-def batch_header(files_status):
-    '''Set up for batch operation.
+def setup_batch(files_status):
+    '''Set up for batch operation by starting the loop counter. Show a batch operation header.
+
+    Parameters:
+        files_status (dict) Filename(s) and (un)saved status
+
+    Returns:
+        file-name/children     (str) Reuse for Batch mode operation header
+        last-modified/children (str) Reuse for start and completion time of batch operation
+        next-file/data         (int) Set the next value for the loop counter
+        
     '''
 
     logger.debug('Enter.')
@@ -483,31 +497,48 @@ def batch_header(files_status):
         logger.debug('Exit.')
         raise PreventUpdate
     
+    # When the batch is complete, the unsaved flag gets set to False.
+    if not files_status['unsaved']:
+        logger.debug('Batch already done. Do not start again.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+
     logger.debug(f'Files loaded: {", ".join(filenames)}.')
-    start_time   = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    next_file = 0
+    start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    next_file  = 0                  # This triggers the start of the loop over file_counter
     logger.debug('Exit.')
-    return 'Batch mode operation', f'Started at {start_time}', next_file
+    return 'Batch mode operation', [f'Started at {start_time}'], next_file
 
 @callback(
-    Output('show-data'   , 'children'          ),
-    Output('file-counter', 'data'              ),
-    Input( 'next-file'   , 'modified_timestamp'),
-    State( 'next-file'   , 'data'              ),
-    State( 'select-file' , 'filename'          ),
-    State( 'select-file' , 'last_modified'     ),
+    Output( 'show-data'   , 'children'          ),
+    Output( 'file-counter', 'data'              ),
+    Trigger('next-file'   , 'modified_timestamp'),
+    State(  'next-file'   , 'data'              ),
+    State(  'select-file' , 'filename'          ),
+    State(  'select-file' , 'last_modified'     ),
 )
-def next_in_batch(mod_ts, next_file, filenames, last_modified):
+def next_in_batch(next_file, filenames, last_modified):
     '''Increment the file counter if there are more files. This triggers the next batch item.
+
+    Also, display file information and a busy indicator for the current item in the batch.
+
+    Parameters:
+        next_file     (int)       The current file's index in the batch list
+        filenames     (list[str]) The selected filenames, provided by the Upload component
+        last_modified (list[int]) File last-modified timestamps
+
+    Returns:
+        show-data/children (object) Patch object to add another CardSection to the main app area
+        file-counter/data  (int)    The file counter value for the current batch item
     '''
 
     logger.debug('Enter.')
-    ts = datetime.fromtimestamp(0.001*mod_ts).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]     # To milliseconds
-    logger.debug(f'Next file index is {next_file}, last incremented at {ts}.')
+    logger.debug(f'Next file index is {next_file}.')
 
-    this_file_info = make_file_info(next_file)
+    # Construct a whole new CardSection element, to be appended to the show-data area
+    this_file_info                                                       = make_file_info(next_file)
     this_file_info.children.children[0].children[0].children             = filenames[next_file]
-    this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file])}'
+    this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime('%Y-%m-%d %H:%M:%S')}'
     this_file_info.children.children[1].display                          = 'flex'
     this_file_info.children.children[1].type                             = 'dots'
 
@@ -518,16 +549,27 @@ def next_in_batch(mod_ts, next_file, filenames, last_modified):
     return showdata, next_file
 
 @callback(
-    Output('next-file'   , 'data'              , allow_duplicate=True),
-    Input( 'file-counter', 'modified_timestamp'),
-    State( 'file-counter', 'data'              ),
-    State( 'select-file',  'filename'          ),
-    background=False,
+    Output( 'next-file'   , 'data'              , allow_duplicate=True),
+    Trigger('file-counter', 'modified_timestamp'),
+    State(  'file-counter', 'data'              ),
+    State(  'select-file',  'filename'          ),
 )
-def increment_file_counter(mod_ts, file_counter, filenames):
+def increment_file_counter(file_counter, filenames):
+    '''Set the next value for the batch loop index (file counter). Stop at the end of the batch.
+
+    The reason for incrementing the loop index in a separate callback rather than in process_batch()
+    is that callbacks can run in parallel, so we don't want to wait for the previous file to be fully
+    processed (a long-running callback) before kicking off the next one. This way, the entire batch
+    can be iterated over quickly, with the long-running processing callbacks queued up and run in
+    multithreaded fashion in whatever way Dash has to take advantage of multiple available CPU kernels.
+
+    Parameters:
+        file_counter (int)       The index of the next file in the list of files (the batch)
+        filenames    (list[str]) The selected filenames (here only used to get the length of the batch)
+    '''
+
     logger.debug('Enter.')
-    ts = datetime.fromtimestamp(0.001*mod_ts).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]     # To milliseconds
-    logger.debug(f'File counter is {file_counter}, last incremented at {ts}')
+    logger.debug(f'File counter is {file_counter}.')
     next_file = file_counter + 1
 
     if next_file >= len(filenames):
@@ -539,30 +581,144 @@ def increment_file_counter(mod_ts, file_counter, filenames):
     return next_file
 
 @callback(
-    # Output('read-error'  , 'opened'            , allow_duplicate=True),
-    # Output('error-title' , 'children'          , allow_duplicate=True),
-    # Output('error-text'  , 'children'          , allow_duplicate=True),
-    # Output('show-data'   , 'children'          , allow_duplicate=True),
-    # Output('last-modified', 'children'           , allow_duplicate=True),
-    Input( 'file-counter', 'modified_timestamp'),
-    State( 'file-counter', 'data'              ),
-    # State( 'select-file' , 'contents'          ),
-    State( 'select-file' , 'filename'          ),
-    State( 'show-data'   , 'children'          ),
-)
-def process_batch(mod_ts, file_counter, filenames, showdata):     #, all_contents, showdata):
-    '''Process all files in batch, without user involvement.
+    Output('read-error'   , 'opened'            , allow_duplicate=True),
+    Output('error-title'  , 'children'          , allow_duplicate=True),
+    Output('error-text'   , 'children'          , allow_duplicate=True),
+    Trigger('file-counter', 'modified_timestamp'),
+    State(  'file-counter', 'data'              ),
+    State(  'select-file' , 'filename'          ),
+    State(  'select-file' , 'contents'          ),
+    # background=True,
+ )
+def process_batch(file_counter, filenames, all_contents):
+    '''Process one file in the batch, without user involvement.
+
+    Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
+    When done, display the results of the sanity checks, hide the busy indicator, and show the Saved badge.
+
+    NOTE: This callback uses set_props() to directly manipulate UI elements, instead of relying on return
+          values to do so. This is the only way I could think of to address dynamically created elements,
+          with generated names ending in a suffix indicating the batch index (file counter), such as
+          sanity-checks-0, saved-badge-3, etc.
+
+    Parameters:
+        file_counter (int)       The index of the next file in the list of files (the batch)
+        filenames    (list[str]) The selected filenames (here only used to get the length of the batch)
+        all_contents (list[str]) Base64-encoded file contents for all files in the batch
+
+    Returns:
+        read-error/opened    (bool) True in case of error (show error modal), otherwise False
+        error-title/children (str)  In case of error, title for error modal; otherwise an empty string
+        error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
     '''
 
-    logger.debug('Enter.')
-    logger.debug(f'Processing file {file_counter}: {filenames[file_counter]}.')
-    time.sleep(1)
-    set_props(f'wait-please-{file_counter}', {'display': 'none'})
-    set_props(f'saved-badge-{file_counter}', {'display': 'inline'})
-    logger.debug('Exit.')
-    
-    # return newdata
-    # return f'File counter is {file_counter}.'
-    # return no_update
-    # raise PreventUpdate
+    logger.debug(f'({file_counter}) Enter.')
 
+    if len(filenames) <= file_counter:   # We got here because there's a batch, so this should not happen
+        logger.error(f'({file_counter}) Something is wrong. Processing file {file_counter} but there are only {len(filenames)} files in the batch.')
+        logger.debug(f'({file_counter}) Exit.')
+        return True, 'System Error:', f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.'
+
+    logger.debug(f'({file_counter}) Processing {filenames[file_counter]}.')
+    # time.sleep(3 + random.uniform(-2, 2))
+
+    contents = all_contents[file_counter]
+    filename = filenames[file_counter]
+    outfile = str(Path(filename).with_suffix('.xlsx'))
+
+    # Read the file contents into DataFrames.
+    try:
+        frames   = {}
+        df_data, df_meta, df_site = helpers.load_data(contents, filename) 
+        logger.debug(f'({file_counter}) Data initialized.')
+    except Exception as e:
+        logger.error(f'({file_counter}) File Read Error:\n{e}')
+        logger.debug(f'({file_counter}) Exit.')
+        return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+
+    # Perform sanity checks and report the results.
+    # Get the names of the timestamp and sequence-number coluns.
+    # TODO: find a way to get the names of these columns from the metadata.
+    ts_col           = 'TIMESTAMP'
+    seqno_col        = 'RECORD'
+    report           = []
+    interval_minutes = 15             # TODO: Get this from the metadata
+
+    if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
+        report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
+    else:
+        report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
+    
+    if helpers.seqno_is_regular(df_data[seqno_col]):
+        report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
+    else:
+        report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
+
+        # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
+        df_data[seqno_col] = df_data.index
+
+    set_props(f'sanity-checks-{file_counter}', {'children': report})
+
+    # Save the file.
+    # Dash provides a convenience function to create the required dictionary. That function in turn
+    # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
+    # is a custom function specific to this app.
+    data_for_download = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+    logger.debug(f'({file_counter}) Got byte string for Download.')
+    set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
+    logger.debug(f'({file_counter}) Download complete. Clean up.')
+
+    # files_done = Patch()
+    # files_done.append(file_counter)
+    set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
+
+    logger.debug(f'({file_counter}) Exit.')
+    return False, '', ''
+@callback(
+    Output('files-status' , 'data'    ),
+    Output('last-modified', 'children', allow_duplicate=True),
+    Output('select-file'  , 'contents', allow_duplicate=True),
+    State( 'files-status' , 'data'    ),
+    Input( {'type': 'saved-badge', 'index': ALL}, 'display'),
+)
+def batch_done(files_status, displays):
+    '''Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
+    
+    Look for changes to the Saved badges: setup_batch() creates one, invisible (display='none'), for each file in the
+    batch, and process_batch() makes it visible (display='inline') as it finishes with each file. When all badges are
+    visible, the batch is complete.
+
+    Parameters:
+        files_status (dict)      Filename(s) and (un)saved status
+        displays     (list[str]) The display attribute for all batch-related Saved badges
+                                 NOTE: This takes advantage of pattern-matching callback inputs.
+
+    Returns:
+        files-status/data      (str)  Same as files_status parameter but with the unsaved flag set to False
+        last-modified/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
+        select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
+                                      it's the same file(s) as previously loaded
+'''
+
+    logger.debug('Enter.')
+
+    if displays:            # This also gets triggered when all batch-related badges disappear
+        logger.debug(f'There are {len(displays)} files in progress: {displays}')
+
+        if  all(d == 'inline' for d in displays):
+            logger.debug('Batch complete.')
+            new_status            = files_status
+            new_status['unsaved'] = False
+            end_time              = Patch()
+            end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            logger.debug('Exit.')
+            return new_status, end_time, []
+        else:
+            logger.debug(f'Batch not complete; so far only {len([d for d in displays if d == 'inline'])} files.')
+            logger.debug('Exit.')
+            raise PreventUpdate
+    else:
+        logger.debug('No batch in progress.')
+        logger.debug('Exit.')
+        raise PreventUpdate
