@@ -101,6 +101,7 @@ def load_file(files_status, all_contents):
         return Serverside(frames, key='Frames'), False, '', ''
     except Exception as e:
         logger.error(f'File Read Error:\n{e}')
+        logger.debug(f'({file_counter}) Exit.')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
@@ -419,6 +420,43 @@ def show_file_info(files_status, last_modified):
         logger.debug('Exit.')
         raise PreventUpdate
     
+def run_sanity_checks(df_data):
+    '''Callback helper function: run the sanity checks.
+    
+    Currently only checking for drop-outs or irregularities in the time and record sequences; other checks to be added.
+    In principle, any number of checks can be reported on in the top part of the main app area. In practice if the list
+    grows too long, A page layout redesign may be needed.
+
+    Parameters:
+        df_data (pandas.DataFrame) The DataFrame containing the sensor data time series
+
+    Returns:
+        A list of Text objects, each element representing a simple sanity check result
+    '''
+
+    # Get the names of the timestamp and sequence-number coluns.
+    # TODO: find a way to get the names of these columns from the metadata.
+    ts_col           = 'TIMESTAMP'
+    seqno_col        = 'RECORD'
+    report           = []
+    interval_minutes = 15             # TODO: Get this from the metadata
+        
+    # Fill in text elements
+    if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
+        report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
+    else:
+        report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
+    
+    if helpers.seqno_is_regular(df_data[seqno_col]):
+        report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
+    else:
+        report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
+
+        # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
+        df_data[seqno_col] = df_data.index
+
+    return report
+
 @callback(
     Output('sanity-checks', 'children'),
     Input( 'frame-store'  , 'data'    ),
@@ -427,10 +465,6 @@ def report_sanity_checks(frames):
     '''Perform sanity checks on the data and report the results in a separate area of the app shell.
 
     This is triggered simply by the availability of a new sensor data DataFrame.
-
-    Currently only checking for drop-outs or irregularities in the time and record sequences; other checks to be added.
-    In principle, any number of checks can be reported on in the top part of the main app area. In practice if the list
-    grows too long, A page layout redesign may be needed.
 
     Parameters:
         frames (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
@@ -441,30 +475,10 @@ def report_sanity_checks(frames):
 
     logger.debug('Enter.')
 
-    # Get the names of the timestamp and sequence-number coluns.
-    # TODO: find a way to get the names of these columns from the metadata.
-    ts_col    = 'TIMESTAMP'
-    seqno_col = 'RECORD'
-    report    = []
-
     if frames and 'data' in frames:
         logger.debug('New data found. Running and reporting sanity checks.')
-        df_data          = frames['data']
-        interval_minutes = 15             # TODO: Get this from the metadata
-        
-        # Fill in text elements
-        if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
-            report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
-        else:
-            report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
-        
-        if helpers.seqno_is_regular(df_data[seqno_col]):
-            report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
-        else:
-            report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
-
-            # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
-            df_data[seqno_col] = df_data.index
+        df_data = frames['data']
+        report  = run_sanity_checks(df_data)
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
     
@@ -480,6 +494,16 @@ def report_sanity_checks(frames):
 def setup_batch(files_status):
     '''Set up for batch operation by starting the loop counter. Show a batch operation header.
 
+    Looping over a batch of multiple files works as follows:
+        Multiple files selected (select-file -> clear_load -> files-status)
+        ==> 1) next-file := 0 (setup_batch)
+            ==> 2) file-counter := next-file (next_in_batch)
+                ==> 3a) next-file += 1 (increment_file_counter)
+                    --> REPEAT from step 2)
+                ==> 3b) process one file (process_batch)
+    This has the effect of walking quickly through the batch index from 0 to len(batch)-1,
+    while queueing the long-running processing step for each file.
+                
     Parameters:
         files_status (dict) Filename(s) and (un)saved status
 
@@ -637,26 +661,7 @@ def process_batch(file_counter, filenames, all_contents):
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
     # Perform sanity checks and report the results.
-    # Get the names of the timestamp and sequence-number coluns.
-    # TODO: find a way to get the names of these columns from the metadata.
-    ts_col           = 'TIMESTAMP'
-    seqno_col        = 'RECORD'
-    report           = []
-    interval_minutes = 15             # TODO: Get this from the metadata
-
-    if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
-        report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
-    else:
-        report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
-    
-    if helpers.seqno_is_regular(df_data[seqno_col]):
-        report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
-    else:
-        report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
-
-        # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
-        df_data[seqno_col] = df_data.index
-
+    report = run_sanity_checks(df_data)
     set_props(f'sanity-checks-{file_counter}', {'children': report})
 
     # Save the file.
