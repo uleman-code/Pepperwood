@@ -89,7 +89,8 @@ columns = [
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
 def make_file_info(n=None):
-    suffix = '' if n is None else '-' + str(n)
+    suffix   = '' if n is None else '-' + str(n)
+    badge_id = 'saved-badge' if n is None else {'type': 'saved-badge', 'index': n}
     return  dmc.CardSection(
                 dmc.Group(
                     children=[
@@ -99,7 +100,12 @@ def make_file_info(n=None):
                                 dmc.Group(
                                     children=[
                                         dmc.Text(id=f'last-modified{suffix}'),
-                                        dmc.Badge('Saved', id=f'saved-badge{suffix}', ml='sm', display='none'),
+                                        dmc.Badge(
+                                            'Saved',
+                                            id=badge_id,
+                                            ml='sm',
+                                            display='none'
+                                        ),
                                     ]
                                 )
                             ],
@@ -118,6 +124,7 @@ def make_file_info(n=None):
                             mt=25,
                             mr=20,
                         ),
+                        dcc.Download(id=f'save-xlsx{suffix}')
                     ],
                     justify='space-between',
                 ),
@@ -161,14 +168,14 @@ layout = dmc.AppShell(
             data=json.dumps(dict(filename='', unsaved=False)),
         ),
         dcc.Store(id='frame-store'),
-        dcc.Download(id='save-xlsx'),
+        # dcc.Download(id='save-xlsx'),
         dcc.Store(
             id='file-counter',
-            storage_type='memory',
+            # storage_type='memory',
         ),
         dcc.Store(
             id='next-file',
-            storage_type='memory',
+            # storage_type='memory',
         ),
     ],
     header={'height': 50},
