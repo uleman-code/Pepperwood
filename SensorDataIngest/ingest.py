@@ -3,8 +3,8 @@
 
 import logging
 
-from dash   import Dash, CeleryManager, _dash_renderer
-from dash_extensions.enrich import DashProxy, ServersideOutputTransform
+from dash_extensions.enrich import DashProxy, ServersideOutputTransform, TriggerTransform
+from dash                   import _dash_renderer
 
 import dash_mantine_components as dmc
 
@@ -51,12 +51,13 @@ def main():
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
-    app = DashProxy(
+    app        = DashProxy(
                     prevent_initial_callbacks=True,
                     title='Sensor Data Ingest',
                     update_title=None,                          # Does nothing?
-                    transforms=[ServersideOutputTransform()]
-                   )
+                    # background_callback_manager='diskcache',
+                    transforms=[ServersideOutputTransform(), TriggerTransform()],
+                 )
     app.layout = dmc.MantineProvider(layout)
     
     app.run(debug=True)
