@@ -3,6 +3,7 @@ venv
 *.pyc
 .DS_Store
 .venv*/
+cache/
 logs/
 file_system_backend/
 launch.json
