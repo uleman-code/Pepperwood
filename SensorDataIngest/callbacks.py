@@ -101,7 +101,7 @@ def load_file(files_status, all_contents):
         return Serverside(frames, key='Frames'), False, '', ''
     except Exception as e:
         logger.error(f'File Read Error:\n{e}')
-        logger.debug(f'({file_counter}) Exit.')
+        logger.debug(f'Exit.')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
