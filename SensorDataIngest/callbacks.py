@@ -481,6 +481,7 @@ def report_sanity_checks(frames):
         report  = run_sanity_checks(df_data)
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
+        report = None
     
     logger.debug('Exit.')
     return report
