@@ -51,11 +51,11 @@ def load_data(contents, filename):
             # Assume that the user uploaded a CSV file
             logger.info('Reading CSV data file. Expect additional info in the first four rows.')
             decoded = io.StringIO(b64decoded.decode('utf-8'))
-            df_data = pd.read_csv(decoded, skiprows=[0,2,3], parse_dates=['TIMESTAMP'])     # First pass to read the real data
+            df_data = pd.read_csv(decoded, skiprows=[0,2,3], parse_dates=['TIMESTAMP'], na_values='NAN')    # First pass to read the real data
             decoded.seek(0)
-            df_meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T            # Second pass to read the column metadata
+            df_meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T                            # Second pass to read the column metadata
             decoded.seek(0)
-            df_site = pd.read_csv(decoded, header=None, nrows=1).iloc[:,:len(site_columns)]                            # Third pass to read the site data
+            df_site = pd.read_csv(decoded, header=None, nrows=1).iloc[:,:len(site_columns)]                 # Third pass to read the site data
             df_meta.columns = meta_columns
             df_site.columns = site_columns
             
