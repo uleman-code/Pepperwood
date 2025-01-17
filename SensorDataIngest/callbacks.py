@@ -281,7 +281,7 @@ def show_columns(frames, status):
 
     if frames and 'data' in frames:         # Make sure frames is a dict before checking for presence of data
         if status['unsaved']:
-            logger.debug('DataFrame found. Populating column selection list.')
+            logger.debug('DataFrame found. Populating variable selection list.')
             df_data = frames['data']
 
             # Skip the timestamp and record number columns; these are not data columns.
@@ -290,7 +290,7 @@ def show_columns(frames, status):
             checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
                           if c not in ['TIMESTAMP', 'RECORD']] 
             logger.debug('Exit.')
-            return 'flex', f'{len(checkboxes)} Available Columns', checkboxes, []
+            return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
         else:
             raise PreventUpdate
     else:
@@ -441,7 +441,9 @@ def run_sanity_checks(df_data):
     report           = []
     interval_minutes = 15             # TODO: Get this from the metadata
         
-    # Fill in text elements
+    # Fill in text elements.
+    report.append(dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm'))
+
     if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
         report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
     else:
