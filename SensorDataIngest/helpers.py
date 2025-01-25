@@ -63,7 +63,7 @@ def load_data(contents, filename):
             # Assume that the user uploaded an excel file
             logger.info('Reading Excel workbook. Expect three worksheets.')
             buffer  = io.BytesIO(b64decoded)
-            df_data = pd.read_excel(buffer, sheet_name='Data')
+            df_data = pd.read_excel(buffer, sheet_name='Data', na_values='NAN')
             df_meta = pd.read_excel(buffer, sheet_name='Columns')
             df_site = pd.read_excel(buffer, sheet_name='Site')
         else:
