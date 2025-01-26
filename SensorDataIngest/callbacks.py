@@ -356,8 +356,8 @@ def show_badge(files_status):
         logger.debug(f'Single file loaded, file {"not " if unsaved else ""}saved; {"hide" if unsaved else "show"} Saved badge.')
         retval  = 'none' if unsaved else 'inline'
     else:
-        logger.debug('Zero or multiple files loaded; nothing to do.')
-        retval = no_update
+        logger.debug('Zero or multiple files loaded; hide Saved badge.')
+        retval = 'none'
 
     logger.debug('Exit.')
     return retval
