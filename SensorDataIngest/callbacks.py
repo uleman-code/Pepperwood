@@ -181,6 +181,8 @@ def clear_load(all_contents, filenames, show_data):
     NOTE: The clearing of some UI components (file-name, last-modified) must happen here, because relying on another callback
           to do it makes it difficult to guarantee that the clearing happens before the new information is shown. There is no
           way to guarantee the execution order of callbacks triggered by the same trigger.
+          The exception is the Saved badge: since it is not reused for other purposes, showing or hiding it can be handled
+          by its own callback.
     
     Parameters:
         filenames   (list[str])     The selected filename(s), provided by the Upload component
@@ -333,17 +335,23 @@ def draw_plots(showcols, frames):
         return {}, 'none'
 
 @callback(
-    Output('saved-badge', 'display'),
-    Input('files-status', 'data'),
+    Output('saved-badge' , 'display'),
+    Output('save-xlsx'   , 'data'   , allow_duplicate=True),
+    Input( 'files-status', 'data'   ),
 )
 def show_badge(files_status):
     '''Respond to a Save action by showing a SAVED badge.
+
+    Because this is triggered after every single-file save action, also use this callback to clear the data
+    in dcc.Download. Not clearing the data may result in the download action continuing to be triggered by
+    every UI interaction.
 
     Parameters:
         files_status (dict) Filename(s) and (un)saved status
 
     Returns
-        saved-badge/display  (str)  Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
+        saved-badge/display (str) Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
+        save-xlsx/data      (obj) None, to clear the data
     '''
     
     logger.debug('Enter.')
@@ -360,7 +368,7 @@ def show_badge(files_status):
         retval = 'none'
 
     logger.debug('Exit.')
-    return retval
+    return retval, None
 
 @callback(
     Output('save-button' , 'disabled'),
