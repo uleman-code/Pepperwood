@@ -27,6 +27,7 @@ import dash_mantine_components as     dmc
 from   layout   import make_file_info
 from   datetime import datetime
 from   pathlib  import Path
+from   typing   import Any
 
 import logging
 
@@ -43,7 +44,7 @@ frame_store = {}
     Input( 'files-status'  , 'data'    ),
     State( 'select-file'   , 'contents'),
 )
-def load_file(files_status, all_contents):
+def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     '''If one file was opened, load it.
     
     Triggered by a change in files-status after the user selects a single file, read the base64-encoded file contents 
@@ -51,8 +52,8 @@ def load_file(files_status, all_contents):
     and site data. Persist the three DataFrames in the server-side frame-store.
 
     Parameters:
-        files_status (dict)      Filename(s) and (un)saved status
-        all_contents (list[str]) Base64-encoded file contents
+        files_status     Filename(s) and (un)saved status
+        all_contents     Base64-encoded file contents
 
     Returns:
         frame-store/data     (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
@@ -63,8 +64,8 @@ def load_file(files_status, all_contents):
     '''
     
     logger.debug('Enter.')
-    filename = files_status['filename']
-    unsaved  = files_status['unsaved']
+    filename: str = files_status['filename']
+    unsaved:  str = files_status['unsaved']
 
     # This callback is triggered by any change to files-status. But action is only needed if there is one
     # new file to be loaded, in which case filename is a single non-empty string, and the unsaved flag is True.
@@ -83,10 +84,10 @@ def load_file(files_status, all_contents):
         logger.debug('Exit.')
         raise PreventUpdate
 
-    contents = all_contents[0]          # We got here, so there is exactly one file
+    contents: str = all_contents[0]          # We got here, so there is exactly one file
 
     try:
-        frames = {}
+        frames: dict[str, Any] = {}
         frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
 
         logger.debug('Data initialized.')
@@ -113,7 +114,7 @@ def load_file(files_status, all_contents):
     State(  'frame-store' , 'data'    ),
     running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (Loader) while saving
 )
-def save_file(files_status, frames):
+def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -126,8 +127,8 @@ def save_file(files_status, frames):
           is always saved.
     
     Parameters:
-        files_status (dict)            Filename(s) and (un)saved status
-        frames       (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
+        files_status    Filename(s) and (un)saved status
+        frames          The three DataFrames (data, meta, site) for one file
     
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
@@ -143,13 +144,13 @@ def save_file(files_status, frames):
         df_meta = frames['meta']
         df_site = frames['site']
         
-        outfile = str(Path(files_status['filename']).with_suffix('.xlsx'))
+        outfile: str = str(Path(files_status['filename']).with_suffix('.xlsx'))
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
         # is a custom function specific to this app.
-        contents                = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
-        files_status['unsaved'] = False
+        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+        files_status['unsaved']         = False
 
         logger.debug('File saved.')
         logger.debug('Exit.')
@@ -171,7 +172,7 @@ def save_file(files_status, frames):
     State(  'select-file'  , 'filename'  ),
     State(  'show-data'    , 'children'  ),
 )
-def clear_load(all_contents, filenames, show_data):
+def clear_load(all_contents: list[str], filenames: list[str], show_data: list[Any]) -> tuple:
     '''Clear all data in memory and on the screen, triggered by the Clear button or the loading of (a) new file(s) in the Upload component.
 
     If new file(s), set the filename and unsaved flag in files-status, which in turn triggers all the follow-on chain
@@ -185,8 +186,9 @@ def clear_load(all_contents, filenames, show_data):
           by its own callback.
     
     Parameters:
-        filenames   (list[str])     The selected filename(s), provided by the Upload component
-        show_data   (list[objects]) The layout of the main app area, consisting of a list of CardSections
+        all_contents    Base64-encoded file contents for all files in the batch
+        filenames       The selected filename(s), provided by the Upload component
+        show_data       The layout of the main app area, consisting of a list of CardSections
 
     Returns:
         files-status/data      (str)  JSON representation of a cleared data store: no DataFrames, filename blank, unsaved flag False
@@ -200,11 +202,14 @@ def clear_load(all_contents, filenames, show_data):
 
     logger.debug('Enter.')
 
+    status: dict[str, Any]
     if callback_context.triggered_id == 'clear-button':
         logger.debug('Responding to Clear button click. Reset files-status and select-file contents.')
         status   = dict(filename='', unsaved=False)
         contents = []
     elif all_contents:
+        fn:     str | list[str]
+        fntext: str
         if len(filenames) == 1:
             fntext = fn = filenames[0]      # Make life easier for callbacks processing a single file
         else:
@@ -227,7 +232,7 @@ def clear_load(all_contents, filenames, show_data):
     Output('load-label'  , 'c'),
     Input( 'files-status', 'data'),
 )
-def toggle_loaddata(status):
+def toggle_loaddata(status: dict[str, Any]) -> tuple:
     '''Disable the Load Data element when new data is loaded and not (yet) saved; re-enable when data is cleared or saved.
 
     This includes graying out the label of the Load Data area; the rest is governed by the Upload component
@@ -242,7 +247,7 @@ def toggle_loaddata(status):
     '''
 
     logger.debug('Enter.')
-    unsaved = status['unsaved']
+    unsaved: bool = status['unsaved']
     logger.debug(f'Data {"not" if unsaved else "is"} saved{"" if unsaved else " or cleared"}; {"dis" if unsaved else "en"}able Load Data.')
     logger.debug('Exit.')
     return unsaved, 'dimmed' if unsaved else 'black'
@@ -255,7 +260,7 @@ def toggle_loaddata(status):
     Input( 'frame-store'   , 'data'    ),
     State( 'files-status'  , 'data'    ),
 )
-def show_columns(frames, status):
+def show_columns(frames: dict, status: dict) -> tuple:
     ''' When data is loaded, populate the column selection element with checkboxes for all data columns in the df_data DataFrame.
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
@@ -269,8 +274,8 @@ def show_columns(frames, status):
     did a Save.
 
     Parameters:
-        frames (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
-        status (dict)            Filename(s) and (un)saved status
+        frames  The three DataFrames (data, meta, site) for one file
+        status  Filename(s) and (un)saved status
         
     Returns:
         inspect-data/display  (str)  Show the column selection part of the Navbar if there's data; otherwise blank it 
@@ -289,8 +294,8 @@ def show_columns(frames, status):
             # Skip the timestamp and record number columns; these are not data columns.
             # TODO: Try to find a way to get these names from the metadata, in case they're not
             #       the same across data loggers or across time.
-            checkboxes = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
-                          if c not in ['TIMESTAMP', 'RECORD']] 
+            checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
+                                              if c not in ['TIMESTAMP', 'RECORD']] 
             logger.debug('Exit.')
             return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
         else:
@@ -306,14 +311,14 @@ def show_columns(frames, status):
     Input( 'select-columns', 'value'  ),
     State( 'frame-store'   , 'data'   ),
 )
-def draw_plots(showcols, frames):
+def draw_plots(showcols: list[str], frames: dict) -> tuple:
     '''Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
 
     Parameters:
-        showcols (list)            Column names, in the order in which they were selected
-        frames   (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
+        showcols    Column names, in the order in which they were selected
+        frames      The three DataFrames (data, meta, site) for one file
 
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
@@ -339,7 +344,7 @@ def draw_plots(showcols, frames):
     Output('save-xlsx'   , 'data'   , allow_duplicate=True),
     Input( 'files-status', 'data'   ),
 )
-def show_badge(files_status):
+def show_badge(files_status: dict) -> tuple:
     '''Respond to a Save action by showing a SAVED badge.
 
     Because this is triggered after every single-file save action, also use this callback to clear the data
@@ -347,7 +352,7 @@ def show_badge(files_status):
     every UI interaction.
 
     Parameters:
-        files_status (dict) Filename(s) and (un)saved status
+        files_status    Filename(s) and (un)saved status
 
     Returns
         saved-badge/display (str) Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
@@ -358,11 +363,12 @@ def show_badge(files_status):
 
     # To show the badge, there must be a single file loaded and it must be saved. 
     # (The unsaved flag is also False if there nothing loaded.)
-    filename = files_status['filename']
+    filename: str = files_status['filename']
+    retval:   str
     if filename and isinstance(filename, str):
-        unsaved = files_status['unsaved']
+        unsaved: bool = files_status['unsaved']
         logger.debug(f'Single file loaded, file {"not " if unsaved else ""}saved; {"hide" if unsaved else "show"} Saved badge.')
-        retval  = 'none' if unsaved else 'inline'
+        retval = 'none' if unsaved else 'inline'
     else:
         logger.debug('Zero or multiple files loaded; hide Saved badge.')
         retval = 'none'
@@ -375,13 +381,13 @@ def show_badge(files_status):
     Output('clear-button', 'disabled'),
     Input( 'files-status', 'data'    ),
 )
-def toggle_save_clear(files_status):
+def toggle_save_clear(files_status: dict) -> tuple:
     '''If there's one file loaded, enable the Save and Clear buttons; otherwise, disable them.
 
     Batches have their own logic and use of these buttons.
 
     Parameters:
-        files_status (dict) Filename(s) and (un)saved status
+        files_status    Filename(s) and (un)saved status
 
     Returns:
         save-button/disabled   True to disable (no data); False to enable (data in memory)
@@ -389,8 +395,8 @@ def toggle_save_clear(files_status):
     '''
     
     logger.debug('Enter.')
-    filename  = files_status['filename']
-    have_file = bool(filename and isinstance(filename, str))
+    filename: str   = files_status['filename']
+    have_file       = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
     logger.debug(f'{"One" if have_file else "Zero or multiple"} files in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
     logger.debug('Exit.')
 
@@ -402,12 +408,12 @@ def toggle_save_clear(files_status):
     Input( 'files-status' , 'data'    ),
     State( 'select-file'  , 'last_modified'),
 )
-def show_file_info(files_status, last_modified):
+def show_file_info(files_status: dict, last_modified: str):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
-        files_status  (dict) Filename(s) and (un)saved status
-        last_modified (list[int]) File last-modified timestamps (there should only be one element in the list)
+        files_status    Filename(s) and (un)saved status
+        last_modified   File last-modified timestamps (there should only be one element in the list)
 
     Returns:
         file-name/children      (str) The name of the currently loaded file (no path)
@@ -416,9 +422,9 @@ def show_file_info(files_status, last_modified):
 
     logger.debug('Enter.')
 
-    filename = files_status['filename']
+    filename: str = files_status['filename']
     if isinstance(filename, str) and filename:         # Make sure there's only one file
-        modified = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
+        modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         
         logger.debug('Data in memory; show file information.')
         logger.debug('Exit.')
@@ -428,7 +434,7 @@ def show_file_info(files_status, last_modified):
         logger.debug('Exit.')
         raise PreventUpdate
     
-def run_sanity_checks(df_data):
+def run_sanity_checks(df_data) -> list[str]:
     '''Callback helper function: run the sanity checks.
     
     Currently only checking for drop-outs or irregularities in the time and record sequences; other checks to be added.
@@ -444,10 +450,10 @@ def run_sanity_checks(df_data):
 
     # Get the names of the timestamp and sequence-number coluns.
     # TODO: find a way to get the names of these columns from the metadata.
-    ts_col           = 'TIMESTAMP'
-    seqno_col        = 'RECORD'
-    report           = []
-    interval_minutes = 15             # TODO: Get this from the metadata
+    ts_col:           str       = 'TIMESTAMP'
+    seqno_col:        str       = 'RECORD'
+    report:           list[str] = []
+    interval_minutes: int       = 15             # TODO: Get this from the metadata
         
     # Fill in text elements.
     report.append(dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm'))
@@ -471,13 +477,13 @@ def run_sanity_checks(df_data):
     Output('sanity-checks', 'children'),
     Input( 'frame-store'  , 'data'    ),
 )
-def report_sanity_checks(frames):
+def report_sanity_checks(frames: dict) -> list[str]:
     '''Perform sanity checks on the data and report the results in a separate area of the app shell.
 
     This is triggered simply by the availability of a new sensor data DataFrame.
 
     Parameters:
-        frames (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
+        frames  The three DataFrames (data, meta, site) for one file
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
@@ -502,7 +508,7 @@ def report_sanity_checks(frames):
     Output('next-file'    , 'data'    , allow_duplicate=True),
     Input( 'files-status' , 'data'    ),
 )
-def setup_batch(files_status):
+def setup_batch(files_status: dict) -> tuple:
     '''Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -516,7 +522,7 @@ def setup_batch(files_status):
     while queueing the long-running processing step for each file.
                 
     Parameters:
-        files_status (dict) Filename(s) and (un)saved status
+        files_status    Filename(s) and (un)saved status
 
     Returns:
         file-name/children     (str) Reuse for Batch mode operation header
@@ -526,7 +532,7 @@ def setup_batch(files_status):
     '''
 
     logger.debug('Enter.')
-    filenames = files_status['filename']
+    filenames: str | list[str] = files_status['filename']
     if isinstance(filenames, str):
         logger.debug('No file or a single filename: not a batch.')
         logger.debug('Exit.')
@@ -539,8 +545,8 @@ def setup_batch(files_status):
         raise PreventUpdate
 
     logger.debug(f'Files loaded: {", ".join(filenames)}.')
-    start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    next_file  = 0                  # This triggers the start of the loop over file_counter
+    start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    next_file:  int = 0                  # This triggers the start of the loop over file_counter
     logger.debug('Exit.')
     return 'Batch mode operation', [f'Started at {start_time}'], next_file
 
@@ -552,7 +558,7 @@ def setup_batch(files_status):
     State(  'select-file' , 'filename'          ),
     State(  'select-file' , 'last_modified'     ),
 )
-def next_in_batch(next_file, filenames, last_modified):
+def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int]) -> tuple:
     '''Increment the file counter if there are more files. This triggers the next batch item.
 
     Also, display file information and a busy indicator for the current item in the batch.
@@ -571,7 +577,7 @@ def next_in_batch(next_file, filenames, last_modified):
     logger.debug(f'Next file index is {next_file}.')
 
     # Construct a whole new CardSection element, to be appended to the show-data area
-    this_file_info                                                       = make_file_info(next_file)
+    this_file_info: dmc.CardSection                                      = make_file_info(next_file)
     this_file_info.children.children[0].children[0].children             = filenames[next_file]
     this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime('%Y-%m-%d %H:%M:%S')}'
     this_file_info.children.children[1].display                          = 'flex'
@@ -589,23 +595,23 @@ def next_in_batch(next_file, filenames, last_modified):
     State(  'file-counter', 'data'              ),
     State(  'select-file',  'filename'          ),
 )
-def increment_file_counter(file_counter, filenames):
+def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     '''Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
     The reason for incrementing the loop index in a separate callback rather than in process_batch()
     is that callbacks can run in parallel, so we don't want to wait for the previous file to be fully
     processed (a long-running callback) before kicking off the next one. This way, the entire batch
     can be iterated over quickly, with the long-running processing callbacks queued up and run in
-    multithreaded fashion in whatever way Dash has to take advantage of multiple available CPU kernels.
+    multithreaded fashion in whatever way Dash has to take advantage of multiple available CPU cores.
 
     Parameters:
-        file_counter (int)       The index of the next file in the list of files (the batch)
-        filenames    (list[str]) The selected filenames (here only used to get the length of the batch)
+        file_counter    The index of the next file in the list of files (the batch)
+        filenames       The selected filenames (here only used to get the length of the batch)
     '''
 
     logger.debug('Enter.')
     logger.debug(f'File counter is {file_counter}.')
-    next_file = file_counter + 1
+    next_file: int = file_counter + 1
 
     if next_file >= len(filenames):
         logger.debug('Reached the end of the batch; stop operation.')
@@ -625,7 +631,7 @@ def increment_file_counter(file_counter, filenames):
     State(  'select-file' , 'contents'          ),
     # background=True,
  )
-def process_batch(file_counter, filenames, all_contents):
+def process_batch(file_counter: int, filenames: list[str], all_contents: list[str]) -> tuple:
     '''Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -637,9 +643,9 @@ def process_batch(file_counter, filenames, all_contents):
           sanity-checks-0, saved-badge-3, etc.
 
     Parameters:
-        file_counter (int)       The index of the next file in the list of files (the batch)
-        filenames    (list[str]) The selected filenames (here only used to get the length of the batch)
-        all_contents (list[str]) Base64-encoded file contents for all files in the batch
+        file_counter    The index of the next file in the list of files (the batch)
+        filenames       The selected filenames (here only used to get the length of the batch)
+        all_contents    Base64-encoded file contents for all files in the batch
 
     Returns:
         read-error/opened    (bool) True in case of error (show error modal), otherwise False
@@ -657,9 +663,9 @@ def process_batch(file_counter, filenames, all_contents):
     logger.debug(f'({file_counter}) Processing {filenames[file_counter]}.')
     # time.sleep(3 + random.uniform(-2, 2))
 
-    contents = all_contents[file_counter]
-    filename = filenames[file_counter]
-    outfile = str(Path(filename).with_suffix('.xlsx'))
+    contents: str = all_contents[file_counter]
+    filename: str = filenames[file_counter]
+    outfile       = str(Path(filename).with_suffix('.xlsx'))
 
     # Read the file contents into DataFrames.
     try:
@@ -672,20 +678,18 @@ def process_batch(file_counter, filenames, all_contents):
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
     # Perform sanity checks and report the results.
-    report = run_sanity_checks(df_data)
+    report: list[str] = run_sanity_checks(df_data)
     set_props(f'sanity-checks-{file_counter}', {'children': report})
 
     # Save the file.
     # Dash provides a convenience function to create the required dictionary. That function in turn
     # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
     # is a custom function specific to this app.
-    data_for_download = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+    data_for_download: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
     logger.debug(f'({file_counter}) Got byte string for Download.')
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
     logger.debug(f'({file_counter}) Download complete. Clean up.')
 
-    # files_done = Patch()
-    # files_done.append(file_counter)
     set_props(f'wait-please-{file_counter}', {'display': 'none'})
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
 
@@ -698,7 +702,7 @@ def process_batch(file_counter, filenames, all_contents):
     State( 'files-status' , 'data'    ),
     Input( {'type': 'saved-badge', 'index': ALL}, 'display'),
 )
-def batch_done(files_status, displays):
+def batch_done(files_status: dict, displays: list[str]) -> tuple:
     '''Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
     
     Look for changes to the Saved badges: setup_batch() creates one, invisible (display='none'), for each file in the
@@ -706,9 +710,9 @@ def batch_done(files_status, displays):
     visible, the batch is complete.
 
     Parameters:
-        files_status (dict)      Filename(s) and (un)saved status
-        displays     (list[str]) The display attribute for all batch-related Saved badges
-                                 NOTE: This takes advantage of pattern-matching callback inputs.
+        files_status    Filename(s) and (un)saved status
+        displays        The display attribute for all batch-related Saved badges
+                        NOTE: This takes advantage of pattern-matching callback inputs.
 
     Returns:
         files-status/data      (str)  Same as files_status parameter but with the unsaved flag set to False
@@ -724,7 +728,7 @@ def batch_done(files_status, displays):
 
         if  all(d == 'inline' for d in displays):
             logger.debug('Batch complete.')
-            new_status            = files_status
+            new_status: dict      = files_status
             new_status['unsaved'] = False
             end_time              = Patch()
             end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')

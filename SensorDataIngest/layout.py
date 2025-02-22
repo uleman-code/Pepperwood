@@ -88,7 +88,7 @@ columns = [
 
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
-def make_file_info(n=None):
+def make_file_info(n: int | None = None):
     suffix   = '' if n is None else '-' + str(n)
     badge_id = 'saved-badge' if n is None else {'type': 'saved-badge', 'index': n}
     return  dmc.CardSection(
