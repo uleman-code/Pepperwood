@@ -33,6 +33,11 @@ import logging
 
 import helpers                          # Local module implementing Dash-independent actions
 
+# Set the names of the timestamp and sequence-number coluns.
+# TODO: find a way to get the names of these columns from the metadata.
+ts_col:    str = 'TIMESTAMP'
+seqno_col: str = 'RECORD'
+
 logger      = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
 frame_store = {}
 
@@ -448,24 +453,16 @@ def run_sanity_checks(df_data) -> list[str]:
         A list of Text objects, each element representing a simple sanity check result
     '''
 
-    # Get the names of the timestamp and sequence-number coluns.
-    # TODO: find a way to get the names of these columns from the metadata.
-    ts_col:           str       = 'TIMESTAMP'
-    seqno_col:        str       = 'RECORD'
     report:           list[str] = []
     interval_minutes: int       = 15             # TODO: Get this from the metadata
         
     # Fill in text elements.
     report.append(dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm'))
 
-    if helpers.ts_is_regular(df_data[ts_col], interval_minutes):
-        report.append(dmc.Text(f'{ts_col} is monotonically increasing by {interval_minutes} minutes from each row to the next.', h='sm'))
-    else:
+    if not helpers.ts_is_regular(df_data[ts_col], interval_minutes):
         report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
     
-    if helpers.seqno_is_regular(df_data[seqno_col]):
-        report.append(dmc.Text(f'{seqno_col} is monotonically increasing by one from each row to the next.', h='sm'))
-    else:
+    if not helpers.seqno_is_regular(df_data[seqno_col]):
         report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
 
         # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
