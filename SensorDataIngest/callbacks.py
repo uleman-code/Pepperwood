@@ -92,8 +92,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     contents: str = all_contents[0]          # We got here, so there is exactly one file
 
     try:
-        frames: dict[str, Any] = {}
-        frames['data'], frames['meta'], frames['site'] = helpers.load_data(contents, filename) 
+        frames: dict[str, Any] = helpers.load_data(contents, filename)
 
         logger.debug('Data initialized.')
         logger.debug('Exit.')
@@ -145,16 +144,12 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     logger.debug('Enter.')
 
     if frames and 'data' in frames:         # If not initialized, it's not a dict; so check first if there's anything there
-        df_data = frames['data']
-        df_meta = frames['meta']
-        df_site = frames['site']
-        
         outfile: str = str(Path(files_status['filename']).with_suffix('.xlsx'))
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
         # is a custom function specific to this app.
-        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
         files_status['unsaved']         = False
 
         logger.debug('File saved.')
@@ -413,7 +408,7 @@ def toggle_save_clear(files_status: dict) -> tuple:
     Input( 'files-status' , 'data'    ),
     State( 'select-file'  , 'last_modified'),
 )
-def show_file_info(files_status: dict, last_modified: str):
+def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
@@ -427,7 +422,7 @@ def show_file_info(files_status: dict, last_modified: str):
 
     logger.debug('Enter.')
 
-    filename: str = files_status['filename']
+    filename: str = files_status['filename'] # type: ignore
     if isinstance(filename, str) and filename:         # Make sure there's only one file
         modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         
@@ -439,43 +434,47 @@ def show_file_info(files_status: dict, last_modified: str):
         logger.debug('Exit.')
         raise PreventUpdate
     
-def run_sanity_checks(df_data) -> list[str]:
-    '''Callback helper function: run the sanity checks.
+def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any]:
+    '''Callback helper function: run the sanity/QA checks.
     
-    Currently only checking for drop-outs or irregularities in the time and record sequences; other checks to be added.
-    In principle, any number of checks can be reported on in the top part of the main app area. In practice if the list
-    grows too long, A page layout redesign may be needed.
+    Collect the results and create the messages to be displayed in the UI in case irregularities were found.
+    In principle, any number of checks can be reported on in the top part of the main app area or alongside each
+    filename in a batch. In practice, if the list grows too long, a page layout redesign may be needed.
 
     Parameters:
-        df_data (pandas.DataFrame) The DataFrame containing the sensor data time series
+        df_data (In/Out pandas.DataFrame) The DataFrame containing the sensor data time series; may be updated to fix dropouts
 
     Returns:
         A list of Text objects, each element representing a simple sanity check result
+        A DataFrame with rows describing occurrences of missing values or samples
     '''
 
-    report:           list[str] = []
-    interval_minutes: int       = 15             # TODO: Get this from the metadata
-        
+    report:          list[dmc.Text] = []
+    missing_values:  bool
+    missing_samples: bool
+
+    missing_values, missing_samples, df_notes = helpers.run_qa(df_data)
+
     # Fill in text elements.
-    report.append(dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm'))
+    if missing_values:
+        report.append(dmc.Text('One or more variables have data dropouts.', c='red', h='sm'))
 
-    if not helpers.ts_is_regular(df_data[ts_col], interval_minutes):
-        report.append(dmc.Text(f'{ts_col} is not monotonically and regularly increasing.', c='red', h='sm'))
-    
-    if not helpers.seqno_is_regular(df_data[seqno_col]):
-        report.append(dmc.Text(f'{seqno_col} sequence is not monotonic or has gaps; column was renumbered, starting at 0.', c='red', h='sm'))
+    if missing_samples:
+        report.append(dmc.Text('There are gaps in the time series. Placeholder samples were inserted.', c='red', h='sm'))
 
-        # The automatically generated index is a row-number sequence (starting at 0). Use that to "renumber" the sequence-number column.
-        df_data[seqno_col] = df_data.index
-
-    return report
+    return report, df_notes
 
 @callback(
     Output('sanity-checks', 'children'),
+    Output('frame-store'  , 'data'    , allow_duplicate=True),
     Input( 'frame-store'  , 'data'    ),
 )
-def report_sanity_checks(frames: dict) -> list[str]:
-    '''Perform sanity checks on the data and report the results in a separate area of the app shell.
+def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Serverside[dict]]:
+    '''Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
+
+    If anything like data dropouts is found, record that in a separate DataFrame, which will become
+    the Notes worksheet in the output file upon save. In some cases (such as missing rows/samples),
+    the data may be altered (for example, by adding NaN-filled rows to fill gaps in the time series).
 
     This is triggered simply by the availability of a new sensor data DataFrame.
 
@@ -484,20 +483,28 @@ def report_sanity_checks(frames: dict) -> list[str]:
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
+        frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     '''
 
     logger.debug('Enter.')
-
+    
     if frames and 'data' in frames:
         logger.debug('New data found. Running and reporting sanity checks.')
         df_data = frames['data']
-        report  = run_sanity_checks(df_data)
+        report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm')]
+
+        # If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file. 
+        # In that case, neither make corrections to the data nor generate a new Notes worksheet.
+        if 'notes' not in frames:
+            qa_report: list[dmc.Text]
+            qa_report, frames['notes']  = run_sanity_checks(frames['data'])
+            report += qa_report
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
-        report = None
+        report = []
     
     logger.debug('Exit.')
-    return report
+    return report, Serverside(frames, key='Frames')
 
 @callback(
     Output('file-name'    , 'children', allow_duplicate=True),
@@ -575,10 +582,10 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
 
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection                                      = make_file_info(next_file)
-    this_file_info.children.children[0].children[0].children             = filenames[next_file]
-    this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime('%Y-%m-%d %H:%M:%S')}'
-    this_file_info.children.children[1].display                          = 'flex'
-    this_file_info.children.children[1].type                             = 'dots'
+    this_file_info.children.children[0].children[0].children             = filenames[next_file]                                                                                 # type: ignore
+    this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime('%Y-%m-%d %H:%M:%S')}'   # type: ignore
+    this_file_info.children.children[1].display                          = 'flex'                                                                                               # type: ignore
+    this_file_info.children.children[1].type                             = 'dots'                                                                                               # type: ignore
 
     showdata = Patch()
     showdata.append(this_file_info)
@@ -662,27 +669,35 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
 
     contents: str = all_contents[file_counter]
     filename: str = filenames[file_counter]
-    outfile       = str(Path(filename).with_suffix('.xlsx'))
+    outfile:  str = str(Path(filename).with_suffix('.xlsx'))
 
     # Read the file contents into DataFrames.
     try:
-        frames   = {}
-        df_data, df_meta, df_site = helpers.load_data(contents, filename) 
+        frames = helpers.load_data(contents, filename) 
         logger.debug(f'({file_counter}) Data initialized.')
     except Exception as e:
         logger.error(f'({file_counter}) File Read Error:\n{e}')
         logger.debug(f'({file_counter}) Exit.')
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
-    # Perform sanity checks and report the results.
-    report: list[str] = run_sanity_checks(df_data)
+    df_data = frames['data']
+    report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm')]
+
+    # Perform sanity/QA checks and report the results, except:
+    #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file. 
+    #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
+    if 'notes' not in frames:
+        qa_report: list[dmc.Text]
+        qa_report, frames['notes']  = run_sanity_checks(frames['data'])
+        report += qa_report
+
     set_props(f'sanity-checks-{file_counter}', {'children': report})
 
     # Save the file.
     # Dash provides a convenience function to create the required dictionary. That function in turn
     # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
     # is a custom function specific to this app.
-    data_for_download: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(df_data, df_meta, df_site), outfile)
+    data_for_download: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
     logger.debug(f'({file_counter}) Got byte string for Download.')
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
     logger.debug(f'({file_counter}) Download complete. Clean up.')
