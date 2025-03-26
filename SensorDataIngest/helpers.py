@@ -340,7 +340,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     return report
 
 def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD',
-           interval: str | pd.DateOffset = '15min') -> tuple[bool, bool, pd.DataFrame]:
+           interval: str | pd.DateOffset = '15min') -> tuple[bool, bool, pd.DataFrame, pd.DataFrame]:
     '''Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
     Test for two kinds of data dropout:
@@ -373,13 +373,13 @@ def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: 
     missing_values_report: pd.DataFrame  = pd.concat([report_missing_column_values(df, col, timestamp_column) for col in df.columns])
     missing_values_found:  bool          = bool(len(missing_values_report))
 
-    original_index: pd.DatetimeIndex     = df.set_index(timestamp_column).index # type: ignore
-    df = fill_missing_rows(df, timestamp_column, seqno_column, interval)
-    new_index: pd.DatetimeIndex          = df.set_index(timestamp_column).index # type: ignore
-    missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index, seqno_column, interval)
-    missing_samples_found:  bool         = bool(len(missing_samples_report))
+    original_index:         pd.DatetimeIndex = df.set_index(timestamp_column).index # type: ignore
+    df_fixed:               pd.DataFrame     = fill_missing_rows(df, timestamp_column, seqno_column, interval)
+    new_index:              pd.DatetimeIndex = df_fixed.set_index(timestamp_column).index # type: ignore
+    missing_samples_report: pd.DataFrame     = report_missing_samples(original_index, new_index, seqno_column, interval)
+    missing_samples_found:  bool             = bool(len(missing_samples_report))
 
     report = pd.concat([missing_values_report, missing_samples_report])
 
     logger.debug('Exit.')
-    return missing_values_found, missing_samples_found, report
+    return missing_values_found, missing_samples_found, report, df_fixed

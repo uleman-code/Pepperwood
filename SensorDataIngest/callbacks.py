@@ -434,7 +434,7 @@ def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
         logger.debug('Exit.')
         raise PreventUpdate
     
-def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any]:
+def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     '''Callback helper function: run the sanity/QA checks.
     
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.
@@ -447,22 +447,25 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any]:
     Returns:
         A list of Text objects, each element representing a simple sanity check result
         A DataFrame with rows describing occurrences of missing values or samples
+        The original data DataFrame, possibly with additional rows to complete the time series
     '''
 
     report:          list[dmc.Text] = []
     missing_values:  bool
     missing_samples: bool
 
-    missing_values, missing_samples, df_notes = helpers.run_qa(df_data)
+    original_length: int = len(df_data)
+    missing_values, missing_samples, df_notes, df_data = helpers.run_qa(df_data)
 
-    # Fill in text elements.
+    # Fill in UI text elements for the report.
     if missing_values:
         report.append(dmc.Text('One or more variables have data dropouts.', c='red', h='sm'))
 
     if missing_samples:
-        report.append(dmc.Text('There are gaps in the time series. Placeholder samples were inserted.', c='red', h='sm'))
+        added_samples: int = len(df_data) - original_length
+        report.append(dmc.Text(f'There are gaps in the time series; {added_samples} placeholder samples were inserted.', c='red', h='sm'))
 
-    return report, df_notes
+    return report, df_notes, df_data
 
 @callback(
     Output('sanity-checks', 'children'),
@@ -497,7 +500,7 @@ def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Serverside[dict]
         # In that case, neither make corrections to the data nor generate a new Notes worksheet.
         if 'notes' not in frames:
             qa_report: list[dmc.Text]
-            qa_report, frames['notes']  = run_sanity_checks(frames['data'])
+            qa_report, frames['notes'], frames['data']  = run_sanity_checks(frames['data'])
             report += qa_report
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
@@ -688,7 +691,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
     if 'notes' not in frames:
         qa_report: list[dmc.Text]
-        qa_report, frames['notes']  = run_sanity_checks(frames['data'])
+        qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'])
         report += qa_report
 
     set_props(f'sanity-checks-{file_counter}', {'children': report})
