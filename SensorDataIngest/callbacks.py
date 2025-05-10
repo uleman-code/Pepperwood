@@ -454,18 +454,22 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     missing_values:  bool
     missing_samples: bool
 
-    original_length: int = len(df_data)
-    missing_values, missing_samples, df_notes, df_data = helpers.run_qa(df_data)
+    try:
+        duplicate_samples, missing_values, missing_samples, df_notes, df_fixed = helpers.run_qa(df_data)
+    except ValueError as err:
+        report.append(dmc.Text(str(err), c='red', h='sm'))
+        return report, None, df_data
 
-    # Fill in UI text elements for the report.
+    if duplicate_samples:
+        report.append(dmc.Text('Duplicate samples were found and dropped.', c='red', h='sm'))
+
     if missing_values:
         report.append(dmc.Text('One or more variables have data dropouts.', c='red', h='sm'))
 
     if missing_samples:
-        added_samples: int = len(df_data) - original_length
-        report.append(dmc.Text(f'There are gaps in the time series; {added_samples} placeholder samples were inserted.', c='red', h='sm'))
+        report.append(dmc.Text('There are gaps in the time series; placeholder samples were inserted.', c='red', h='sm'))
 
-    return report, df_notes, df_data
+    return report, df_notes, df_fixed
 
 @callback(
     Output('sanity-checks', 'children'),
