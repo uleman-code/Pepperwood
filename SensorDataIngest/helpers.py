@@ -9,7 +9,7 @@ from   pathlib import Path
 from   typing  import Any
 import pandas  as     pd
 
-from pandas.core.groupby.generic import SeriesGroupBy       # Just for type hinting
+from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
 
 # The following are subject to revision. They may be used by more than one function.
 
@@ -203,6 +203,59 @@ def seqno_is_regular(seqno_series: pd.Series) -> bool:
 
     return is_regular
 
+def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
+    '''Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
+
+    There are three distinct cases:
+        1. No duplicates: do nothing. Return an empty report. This is the normal, expected case.
+        2. Duplicate samples (rows): all values in the duplicates are identical, so the extras can be dropped without
+           loss. Remove the duplicates and record it in the report.
+        3. Duplicate timestamps, but some or all of the variable values are distinct. As it is not clear what to do about
+           this, raise an exception so the calling function can take action to prevent saving to Excel and report this
+           in the UI. It will require manual intervention to deal with the problem.
+    
+    Assumptions:
+        - The input DataFrame is sorted by timestamp, so any duplicates occur together, as repeated rows/timestamps.
+        - Duplicate occurrences are somewhat rare. While it's easy enough to keep track of fully duplicated samples and
+          where they occur (case 2), no attempt is made to report any further duplicates if any instance of case 3 is found.
+        - Actual duplicate removal in the sensor data occurs elsewhere.
+    
+    Parameters:
+        df                  Input DataFrame
+        timestamp_column    Name of the column containing the datetime values constituting the time series index
+
+    Returns:
+        A DataFrame (possibly empty) with the rows representing the report
+
+    Raises:
+        ValueError, if an instance of case 3 is found.
+    '''
+
+    logger.debug('Enter.')
+
+    # Get just the rows with repeated timestamps. Usually empty.
+    df_repeat: pd.DataFrame = df[df[timestamp_column].duplicated(keep=False)]
+
+    # Just the locations in the time series, for reporting purposes. Usually empty.
+    ts_repeat: pd.Series = df_repeat[timestamp_column].drop_duplicates()
+
+    # If they are just repeated whole samples, nunique for each occurrence should be one. But if there are differences in the
+    # variable values, then it'll be greater than one. Empty if no duplicates.
+    nunique: pd.Series = df_repeat.groupby(timestamp_column, as_index=True).nunique().max(axis='columns')
+
+    if len(nunique) and max(nunique) > 1:           # max() doesn't deal with an empty argument, so test for content
+        logger.info('Duplicate timestamps found.')
+        logger.debug('Exit.')
+        raise ValueError(f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel')
+    else:
+        if len(ts_repeat):
+            logger.info('Duplicate samples found.')
+        logger.debug('Exit.')
+        return pd.DataFrame(dict(zip(qa_report_columns,
+                                     [ts_repeat, ts_repeat, 'All', 'No', 
+                                      f'Repeated samples; {len(df_repeat) - len(ts_repeat)} duplicate(s) removed.'])),
+                            columns=qa_report_columns)
+
 def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
     '''Construct a missing-value report for each occurrence or range of missing values in a given column.
     
@@ -240,7 +293,6 @@ def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column
                          )
     grouped: SeriesGroupBy = (df
                               .loc[nan_mask, timestamp_column]
-                              .astype(str)
                               .groupby(grouper)
                              )
     report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [grouped.first(), grouped.last(), column, 'Yes', 'Unknown'])),
@@ -253,7 +305,7 @@ def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column
     return report
 
 def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
-                      seqno_column: str = 'RECORD', interval: str | pd.DateOffset = '15min') -> pd.DataFrame:
+                      seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
     '''Complete a regular time series by inserting NaN-valued records wherever there are gaps.
     
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
@@ -269,10 +321,10 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
         minutes after the hour, they are never at 15-and-a-few-seconds, 30-minus-a-few-seconds, or some such variation.
     
     Parameters:
-        df      Input DataFrame
+        df                  Input DataFrame
         timestamp_column    Name of the column containing the datetime values constituting the time series index
         seqno_column        Name of the column containing row sequence numbers
-        interval            The time series sampling period. Must be a valid datetime offset or string representation thereof.
+        interval            The time series sampling period. Must be a valid frequency string.
 
     Returns:
         The input DataFrame, with zero or more new rows inserted
@@ -293,7 +345,7 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
     return df_fixed
 
 def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
-                           seqno_column: str = 'RECORD', interval: str | pd.DateOffset = '15min') -> pd.DataFrame:
+                           seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
     '''Given the datetime index before and after insertion of missing rows, report what was found and changed.
     
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -312,26 +364,27 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
         old_dt_index    The datetime index of the time series before restoration (with gaps)
         new_dt_index    The datetime index of the time series after restoration (gaps filled in)
         seqno_column    The name of the column containing row sequence numbers
+        interval        The period (time between samples) of the regular time series
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
     '''
 
     logger.debug('Enter.')
-    inserted_timestamps = new_dt_index.difference(old_dt_index).to_series(name='')
-    grouped             = (inserted_timestamps
-                           .astype(str)                                               # May be inefficient: for a range, we only care about first and last
-                           .groupby(inserted_timestamps
-                                    .diff()                                           # Find each timestamp's increment from its predecessor
-                                    .bfill()                                          # Fill in the first one (which does not have a predecessor)
-                                    .ne(pd.Timedelta(interval))  # type: ignore       # Mark (True) if it's bigger than expected (that is, a gap)
-                                    .cumsum()                                         # This increments after each gap
-                                   )
-                          )
+    inserted_timestamps: pd.Series     = new_dt_index.difference(old_dt_index).to_series(name='')
+    grouped:             SeriesGroupBy = (inserted_timestamps
+                                          .groupby(inserted_timestamps
+                                                   .diff()                                     # Find each timestamp's increment from its predecessor
+                                                   .bfill()                                    # Fill in the first one (which does not have a predecessor)
+                                                   .ne(pd.Timedelta(interval)) # type: ignore  # Mark (True) if it's bigger than expected (that is, a gap)
+                                                   .cumsum()                                   # This increments after each gap
+                                                  )
+                                         )
 
-    report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns,
-                                                 [grouped.first(), grouped.last(), 'All', 'Yes',
-                                                  f'Unknown; NA-filled records inserted and {seqno_column} renumbered.'])))
+    first = grouped.first()
+    last  = grouped.last()
+    report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [first, last, 'All', 'Yes',
+            f'Unknown; {int((last - first)[0]/pd.Timedelta(interval)) + 1} NA-filled records inserted and {seqno_column} renumbered.']))) # type: ignore
 
     if not report.empty:
         logger.info('Missing samples found.')
@@ -340,8 +393,10 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     return report
 
 def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD',
-           interval: str | pd.DateOffset = '15min') -> tuple[bool, bool, pd.DataFrame, pd.DataFrame]:
+           interval: str = '15min') -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
     '''Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
+
+    Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
 
     Test for two kinds of data dropout:
         - Missing values in individual columns/variables
@@ -351,35 +406,46 @@ def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: 
     --the latter will be renumbered--, and with NaNs for all the other columns. 
 
     The report is a DataFrame with zero or more rows and the following columns:
+    - The timestamps of any duplicates;
     - The first and last timestamps of the run of missing data (equal in the case of a singleton missing value);
-    - The column name in the case of missing values, "all" if missing samples;
-    - Whether or not it involves missing data (always "yes");
-    - A description of the cause of the data problem (always "unknown", since we cannot guess from the data itself, with, in case of missing
-      samples, an indication that rows were inserted).
+    - The column name in the case of missing values, "all" if duplicate or missing samples;
+    - Whether or not it involves missing data ("no" for duplicates, otherwise "yes");
+    - A description of the cause of the data problem (always "unknown", since we cannot guess from the data itself, with, in case of duplicate
+      or missing samples, an indication that rows were dropped/inserted).
 
     Parameters:
         df                  Input/Output DataFrame: any restoration (inserted rows) is applied in place
         timestamp_column    Name of the column containing the datetime values constituting the time series index
         seqno_column        Name of the column containing row sequence numbers
-        interval            The time series sampling period. Must be a valid datetime offset or string representation thereof.
+        interval            The time series sampling period. Must be a valid frequency string.
 
     Returns:
+        Duplicate samples found?
         Missing values found?
         Missing samples found?
         A DataFrame (possibly empty) with the rows representing the report
      '''
 
     logger.debug('Enter')
-    missing_values_report: pd.DataFrame  = pd.concat([report_missing_column_values(df, col, timestamp_column) for col in df.columns])
-    missing_values_found:  bool          = bool(len(missing_values_report))
+    try:
+        duplicates_report: pd.DataFrame = report_duplicates(df, timestamp_column)
+        duplicates_found:  bool         = bool(len(duplicates_report))
+        df_fixed:          pd.DataFrame = df.drop_duplicates()
+        logger.info(f'Original size: {len(df)}. Deduplicated size: {len(df_fixed)}.')
+    except ValueError:
+        # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
+        raise
 
-    original_index:         pd.DatetimeIndex = df.set_index(timestamp_column).index # type: ignore
-    df_fixed:               pd.DataFrame     = fill_missing_rows(df, timestamp_column, seqno_column, interval)
-    new_index:              pd.DatetimeIndex = df_fixed.set_index(timestamp_column).index # type: ignore
+    missing_values_report: pd.DataFrame = pd.concat([report_missing_column_values(df_fixed, col, timestamp_column) for col in df_fixed.columns])
+    missing_values_found:  bool         = bool(len(missing_values_report))
+
+    original_index:         pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore
+    df_fixed                                 = fill_missing_rows(df_fixed, timestamp_column, seqno_column, interval)
+    new_index:              pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])     # type: ignore
     missing_samples_report: pd.DataFrame     = report_missing_samples(original_index, new_index, seqno_column, interval)
     missing_samples_found:  bool             = bool(len(missing_samples_report))
 
-    report = pd.concat([missing_values_report, missing_samples_report])
+    report = pd.concat([duplicates_report, missing_values_report, missing_samples_report])
 
     logger.debug('Exit.')
-    return missing_values_found, missing_samples_found, report, df_fixed
+    return duplicates_found, missing_values_found, missing_samples_found, report, df_fixed
