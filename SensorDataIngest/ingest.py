@@ -52,7 +52,7 @@ def main():
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
     app        = DashProxy(
-                    prevent_initial_callbacks=True,
+                    prevent_initial_callbacks=True,             # type: ignore
                     title='Sensor Data Ingest',
                     update_title=None,                          # Does nothing?
                     # background_callback_manager='diskcache',
