@@ -457,26 +457,28 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     try:
         duplicate_samples, missing_values, missing_samples, df_notes, df_fixed = helpers.run_qa(df_data)
     except ValueError as err:
-        report.append(dmc.Text(str(err), c='red', h='sm'))
-        return report, None, df_data
+        # report.append(dmc.Text(str(err), c='red', h='sm'))
+        # return report, None, df_data
+        raise
 
     if duplicate_samples:
-        report.append(dmc.Text('Duplicate samples were found and dropped.', c='red', h='sm'))
+        report.append(dmc.Text('Duplicate samples were found and dropped.', c='red', h='sm', ta='right'))
 
     if missing_values:
-        report.append(dmc.Text('One or more variables have data dropouts.', c='red', h='sm'))
+        report.append(dmc.Text('One or more variables have data dropouts.', c='red', h='sm', ta='right'))
 
     if missing_samples:
-        report.append(dmc.Text('There are gaps in the time series; placeholder samples were inserted.', c='red', h='sm'))
+        report.append(dmc.Text('There are gaps in the time series; placeholder samples were inserted.', c='red', h='sm', ta='right'))
 
     return report, df_notes, df_fixed
 
 @callback(
     Output('sanity-checks', 'children'),
+    Output('save-button'  , 'disabled', allow_duplicate=True),
     Output('frame-store'  , 'data'    , allow_duplicate=True),
     Input( 'frame-store'  , 'data'    ),
 )
-def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Serverside[dict]]:
+def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Any, Serverside[dict]]:
     '''Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
     If anything like data dropouts is found, record that in a separate DataFrame, which will become
@@ -490,28 +492,37 @@ def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Serverside[dict]
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
+        save-button/disabled    Disable Save if duplicate timestamps found
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     '''
 
     logger.debug('Enter.')
+
+    disable_save = no_update
     
     if frames and 'data' in frames:
         logger.debug('New data found. Running and reporting sanity checks.')
         df_data = frames['data']
-        report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm')]
+        report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm', ta='right')]
 
         # If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file. 
         # In that case, neither make corrections to the data nor generate a new Notes worksheet.
         if 'notes' not in frames:
             qa_report: list[dmc.Text]
-            qa_report, frames['notes'], frames['data']  = run_sanity_checks(frames['data'])
+
+            try:
+                qa_report, frames['notes'], frames['data']  = run_sanity_checks(frames['data'])
+            except ValueError as err:                               # Duplicate timestamp with distinct variable values found
+                disable_save = True                                 # Do not save; requires manual intervention
+                qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+
             report += qa_report
     else:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
         report = []
     
     logger.debug('Exit.')
-    return report, Serverside(frames, key='Frames')
+    return report, disable_save, Serverside(frames, key='Frames')
 
 @callback(
     Output('file-name'    , 'children', allow_duplicate=True),
@@ -688,17 +699,36 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
     df_data = frames['data']
-    report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm')]
+    report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm', ta='right')]
+
+    no_save = False
 
     # Perform sanity/QA checks and report the results, except:
     #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file. 
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
     if 'notes' not in frames:
         qa_report: list[dmc.Text]
-        qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'])
+
+        try:
+            qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'])
+        except ValueError as err:
+            no_save   = True
+            qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+
         report += qa_report
 
     set_props(f'sanity-checks-{file_counter}', {'children': report})
+
+    # If duplicate timestamps were found (an unrecoverable error), skip the saving.
+    # But we stil need to turn off the Loader and show a Badge, because the batch process looks
+    # for badges to know when it's complete. Instead of the usual "SAVED", though, let the user
+    # know that no file was saved.
+    if no_save:
+        set_props(f'wait-please-{file_counter}', {'display': 'none'})
+        set_props({'type': 'saved-badge', 'index': file_counter}, {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'})
+
+        logger.debug(f'({file_counter}) Exit.')
+        return False, '', ''
 
     # Save the file.
     # Dash provides a convenience function to create the required dictionary. That function in turn
