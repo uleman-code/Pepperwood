@@ -127,7 +127,7 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
     # Setting column widths is even trickier.
     with pd.ExcelWriter(buffer) as xl:
         for sheet, df in sheets.items():
-            logger.debug(f'Writing {type(df)} to sheet {sheet}.')
+            logger.debug(f'Writing {type(df).__name__} to sheet {sheet}.')
             df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == 'Data' else '')
 
             # Automatically adjust column widths to fit all text, including the column header
@@ -246,7 +246,7 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> 
     if len(nunique) and max(nunique) > 1:           # max() doesn't deal with an empty argument, so test for content
         logger.info('Duplicate timestamps found.')
         logger.debug('Exit.')
-        raise ValueError(f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel')
+        raise ValueError(f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel.')
     else:
         if len(ts_repeat):
             logger.info('Duplicate samples found.')
@@ -383,8 +383,10 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
 
     first = grouped.first()
     last  = grouped.last()
+
+    make_text = lambda x: f'Unknown; {x} NA-filled records inserted and {seqno_column} renumbered.'
     report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [first, last, 'All', 'Yes',
-            f'Unknown; {int((last - first)[0]/pd.Timedelta(interval)) + 1} NA-filled records inserted and {seqno_column} renumbered.']))) # type: ignore
+            (((last - first)/pd.Timedelta(interval)).astype(int) + 1).apply(make_text)])))      # type: ignore
 
     if not report.empty:
         logger.info('Missing samples found.')
