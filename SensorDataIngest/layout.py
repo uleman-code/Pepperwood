@@ -21,8 +21,7 @@ load_save = [
             dcc.Upload(
                 dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
                     children=[
-                        dmc.Text('Drag and drop', h='xs'),
-                        dmc.Text('or', h='sm', mt=-5),
+                        dmc.Text('Drag and drop, or', h='xs'),
                         dmc.Button('Select File(s)'),
                     ],
                     align='center',
@@ -41,8 +40,17 @@ load_save = [
         dmc.Group(
             children=[
                 dmc.Tooltip(
-                    dmc.Button('Save XLSX', id='save-button', disabled=True),
+                    dmc.Button('Save', id='save-button', disabled=True),
                     label='Save current data as an Excel file',
+                ),
+                dcc.Upload(
+                    dmc.Tooltip(
+                        dmc.Button('Append', id='append-button', disabled=True),
+                        label='Select file(s) to append current data to',
+                    ),
+                    id='append-file',
+                    multiple=False,
+                    accept='.xlsx',
                 ),
                 dmc.Tooltip(
                     dmc.Button('Clear', id='clear-button', disabled=True, color='red'),
@@ -50,6 +58,7 @@ load_save = [
                 ),
             ],
             justify='center',
+            gap='xs',
         ),
         withBorder=True,
         inheritPadding=True,
@@ -123,8 +132,9 @@ def make_file_info(n: int | None = None):
                             py='xs',
                             mt=25,
                             mr=20,
+                            gap='xs',
                         ),
-                        dcc.Download(id=f'save-xlsx{suffix}')
+                        dcc.Download(id=f'save-xlsx{suffix}'),
                     ],
                     justify='space-between',
                 ),
