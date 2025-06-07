@@ -11,6 +11,9 @@ import pandas  as     pd
 
 from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
 
+class UnmatchedColumnsError(ValueError):
+    pass
+
 # The following are subject to revision. They may be used by more than one function.
 
 # TODO: Should these worksheet names be data-driven (e.g., from a configuration file)?
@@ -27,8 +30,8 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     site information. Turn these into separate DataFrames for metadata and site data, respectively; skip them when loading
     the main data DataFrame.
 
-    Excel files are expected to have been saved by this same app, in which case they have three worksheets, named
-    Data, Columns, and Site.
+    Excel files are expected to have been saved by this same app, in which case they have four worksheets, named
+    Data, Columns, Site, and Notes. Or, if saved by an earlier version, only three because there would be no Notes.
 
     Limitations:
         File type derived from filename suffix, not contents; this is fragile. In case the contents are not as expected,
@@ -42,7 +45,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
         filename    The name of the file; only needed to get the extension
 
     Returns:
-        Three DataFrames: data, metadata, site data
+        Four or three DataFrames: data, metadata, site data, and (unless from an early version) QA notes
     '''
 
     logger.debug('Enter.')
@@ -90,14 +93,14 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
             try:
                 frames['notes'] = pd.read_excel(buffer, sheet_name=worksheet_names[3])
-                logger.info('Notes worksheet found. Will not perform QA; will copy worksheets unaltered upon save.')
+                logger.info('Notes worksheet found. Unless in Append mode, will copy worksheets unaltered upon save.')
             except ValueError as e:                 # Worksheet named 'Notes' not found
                 logger.info('No Notes worksheet in this file. Will perform QA and write new worksheet upon save.')
         else:
             # This should not happen: the Upload element limits the supported filename extensions.
             logger.error(f'Unsupported file type: {Path(filename).suffix}.')
             raise ValueError(f'We do not support the **{Path(filename).suffix}** file type.')
-    except Exception as e:
+    except (UnicodeDecodeError, ValueError) as e:
         logger.error(f'Error reading file {filename}. {e}')
         raise
 
@@ -170,40 +173,40 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
     logger.debug('Exit.')
     return fig
 
-def ts_is_regular(timeseries: pd.Series, interval_minutes: int = 15) -> bool:
-    '''Check if the time-sequence column is "regular", meaning monotonically increasing at a fixed interval.
+# def ts_is_regular(timeseries: pd.Series, interval_minutes: int = 15) -> bool:
+#     '''Check if the time-sequence column is "regular", meaning monotonically increasing at a fixed interval.
 
-    Parameters:
-        timeseries          Sequence of Datetime values
-        interval_minutes    Expected interval, in minutes, between consecutive values
+#     Parameters:
+#         timeseries          Sequence of Datetime values
+#         interval_minutes    Expected interval, in minutes, between consecutive values
 
-    Returns:
-        True if interval between all pairs of consecutive values equals interval_minutes; otherwise False
-    '''
+#     Returns:
+#         True if interval between all pairs of consecutive values equals interval_minutes; otherwise False
+#     '''
 
-    logger.debug('Enter.')
-    is_regular: bool = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
-    logger.debug('Exit.')
+#     logger.debug('Enter.')
+#     is_regular: bool = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
+#     logger.debug('Exit.')
 
-    return is_regular
+#     return is_regular
 
-def seqno_is_regular(seqno_series: pd.Series) -> bool:
-    '''Check if the record sequence-number column is "regular", meaning monotonically increasing by one, with no gaps.
+# def seqno_is_regular(seqno_series: pd.Series) -> bool:
+#     '''Check if the record sequence-number column is "regular", meaning monotonically increasing by one, with no gaps.
 
-    Parameters:
-        seqno_series    Sequence of integers
+#     Parameters:
+#         seqno_series    Sequence of integers
 
-    Returns
-        True if difference between all pairs of consecutive values is one; otherwise False
-    '''
+#     Returns
+#         True if difference between all pairs of consecutive values is one; otherwise False
+#     '''
 
-    logger.debug('Enter.')
-    is_regular: bool = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
-    logger.debug('Exit.')
+#     logger.debug('Enter.')
+#     is_regular: bool = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
+#     logger.debug('Exit.')
 
-    return is_regular
+#     return is_regular
 
-def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
+def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD') -> pd.DataFrame:
     '''Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
     There are three distinct cases:
@@ -223,6 +226,7 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> 
     Parameters:
         df                  Input DataFrame
         timestamp_column    Name of the column containing the datetime values constituting the time series index
+        seqno_column        Name of the column containing row sequence numbers
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -234,7 +238,8 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> 
     logger.debug('Enter.')
 
     # Get just the rows with repeated timestamps. Usually empty.
-    df_repeat: pd.DataFrame = df[df[timestamp_column].duplicated(keep=False)]
+    # In what follows, ignore the sequence number column. It is not a sensor data variable and we don't care about it.
+    df_repeat: pd.DataFrame = df[df[timestamp_column].duplicated(keep=False)].drop(columns=seqno_column)
 
     # Just the locations in the time series, for reporting purposes. Usually empty.
     ts_repeat: pd.Series = df_repeat[timestamp_column].drop_duplicates()
@@ -256,7 +261,7 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP') -> 
                                       f'Repeated samples; {len(df_repeat) - len(ts_repeat)} duplicate(s) removed.'])),
                             columns=qa_report_columns)
 
-def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
+def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Series | slice, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
     '''Construct a missing-value report for each occurrence or range of missing values in a given column.
     
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -274,6 +279,7 @@ def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column
     Parameters:
         df                  Input DataFrame
         column              The column to be examined
+        qa_range            If not slice(None), a boolean Series indicating the range of timestamps to be sanity-checked (in Append mode)
         timestamp_column    (optional) Normally "TIMESTAMP" but may be overridden
 
     Returns:
@@ -281,7 +287,16 @@ def report_missing_column_values(df: pd.DataFrame, column: str, timestamp_column
     '''
 
     logger.debug('Enter.')
-    nan_mask: pd.Series = df[column].isna()
+    
+    nan_mask: pd.Series[bool]
+
+    # In Append mode, limit the part of the time series analyzed.
+    # But the mask that drives the analysis must have the same length as the DataFrame, initialized to False.
+    if isinstance(qa_range, pd.Series):
+        nan_mask                  = pd.Series(False, index=df.index)
+        nan_mask[qa_range]        = df.loc[qa_range, column].isna()
+    else:
+        nan_mask = df[column].isna()
 
     grouper: pd.Series = (nan_mask[nan_mask]      # Only keep the rows with NaNs
                           .index                  # We only need the indices
@@ -336,8 +351,7 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
                               .drop(columns=seqno_column)               # Will reconstruct later
                               .asfreq(freq=interval)
                               .reset_index()                            # Bring TIMESTAMP back as column
-                              .reset_index()                            # Copy row sequence numbers into column ...
-                              .rename(columns={'index': seqno_column})  # ... and call it by its original name.
+                              .reset_index(names=seqno_column)          # Copy row sequence numbers into the sequence number column
                               .loc[:, df.columns]                       # Restore the original column order
                              ) # type: ignore
 
@@ -384,7 +398,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     first = grouped.first()
     last  = grouped.last()
 
-    make_text = lambda x: f'Unknown; {x} NA-filled records inserted and {seqno_column} renumbered.'
+    make_text = lambda x: f'Unknown; {x} NA-filled record{"s" if x > 1 else ""} inserted and {seqno_column} renumbered.'
     report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [first, last, 'All', 'Yes',
             (((last - first)/pd.Timedelta(interval)).astype(int) + 1).apply(make_text)])))      # type: ignore
 
@@ -394,18 +408,27 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     logger.debug('Exit.')
     return report
 
-def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD',
-           interval: str = '15min') -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
+def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None,
+           timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD', interval: str = '15min'
+          ) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
     '''Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
-    Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
+    1. Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
 
-    Test for two kinds of data dropout:
+    2. Test for two kinds of data dropout:
         - Missing values in individual columns/variables
         - Missing samples/rows, constituding a gap in the regular time series
     
-    In the case of missing samples, restore the regular time series by inserting rows with the expected timestamps and sequence numbers
-    --the latter will be renumbered--, and with NaNs for all the other columns. 
+       In the case of missing samples, restore the regular time series by inserting rows with the expected timestamps and sequence numbers
+       --the latter will be renumbered--, and with NaNs for all the other columns. 
+
+    3. In the test for duplicates, the sequential-numbering column (seqno_column, usually "RECORD") is ignored. This column is fairly meaningless
+       and gets reassigned at the end, erasing any effects of concatenation, duplicate removal, and gap filling.
+
+    3. In Append mode, analyzing the combined dataset could potentially find the same issues found previously, leading to redundant report entries.
+       However, since missing samples and duplicate whole samples result in corrected data, and duplicate timestamps prevent saving and appending
+       altogether, the only test for which it is important to limit the analysis to only the QA range indicated is the one for missing values
+       in individual variables.
 
     The report is a DataFrame with zero or more rows and the following columns:
     - The timestamps of any duplicates;
@@ -415,8 +438,15 @@ def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: 
     - A description of the cause of the data problem (always "unknown", since we cannot guess from the data itself, with, in case of duplicate
       or missing samples, an indication that rows were dropped/inserted).
 
+    Limitations:
+        In Append mode, it is theoretically possible (but probably rare) that a run of missing variable values, missing values, or
+        duplicates extends from the end of previously saved data through the beginning of the current set. This function would report on
+        each part separately and make no attempt to consolidate the two parts into a single run.
+
     Parameters:
-        df                  Input/Output DataFrame: any restoration (inserted rows) is applied in place
+        df_data             Input/Output DataFrame: any restoration (inserted rows) is applied in place
+        notes               If not None, the notes previously generated from the new data set (in Append mode)
+        qa_range            If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
         timestamp_column    Name of the column containing the datetime values constituting the time series index
         seqno_column        Name of the column containing row sequence numbers
         interval            The time series sampling period. Must be a valid frequency string.
@@ -426,28 +456,123 @@ def run_qa(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: 
         Missing values found?
         Missing samples found?
         A DataFrame (possibly empty) with the rows representing the report
+        The original data DataFrame, possibly with duplicates dropped or gaps filled
      '''
 
     logger.debug('Enter')
+
     try:
-        duplicates_report: pd.DataFrame = report_duplicates(df, timestamp_column)
+        duplicates_report: pd.DataFrame = report_duplicates(df_data, timestamp_column)
         duplicates_found:  bool         = bool(len(duplicates_report))
-        df_fixed:          pd.DataFrame = df.drop_duplicates()
-        logger.info(f'Original size: {len(df)}. Deduplicated size: {len(df_fixed)}.')
-    except ValueError:
+        df_fixed:          pd.DataFrame = df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True) if duplicates_found else df_data
+        if duplicates_found:
+            logger.info(f'Duplicates found. Original size: {len(df_data)}. Deduplicated size: {len(df_fixed)}.')
+    except ValueError as err:
         # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
+        logger.info(err)
+        logger.debug('Exit.')
         raise
 
-    missing_values_report: pd.DataFrame = pd.concat([report_missing_column_values(df_fixed, col, timestamp_column) for col in df_fixed.columns])
-    missing_values_found:  bool         = bool(len(missing_values_report))
+    variable_columns:      pd.Index[str] = df_fixed.columns.drop([timestamp_column, seqno_column])
+    s_qa_range:            pd.Series[bool] | slice = df_fixed[timestamp_column].between(qa_range[0], qa_range[1]) if qa_range else slice(None)
+    missing_value_columns: pd.Series     = df_fixed.loc[s_qa_range, variable_columns].isna().sum()        # type: ignore
+    missing_values_found:  bool          = bool(missing_value_columns.sum())
+
+    missing_values_report: pd.DataFrame
+    if not missing_values_found:
+        logger.info('No missing values found. Moving on to look for missing samples.')
+        missing_values_report = pd.DataFrame([])
+    else:
+        # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
+        missing_values_report = pd.concat([report_missing_column_values(df_fixed, col, s_qa_range, timestamp_column)
+                                           for col in variable_columns[missing_value_columns.astype(bool)]])
 
     original_index:         pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore
     df_fixed                                 = fill_missing_rows(df_fixed, timestamp_column, seqno_column, interval)
-    new_index:              pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])     # type: ignore
+    new_index:              pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore
     missing_samples_report: pd.DataFrame     = report_missing_samples(original_index, new_index, seqno_column, interval)
     missing_samples_found:  bool             = bool(len(missing_samples_report))
 
-    report = pd.concat([duplicates_report, missing_values_report, missing_samples_report])
+    report = pd.concat([df_notes, duplicates_report, missing_values_report, missing_samples_report]).sort_values(['Start of issue', 'End of issue'])
 
     logger.debug('Exit.')
     return duplicates_found, missing_values_found, missing_samples_found, report, df_fixed
+
+def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFrame], timestamp_column: str = 'TIMESTAMP',
+           seqno_column: str = 'RECORD') -> tuple[dict[str, pd.DataFrame], list[str]]:
+    '''Append new sensor data to an existing set.
+    
+    The data already in memory is considered the new file, with the newly loaded data the base file to which the new file is
+    to be appended.
+
+    Concatenate the sensor data; use the metadata and site data from the new file, and keep the notes from the base file. New
+    QA sanity checks will be performed on any part of the combined data that has not been QA-ed before. Determine the time
+    range of the samples that still need to be QA-ed.
+
+    Limitations:
+        This assumes that the new file is newer than the base file, meaning that the timestamps in the base file are older
+        and the new file's timestamps neatly follow after those of the base. Currently, there is no test to verify this condition,
+        nor a warning if it is not met. It would not be hard to implement either an test and exception or a relaxed treatment
+        that simply puts the two files in the right order.
+
+    Parameters:
+        base_frames         The three or four DataFrames (data, meta, site, possibly notes) from the newly loaded base file
+        new_frames          The three or four DataFrames (data, meta, site, possibly notes) from the previously loaded new file
+        timestamp_column    Name of the column containing the datetime values constituting the time series index
+        seqno_column        Name of the column containing row sequence numbers
+    
+    Returns:
+        The four DataFrames for the combined files
+        The time range, as a tuple (start, end), of the combined time series that still needs to be QA-ed
+
+    Raises:
+        UnmatchedColumnsError   if the lists of variables (columns other than timestamp and sequence number)
+                                do not match between the two files
+    '''
+
+    logger.debug('Enter.')
+
+    if not base_frames['data'].columns.drop(seqno_column).equals(new_frames['data'].columns.drop(seqno_column)):
+        raise UnmatchedColumnsError('The two files are not compatible because their column lists do not match.')
+    
+    # Be sure to keep the ordering of the DataFrames the same by assigning the frames in order: data, meta, site, notes.
+    # Concatenate the actual data; reorder the index (leave renumbering the sequence number column till after sanity checks).
+    combined_frames: dict[str, pd.DataFrame] = {}
+    combined_frames['data']                  = pd.concat([base_frames['data'], new_frames['data']]).reset_index(drop=True)
+
+    # Use the newest info (from the new file to be appended) for meta- and site data. In case of schema or content
+    # evolution, this keeps each output file up to date with the standards at the time of saving.
+    for frame in ['meta', 'site']:
+        combined_frames[frame] = new_frames[frame]
+
+    # Updating the frame store triggers a new QA process. Limit this to at most the data from the existing file,
+    # up to and including the first sample in the new data. If the existing has already been QA-ed, as indicated
+    # by the presence of a Notes worksheet, only look at the transition from existing to new data, to detect
+    # a possible gap or overlap.
+    # Normally, new_first = base_last + interval.
+    #   new_first > base_last  + interval ==> gap
+    #   new_first <= base_last            ==> overlap
+    base_last: pd.Timestamp = base_frames['data'][timestamp_column].iloc[-1]
+    new_first: pd.Timestamp = new_frames['data'][timestamp_column].iloc[0]
+
+    # qa_range is [start, end]
+    qa_range: list[str] = ['', str(max(base_last, new_first))]    # Fill in start later
+
+    # If there's a Notes worksheet in the base file (the one to be appended to), copy it over and append
+    # the new file's notes (generated in the current run).
+    # If not, just copy over the new notes.
+    if 'notes' in base_frames:
+        combined_frames['notes'] = pd.concat([base_frames['notes'], new_frames['notes']])
+        qa_range[0]              = str(min(base_last, new_first))
+    else:
+        combined_frames['notes'] = new_frames['notes']
+        qa_range[0]              = str(base_frames['data'][timestamp_column].min())
+
+    if not base_frames['meta'].equals(new_frames['meta']):
+        logger.warning('The metadata worksheets do not match. Keep the newer one.')
+    
+    if not base_frames['site'].equals(new_frames['site']):
+        logger.warning('The site worksheets do not match. Keep the newer one.')
+    
+    logger.debug('Exit.')
+    return combined_frames, qa_range
