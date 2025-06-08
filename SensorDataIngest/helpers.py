@@ -511,9 +511,11 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
 
     Limitations:
         This assumes that the new file is newer than the base file, meaning that the timestamps in the base file are older
-        and the new file's timestamps neatly follow after those of the base. Currently, there is no test to verify this condition,
-        nor a warning if it is not met. It would not be hard to implement either an test and exception or a relaxed treatment
-        that simply puts the two files in the right order.
+        and the new file's timestamps neatly follow after those of the base. This function handles exceptions to this
+        assumption by sorting the time series after concatenation and by adjusting the way the QA range is determined.
+        But for the meta- and site data, the new file's versions always replace the base file's. This could be fixed by
+        comparing file creation/modification times, but this may not be reliable due, among other things, to the possibility
+        of the base file (an Excel file) having been edited.
 
     Parameters:
         base_frames         The three or four DataFrames (data, meta, site, possibly notes) from the newly loaded base file
@@ -535,35 +537,51 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
     if not base_frames['data'].columns.drop(seqno_column).equals(new_frames['data'].columns.drop(seqno_column)):
         raise UnmatchedColumnsError('The two files are not compatible because their column lists do not match.')
     
-    # Be sure to keep the ordering of the DataFrames the same by assigning the frames in order: data, meta, site, notes.
-    # Concatenate the actual data; reorder the index (leave renumbering the sequence number column till after sanity checks).
+    # Be sure to keep the ordering of the frames dict the same by assigning the frames in order: data, meta, site, notes.
+    # Concatenate the actual data; put the time series in order (just in case the files were loaded in the "wrong" order);
+    # reset the index (leave renumbering the sequence number column till after sanity checks).
     combined_frames: dict[str, pd.DataFrame] = {}
-    combined_frames['data']                  = pd.concat([base_frames['data'], new_frames['data']]).reset_index(drop=True)
+    combined_frames['data']                  = (pd.concat([base_frames['data'], new_frames['data']])
+                                                .sort_values(timestamp_column)
+                                                .reset_index(drop=True)
+                                               )
 
     # Use the newest info (from the new file to be appended) for meta- and site data. In case of schema or content
     # evolution, this keeps each output file up to date with the standards at the time of saving.
     for frame in ['meta', 'site']:
         combined_frames[frame] = new_frames[frame]
 
+    # Normally, we expect the most recently loaded file to be the older one, to which the data loaded earlier will be appended.
+    older: pd.DataFrame = base_frames['data']
+    newer: pd.DataFrame = new_frames['data']
+
+    # In case the assumption above does not hold, simply reverse the designation. The only criterion for which file is older
+    # is simple: whichever one has the older of the starting timestamps. Any other relationships between the two time series
+    # (end timestamp vs end or starting timestamp) get handled by how we set the QA range.
+    if older[timestamp_column].iloc[0] > newer[timestamp_column].iloc[0]:
+        logger.warning('The new file has older timestamps than the base file. Reversing the order of concatenation.')
+        older = newer
+        newer = base_frames['data']
+
     # Updating the frame store triggers a new QA process. Limit this to at most the data from the existing file,
     # up to and including the first sample in the new data. If the existing has already been QA-ed, as indicated
     # by the presence of a Notes worksheet, only look at the transition from existing to new data, to detect
     # a possible gap or overlap.
-    # Normally, new_first = base_last + interval.
-    #   new_first > base_last  + interval ==> gap
-    #   new_first <= base_last            ==> overlap
-    base_last: pd.Timestamp = base_frames['data'][timestamp_column].iloc[-1]
-    new_first: pd.Timestamp = new_frames['data'][timestamp_column].iloc[0]
+    # Normally, newer_first = older_last + interval.
+    #   newer_first > older_last  + interval ==> gap
+    #   newer_first <= older_last            ==> overlap
+    older_last:  pd.Timestamp = older[timestamp_column].iloc[-1]
+    newer_first: pd.Timestamp = newer[timestamp_column].iloc[0]
 
     # qa_range is [start, end]
-    qa_range: list[str] = ['', str(max(base_last, new_first))]    # Fill in start later
+    qa_range: list[str] = ['', str(max(older_last, newer_first))]    # Fill in start later
 
     # If there's a Notes worksheet in the base file (the one to be appended to), copy it over and append
     # the new file's notes (generated in the current run).
     # If not, just copy over the new notes.
     if 'notes' in base_frames:
         combined_frames['notes'] = pd.concat([base_frames['notes'], new_frames['notes']])
-        qa_range[0]              = str(min(base_last, new_first))
+        qa_range[0]              = str(min(older_last, newer_first))
     else:
         combined_frames['notes'] = new_frames['notes']
         qa_range[0]              = str(base_frames['data'][timestamp_column].min())
