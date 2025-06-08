@@ -16,6 +16,7 @@ from   dash_extensions.enrich  import (
                                    callback_context,
                                    Serverside,
                                    Trigger,
+                                   ctx,
                                )
 from   dash                    import (             # A few definitions are not yet surfaced by dash-extensions
                                    Patch,
@@ -79,8 +80,8 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     # - If the user selects multiple files, filename is a list of strings, not a single string.
     # - After a Clear, filename is an empty string.
     # - After a Save, the unsaved flag is False.
-    if isinstance(filename, list) or not filename:
-        logger.debug('Zero or multiple files; nothing to show interactively.')
+    if isinstance(filename, list) or not filename or 'qa_status' in files_status:
+        logger.debug('Zero or multiple files, or in Append mode; nothing to show interactively.')
         logger.debug('Exit.')
         raise PreventUpdate
 
@@ -106,7 +107,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
         return Serverside(frames, key='Frames'), False, '', ''
     except Exception as e:
         logger.error(f'File Read Error:\n{e}')
-        logger.debug(f'Exit.')
+        logger.debug('Exit.')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
@@ -114,7 +115,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     Output( 'files-status', 'data'    , allow_duplicate=True),
     Output( 'select-file' , 'contents', allow_duplicate=True),
     Trigger('save-button' , 'n_clicks'),
-    State(  'files-status', 'data'    ),
+    Input(  'files-status', 'data'    ),
     State(  'frame-store' , 'data'    ),
     running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (Loader) while saving
 )
@@ -132,7 +133,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     
     Parameters:
         files_status    Filename(s) and (un)saved status
-        frames          The three DataFrames (data, meta, site) for one file
+        frames          The four DataFrames (data, meta, site, notes) for one file
     
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
@@ -143,6 +144,11 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
 
     logger.debug('Enter.')
 
+    if ctx.triggered_id == 'files-status' and ('qa_status' not in files_status or files_status['qa_status'] != 'Complete'):
+        logger.debug('Data is not ready to be saved.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+
     if frames and 'data' in frames:         # If not initialized, it's not a dict; so check first if there's anything there
         outfile: str = str(Path(files_status['filename']).with_suffix('.xlsx'))
 
@@ -151,6 +157,11 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
         # is a custom function specific to this app.
         contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
         files_status['unsaved']         = False
+
+        # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
+        # a single file (except for the displayed sanity check results). You could repeat the Append action to chain
+        # any number of files together, not just two.
+        files_status = {k:v for k,v in files_status.items() if k in ['filename', 'unsaved']}
 
         logger.debug('File saved.')
         logger.debug('Exit.')
@@ -191,7 +202,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
         show_data       The layout of the main app area, consisting of a list of CardSections
 
     Returns:
-        files-status/data      (str)  JSON representation of a cleared data store: no DataFrames, filename blank, unsaved flag False
+        files-status/data      (str)  JSON representation of a cleared data store: filename blank, unsaved flag False
         select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
                                       it's the same file(s) as previously loaded
         frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
@@ -261,7 +272,7 @@ def toggle_loaddata(status: dict[str, Any]) -> tuple:
     State( 'files-status'  , 'data'    ),
 )
 def show_columns(frames: dict, status: dict) -> tuple:
-    ''' When data is loaded, populate the column selection element with checkboxes for all data columns in the df_data DataFrame.
+    ''' When data is loaded, populate the column selection element with checkboxes for all data columns (variables).
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
     and hide that part of the Navbar.
@@ -274,7 +285,7 @@ def show_columns(frames: dict, status: dict) -> tuple:
     did a Save.
 
     Parameters:
-        frames  The three DataFrames (data, meta, site) for one file
+        frames  The four DataFrames (data, meta, site, notes) for one file
         status  Filename(s) and (un)saved status
         
     Returns:
@@ -289,12 +300,12 @@ def show_columns(frames: dict, status: dict) -> tuple:
     if frames and 'data' in frames:         # Make sure frames is a dict before checking for presence of data
         if status['unsaved']:
             logger.debug('DataFrame found. Populating variable selection list.')
-            df_data = frames['data']
+            data = frames['data']
 
             # Skip the timestamp and record number columns; these are not data columns.
             # TODO: Try to find a way to get these names from the metadata, in case they're not
             #       the same across data loggers or across time.
-            checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in df_data.columns
+            checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in data.columns
                                               if c not in ['TIMESTAMP', 'RECORD']] 
             logger.debug('Exit.')
             return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
@@ -318,7 +329,7 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
 
     Parameters:
         showcols    Column names, in the order in which they were selected
-        frames      The three DataFrames (data, meta, site) for one file
+        frames      The four DataFrames (data, meta, site, notes) for one file
 
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
@@ -329,8 +340,8 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
     logger.debug('Enter.')
     if showcols:
         logger.debug('Columns selected; generating graphs.')
-        df_data = frames['data']
-        fig     = helpers.render_graphs(df_data, showcols)
+        data = frames['data']
+        fig  = helpers.render_graphs(data, showcols)
 
         logger.debug('Exit.')
         return fig, 'contents'
@@ -377,9 +388,10 @@ def show_badge(files_status: dict) -> tuple:
     return retval, None
 
 @callback(
-    Output('save-button' , 'disabled'),
-    Output('clear-button', 'disabled'),
-    Input( 'files-status', 'data'    ),
+    Output('save-button'  , 'disabled'),
+    Output('append-button', 'disabled'),
+    Output('clear-button' , 'disabled'),
+    Input( 'files-status' , 'data'    ),
 )
 def toggle_save_clear(files_status: dict) -> tuple:
     '''If there's one file loaded, enable the Save and Clear buttons; otherwise, disable them.
@@ -391,16 +403,17 @@ def toggle_save_clear(files_status: dict) -> tuple:
 
     Returns:
         save-button/disabled   True to disable (no data); False to enable (data in memory)
+        append-button/disabled True to disable (no data); False to enable (data in memory)
         clear-button/disabled  True to disable (no data); False to enable (data in memory)
     '''
     
     logger.debug('Enter.')
     filename: str   = files_status['filename']
     have_file       = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
-    logger.debug(f'{"One" if have_file else "Zero or multiple"} files in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
+    logger.debug(f'{"One file" if have_file else "Zero or multiple files"} in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
     logger.debug('Exit.')
 
-    return (False, False) if have_file else (True, True)
+    return (False, False, False) if have_file else (True, True, True)
 
 @callback(
     Output('file-name'    , 'children'),
@@ -423,18 +436,18 @@ def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
     logger.debug('Enter.')
 
     filename: str = files_status['filename'] # type: ignore
-    if isinstance(filename, str) and filename:         # Make sure there's only one file
+    if isinstance(filename, str) and filename and 'qa_status' not in files_status:         # Make sure there's only one file and we're not appending
         modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         
         logger.debug('Data in memory; show file information.')
         logger.debug('Exit.')
         return filename, modified
     else:
-        logger.debug('Zero or multiple files loaded; nothing to do.')
+        logger.debug('Zero or multiple files loaded, or in Append process; nothing to do.')
         logger.debug('Exit.')
         raise PreventUpdate
     
-def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
+def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[list[dmc.Text], Any, Any]:
     '''Callback helper function: run the sanity/QA checks.
     
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.
@@ -442,7 +455,9 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     filename in a batch. In practice, if the list grows too long, a page layout redesign may be needed.
 
     Parameters:
-        df_data (In/Out pandas.DataFrame) The DataFrame containing the sensor data time series; may be updated to fix dropouts
+        data  (In/Out pandas.DataFrame) The DataFrame containing the sensor data time series; may be updated to fix dropouts
+        notes (In/Out pandas.DataFrame) If not None, the notes previously generated from the new data set (in Append mode)
+        qa_range                        If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
 
     Returns:
         A list of Text objects, each element representing a simple sanity check result
@@ -455,10 +470,8 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     missing_samples: bool
 
     try:
-        duplicate_samples, missing_values, missing_samples, df_notes, df_fixed = helpers.run_qa(df_data)
+        duplicate_samples, missing_values, missing_samples, notes, fixed = helpers.run_qa(data, notes, qa_range)
     except ValueError as err:
-        # report.append(dmc.Text(str(err), c='red', h='sm'))
-        # return report, None, df_data
         raise
 
     if duplicate_samples:
@@ -470,25 +483,28 @@ def run_sanity_checks(df_data) -> tuple[list[dmc.Text], Any, Any]:
     if missing_samples:
         report.append(dmc.Text('There are gaps in the time series; placeholder samples were inserted.', c='red', h='sm', ta='right'))
 
-    return report, df_notes, df_fixed
+    return report, notes, fixed
 
 @callback(
-    Output('sanity-checks', 'children'),
-    Output('save-button'  , 'disabled', allow_duplicate=True),
-    Output('frame-store'  , 'data'    , allow_duplicate=True),
-    Input( 'frame-store'  , 'data'    ),
+    Output( 'sanity-checks', 'children'          ),
+    Output( 'save-button'  , 'disabled'          , allow_duplicate=True),
+    Output( 'files-status' , 'data'              , allow_duplicate=True),
+    Output( 'frame-store'  , 'data'              , allow_duplicate=True),
+    State(  'sanity-checks', 'children'          ),
+    Input(  'files-status' , 'data'              ),
+    Input(  'frame-store'  , 'data'              ),
 )
-def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Any, Serverside[dict]]:
+def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, frames: dict) -> tuple[list[dmc.Text], bool, dict, Serverside[dict]]:
     '''Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
     If anything like data dropouts is found, record that in a separate DataFrame, which will become
     the Notes worksheet in the output file upon save. In some cases (such as missing rows/samples),
     the data may be altered (for example, by adding NaN-filled rows to fill gaps in the time series).
 
-    This is triggered simply by the availability of a new sensor data DataFrame.
+    This is triggered simply by the availability of new sensor data.
 
     Parameters:
-        frames  The three DataFrames (data, meta, site) for one file
+        frames  The three or four DataFrames (data, meta, site, possibly notes) for one file
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
@@ -498,31 +514,58 @@ def report_sanity_checks(frames: dict) -> tuple[list[dmc.Text], Any, Serverside[
 
     logger.debug('Enter.')
 
-    disable_save = no_update
+    disable_save = False            # This only gets turned on if sanity checks find a fatal data error.
     
-    if frames and 'data' in frames:
-        logger.debug('New data found. Running and reporting sanity checks.')
-        df_data = frames['data']
-        report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm', ta='right')]
+    # if ctx.triggered_id == 'files-status' and 'qa_range' not in status:
+    #     logger.debug('Files status changed but not in Append mode. Do nothing.')
+    #     logger.debug('Exit.')
+    #     raise PreventUpdate
 
-        # If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file. 
-        # In that case, neither make corrections to the data nor generate a new Notes worksheet.
-        if 'notes' not in frames:
-            qa_report: list[dmc.Text]
-
-            try:
-                qa_report, frames['notes'], frames['data']  = run_sanity_checks(frames['data'])
-            except ValueError as err:                               # Duplicate timestamp with distinct variable values found
-                disable_save = True                                 # Do not save; requires manual intervention
-                qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
-
-            report += qa_report
-    else:                                     
+    if not frames or 'data' not in frames:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
-        report = []
+        logger.debug('Exit.')
+        return ([],) + (no_update,)*3       # type: ignore
     
+    if 'notes' in frames and 'qa_status' not in status:
+        logger.debug('Notes worksheet already populated . Do nothing.')
+        logger.debug('Exit.')
+        raise PreventUpdate
+
+    data  = frames['data']
+    notes = frames['notes'] if 'notes' in frames else None
+    
+    report: list[dmc.Text]; qa_range: list[str] | None
+
+    if 'qa_status' in status:
+        # Append mode: an existing Excel file was loaded and concatenated with the new data.
+        # Sanity-test only the part of the time series indicated by qa_range, and append the results
+        # to whatever is already reported (but remove duplicates).
+        logger.debug('New data appended to an existing file. Run and report sanity check on what is new.')
+        assert current_report is not None
+
+        # For some reason (JSON, I presume), the children of a Stack are returned as dicts, not Text objects. Turn them back into objects.
+        current_report      = [dmc.Text(**c['props']) for c in current_report]
+        report              = current_report + [dmc.Text(f'{len(data):,} total samples after appending.', h='sm', ta='right')]
+        qa_range            = status['qa_range']
+        status['qa_status'] = 'Complete'
+    else:
+        logger.debug('New data found. Running and reporting sanity checks.')
+        report   = [dmc.Text(f'{len(data):,} samples; {len(data.columns)-2} variables.', h='sm', ta='right')]
+        qa_range = None
+
+    qa_report: list[dmc.Text]
+
+    try:
+        qa_report, frames['notes'], frames['data']  = run_sanity_checks(data, notes, qa_range)
+    except ValueError as err:                               # Duplicate timestamp with distinct variable values found
+        disable_save = True                                 # Do not save; requires manual intervention
+        qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+
+    report += qa_report
+    report  = list({t.children:t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
+
     logger.debug('Exit.')
-    return report, disable_save, Serverside(frames, key='Frames')
+    return report, disable_save, status, Serverside(frames, key='Frames')
 
 @callback(
     Output('file-name'    , 'children', allow_duplicate=True),
@@ -644,9 +687,9 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     return next_file
 
 @callback(
-    Output('read-error'   , 'opened'            , allow_duplicate=True),
-    Output('error-title'  , 'children'          , allow_duplicate=True),
-    Output('error-text'   , 'children'          , allow_duplicate=True),
+    Output( 'read-error'  , 'opened'            , allow_duplicate=True),
+    Output( 'error-title' , 'children'          , allow_duplicate=True),
+    Output( 'error-text'  , 'children'          , allow_duplicate=True),
     Trigger('file-counter', 'modified_timestamp'),
     State(  'file-counter', 'data'              ),
     State(  'select-file' , 'filename'          ),
@@ -698,8 +741,8 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         logger.debug(f'({file_counter}) Exit.')
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
-    df_data = frames['data']
-    report: list[dmc.Text] = [dmc.Text(f'{len(df_data):,} samples; {len(df_data.columns)-2} variables.', h='sm', ta='right')]
+    data = frames['data']
+    report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns)-2} variables.', h='sm', ta='right')]
 
     no_save = False
 
@@ -710,7 +753,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         qa_report: list[dmc.Text]
 
         try:
-            qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'])
+            qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'], None)
         except ValueError as err:
             no_save   = True
             qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
@@ -777,12 +820,11 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
 
         if  all(d == 'inline' for d in displays):
             logger.debug('Batch complete.')
-            new_status: dict      = files_status
-            new_status['unsaved'] = False
-            end_time              = Patch()
+            files_status['unsaved'] = False
+            end_time: Patch         = Patch()
             end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             logger.debug('Exit.')
-            return new_status, end_time, []
+            return files_status, end_time, []
         else:
             logger.debug(f'Batch not complete; so far only {len([d for d in displays if d == 'inline'])} files.')
             logger.debug('Exit.')
@@ -791,3 +833,64 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
         logger.debug('No batch in progress.')
         logger.debug('Exit.')
         raise PreventUpdate
+
+@callback(
+    Output('frame-store' , 'data'    , allow_duplicate=True),
+    Output('files-status', 'data'    , allow_duplicate=True),
+    Output('append-file' , 'contents'),
+    Output('read-error'  , 'opened'  , allow_duplicate=True),
+    Output('error-title' , 'children', allow_duplicate=True),
+    Output('error-text'  , 'children', allow_duplicate=True),
+    State( 'frame-store' , 'data'    ),
+    State( 'files-status', 'data'    ),
+    State( 'append-file' , 'filename'),
+    Input( 'append-file' , 'contents'),
+)
+def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: str, contents: str) -> tuple:
+    '''An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
+    
+    Copy the metadata and site data from the new set; if they're not the same as the existing set, assume that the
+    descriptions were edited since last saved and don't treat it as an error.
+
+    Copy the notes, if any, from the existing file. Let the QA code know where to start its analysis: at the start
+    of the time series (if there were no previously saved notes), or at the transition to the new data (if there
+    already were notes).
+
+    Parameters:
+        new_frames       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
+        files_status     Filename (of the new data) and (un)saved status
+        filename         Filename of the newly loaded existing Excel file
+        all_contents     Base64-encoded file contents of the newly loaded existing Excel file
+
+    Returns:
+        frame-store/data     (dict) The three or four DataFrames of the combined set
+        files-status/data    (dict) Original files_status, with new members, the timestamp range on which to perform QA analysis
+        append-file/contents (list) Empty to reset, so a new Append file upload always results in a contents change
+        read-error/opened    (bool) True in case of error (show error modal), otherwise False
+        error-title/children (str)  In case of error, title for error modal; otherwise an empty string
+        error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
+
+    '''
+    
+    logger.debug('Enter.')
+
+    try:
+        base_frames: dict[str, Any] = helpers.load_data(contents, filename)
+        logger.debug('Existing file data initialized.')
+        combined_frames: dict[str, Any]
+        combined_frames, status['qa_range'] = helpers.append(base_frames, new_frames)
+        status['qa_status']             = 'Ready'
+        logger.info(f'Base {len(base_frames["data"])}; New {len(new_frames["data"])}; Combined {len(combined_frames["data"])}')
+        logger.debug('Exit.')
+
+        return Serverside(combined_frames, key='Frames'), status, [], False, '', ''
+    except helpers.UnmatchedColumnsError as e:
+        logger.error(e)
+        logger.debug('Exit')
+        return no_update, no_update, no_update, True, 'Unmatched files', str(e)
+    except Exception as e:
+        logger.exception(e)
+        logger.error(f'File Read Error:\n{e}')
+        logger.debug('Exit.')
+        return no_update, no_update, no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+
