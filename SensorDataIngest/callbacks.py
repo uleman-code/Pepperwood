@@ -31,6 +31,7 @@ from   pathlib  import Path
 from   typing   import Any
 
 import logging
+import decorator
 
 import helpers                          # Local module implementing Dash-independent actions
 
@@ -39,8 +40,30 @@ import helpers                          # Local module implementing Dash-indepen
 ts_col:    str = 'TIMESTAMP'
 seqno_col: str = 'RECORD'
 
-logger      = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
-frame_store = {}
+logger:      logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
+frame_store: dict           = {}
+
+@decorator.decorator
+def log_func(fn, *args, **kwargs):
+    '''Function entry and exit logger, capturing exceptions as well.
+    
+    Very simplistic; no argument logging or execution timing.
+    '''
+    
+    ee_logger: logging.Logger = logging.getLogger(f'ingest.{__name__}')
+    ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
+
+    try:
+        out = fn(*args, **kwargs)
+    except PreventUpdate:               # Totally normal signal from a callback
+        ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
+        raise
+    except Exception as ex:
+        ee_logger.debug(f'<<< Exception: {ex}', exc_info=True, extra={'fname': fn.__name__})
+        raise
+
+    ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
+    return out
 
 @callback(
     Output('frame-store'   , 'data'    ),
@@ -50,6 +73,7 @@ frame_store = {}
     Input( 'files-status'  , 'data'    ),
     State( 'select-file'   , 'contents'),
 )
+@log_func
 def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     '''If one file was opened, load it.
     
@@ -69,7 +93,6 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
 
     '''
     
-    logger.debug('Enter.')
     filename: str = files_status['filename']
     unsaved:  str = files_status['unsaved']
 
@@ -82,12 +105,10 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     # - After a Save, the unsaved flag is False.
     if isinstance(filename, list) or not filename or 'qa_status' in files_status:
         logger.debug('Zero or multiple files, or in Append mode; nothing to show interactively.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
     if not unsaved:
         logger.debug('File was just saved; no change to loaded data.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
     contents: str = all_contents[0]          # We got here, so there is exactly one file
@@ -96,7 +117,6 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
         frames: dict[str, Any] = helpers.load_data(contents, filename)
 
         logger.debug('Data initialized.')
-        logger.debug('Exit.')
 
         # Keep the DataFrames store on the server. This avoids potentially large transfers between server
         # and browser, along with all the associated conversions (JSON) and encodings (base64). Instead,
@@ -107,7 +127,6 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
         return Serverside(frames, key='Frames'), False, '', ''
     except Exception as e:
         logger.error(f'File Read Error:\n{e}')
-        logger.debug('Exit.')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
 @callback(
@@ -119,6 +138,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     State(  'frame-store' , 'data'    ),
     running=[(Output('wait-please', 'display'), 'flex', 'none')]       # Show the busy indicator (Loader) while saving
 )
+@log_func
 def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     '''Save the data currently in memory in an Excel (.XLSX) file.
 
@@ -142,11 +162,9 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
                                     it's the same file(s) as previously loaded
     '''
 
-    logger.debug('Enter.')
 
     if ctx.triggered_id == 'files-status' and ('qa_status' not in files_status or files_status['qa_status'] != 'Complete'):
         logger.debug('Data is not ready to be saved.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
     if frames and 'data' in frames:         # If not initialized, it's not a dict; so check first if there's anything there
@@ -164,11 +182,9 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
         files_status = {k:v for k,v in files_status.items() if k in ['filename', 'unsaved']}
 
         logger.debug('File saved.')
-        logger.debug('Exit.')
         return contents, files_status, []
     else:
         logger.debug('Nothing to save.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
 @callback(
@@ -183,6 +199,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     State(  'select-file'  , 'filename'  ),
     State(  'show-data'    , 'children'  ),
 )
+@log_func
 def clear_load(all_contents: list[str], filenames: list[str], show_data: list[Any]) -> tuple:
     '''Clear all data in memory and on the screen, triggered by the Clear button or the loading of (a) new file(s) in the Upload component.
 
@@ -211,8 +228,6 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
         last-modified/children (str)  Empty string to clear
     '''
 
-    logger.debug('Enter.')
-
     status: dict[str, Any]
     if callback_context.triggered_id == 'clear-button':
         logger.debug('Responding to Clear button click. Reset files-status and select-file contents.')
@@ -233,8 +248,6 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     else:
         raise PreventUpdate                 # Contents cleared by another callback; nothing to do
 
-    logger.debug('Exit.')
-
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
     return status, contents, True, show_data[:3], None, None
 
@@ -243,6 +256,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     Output('load-label'  , 'c'),
     Input( 'files-status', 'data'),
 )
+@log_func
 def toggle_loaddata(status: dict[str, Any]) -> tuple:
     '''Disable the Load Data element when new data is loaded and not (yet) saved; re-enable when data is cleared or saved.
 
@@ -257,10 +271,8 @@ def toggle_loaddata(status: dict[str, Any]) -> tuple:
         load-label/c         (str)  Color for the Load Data area label: dimmed for disabled, black for enabled
     '''
 
-    logger.debug('Enter.')
     unsaved: bool = status['unsaved']
     logger.debug(f'Data {"not" if unsaved else "is"} saved{"" if unsaved else " or cleared"}; {"dis" if unsaved else "en"}able Load Data.')
-    logger.debug('Exit.')
     return unsaved, 'dimmed' if unsaved else 'black'
 
 @callback(
@@ -271,6 +283,7 @@ def toggle_loaddata(status: dict[str, Any]) -> tuple:
     Input( 'frame-store'   , 'data'    ),
     State( 'files-status'  , 'data'    ),
 )
+@log_func
 def show_columns(frames: dict, status: dict) -> tuple:
     ''' When data is loaded, populate the column selection element with checkboxes for all data columns (variables).
 
@@ -295,8 +308,6 @@ def show_columns(frames: dict, status: dict) -> tuple:
         select-columns/value  (list) Reset the current selection (uncheck all boxes)
     '''
 
-    logger.debug('Enter.')
-
     if frames and 'data' in frames:         # Make sure frames is a dict before checking for presence of data
         if status['unsaved']:
             logger.debug('DataFrame found. Populating variable selection list.')
@@ -307,13 +318,11 @@ def show_columns(frames: dict, status: dict) -> tuple:
             #       the same across data loggers or across time.
             checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in data.columns
                                               if c not in ['TIMESTAMP', 'RECORD']] 
-            logger.debug('Exit.')
             return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
         else:
             raise PreventUpdate
     else:
         logger.debug('No data; clear column selection element.')
-        logger.debug('Exit.')
         return 'none', '', [], []
 
 @callback(
@@ -322,6 +331,7 @@ def show_columns(frames: dict, status: dict) -> tuple:
     Input( 'select-columns', 'value'  ),
     State( 'frame-store'   , 'data'   ),
 )
+@log_func
 def draw_plots(showcols: list[str], frames: dict) -> tuple:
     '''Draw plots, one below the other, for each of the selected columns.
 
@@ -337,17 +347,14 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
                                        (otherwise you see an empty set of axes)
     '''
     
-    logger.debug('Enter.')
     if showcols:
         logger.debug('Columns selected; generating graphs.')
         data = frames['data']
         fig  = helpers.render_graphs(data, showcols)
 
-        logger.debug('Exit.')
         return fig, 'contents'
     else:
         logger.debug('No columns selected; clear the graphs.')
-        logger.debug('Exit.')
         return {}, 'none'
 
 @callback(
@@ -355,6 +362,7 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
     Output('save-xlsx'   , 'data'   , allow_duplicate=True),
     Input( 'files-status', 'data'   ),
 )
+@log_func
 def show_badge(files_status: dict) -> tuple:
     '''Respond to a Save action by showing a SAVED badge.
 
@@ -370,8 +378,6 @@ def show_badge(files_status: dict) -> tuple:
         save-xlsx/data      (obj) None, to clear the data
     '''
     
-    logger.debug('Enter.')
-
     # To show the badge, there must be a single file loaded and it must be saved. 
     # (The unsaved flag is also False if there nothing loaded.)
     filename: str = files_status['filename']
@@ -384,7 +390,6 @@ def show_badge(files_status: dict) -> tuple:
         logger.debug('Zero or multiple files loaded; hide Saved badge.')
         retval = 'none'
 
-    logger.debug('Exit.')
     return retval, None
 
 @callback(
@@ -393,6 +398,7 @@ def show_badge(files_status: dict) -> tuple:
     Output('clear-button' , 'disabled'),
     Input( 'files-status' , 'data'    ),
 )
+@log_func
 def toggle_save_clear(files_status: dict) -> tuple:
     '''If there's one file loaded, enable the Save and Clear buttons; otherwise, disable them.
 
@@ -407,11 +413,9 @@ def toggle_save_clear(files_status: dict) -> tuple:
         clear-button/disabled  True to disable (no data); False to enable (data in memory)
     '''
     
-    logger.debug('Enter.')
     filename: str   = files_status['filename']
     have_file       = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
     logger.debug(f'{"One file" if have_file else "Zero or multiple files"} in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
-    logger.debug('Exit.')
 
     return (False, False, False) if have_file else (True, True, True)
 
@@ -421,6 +425,7 @@ def toggle_save_clear(files_status: dict) -> tuple:
     Input( 'files-status' , 'data'    ),
     State( 'select-file'  , 'last_modified'),
 )
+@log_func
 def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
     '''If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
@@ -433,20 +438,17 @@ def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
         last-modified/children  (str) Formatted last-modified timestamp of the currently loaded file
     '''
 
-    logger.debug('Enter.')
-
     filename: str = files_status['filename'] # type: ignore
     if isinstance(filename, str) and filename and 'qa_status' not in files_status:         # Make sure there's only one file and we're not appending
         modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         
         logger.debug('Data in memory; show file information.')
-        logger.debug('Exit.')
         return filename, modified
     else:
         logger.debug('Zero or multiple files loaded, or in Append process; nothing to do.')
-        logger.debug('Exit.')
         raise PreventUpdate
     
+@log_func
 def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[list[dmc.Text], Any, Any]:
     '''Callback helper function: run the sanity/QA checks.
     
@@ -494,6 +496,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
     Input(  'files-status' , 'data'              ),
     Input(  'frame-store'  , 'data'              ),
 )
+@log_func
 def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, frames: dict) -> tuple[list[dmc.Text], bool, dict, Serverside[dict]]:
     '''Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -512,8 +515,6 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     '''
 
-    logger.debug('Enter.')
-
     disable_save = False            # This only gets turned on if sanity checks find a fatal data error.
     
     # if ctx.triggered_id == 'files-status' and 'qa_range' not in status:
@@ -523,12 +524,10 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
 
     if not frames or 'data' not in frames:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
-        logger.debug('Exit.')
         return ([],) + (no_update,)*3       # type: ignore
     
     if 'notes' in frames and 'qa_status' not in status:
         logger.debug('Notes worksheet already populated . Do nothing.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
     data  = frames['data']
@@ -564,7 +563,6 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
     report += qa_report
     report  = list({t.children:t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
-    logger.debug('Exit.')
     return report, disable_save, status, Serverside(frames, key='Frames')
 
 @callback(
@@ -573,6 +571,7 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
     Output('next-file'    , 'data'    , allow_duplicate=True),
     Input( 'files-status' , 'data'    ),
 )
+@log_func
 def setup_batch(files_status: dict) -> tuple:
     '''Set up for batch operation by starting the loop counter. Show a batch operation header.
 
@@ -596,23 +595,19 @@ def setup_batch(files_status: dict) -> tuple:
         
     '''
 
-    logger.debug('Enter.')
     filenames: str | list[str] = files_status['filename']
     if isinstance(filenames, str):
         logger.debug('No file or a single filename: not a batch.')
-        logger.debug('Exit.')
         raise PreventUpdate
     
     # When the batch is complete, the unsaved flag gets set to False.
     if not files_status['unsaved']:
         logger.debug('Batch already done. Do not start again.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
     logger.debug(f'Files loaded: {", ".join(filenames)}.')
     start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     next_file:  int = 0                  # This triggers the start of the loop over file_counter
-    logger.debug('Exit.')
     return 'Batch mode operation', [f'Started at {start_time}'], next_file
 
 @callback(
@@ -623,6 +618,7 @@ def setup_batch(files_status: dict) -> tuple:
     State(  'select-file' , 'filename'          ),
     State(  'select-file' , 'last_modified'     ),
 )
+@log_func
 def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int]) -> tuple:
     '''Increment the file counter if there are more files. This triggers the next batch item.
 
@@ -638,7 +634,6 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
         file-counter/data  (int)    The file counter value for the current batch item
     '''
 
-    logger.debug('Enter.')
     logger.debug(f'Next file index is {next_file}.')
 
     # Construct a whole new CardSection element, to be appended to the show-data area
@@ -648,10 +643,9 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
     this_file_info.children.children[1].display                          = 'flex'                                                                                               # type: ignore
     this_file_info.children.children[1].type                             = 'dots'                                                                                               # type: ignore
 
-    showdata = Patch()
+    showdata: Patch = Patch()
     showdata.append(this_file_info)
 
-    logger.debug('Exit.')
     return showdata, next_file
 
 @callback(
@@ -660,6 +654,7 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
     State(  'file-counter', 'data'              ),
     State(  'select-file',  'filename'          ),
 )
+@log_func
 def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     '''Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
@@ -674,16 +669,13 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
         filenames       The selected filenames (here only used to get the length of the batch)
     '''
 
-    logger.debug('Enter.')
     logger.debug(f'File counter is {file_counter}.')
     next_file: int = file_counter + 1
 
     if next_file >= len(filenames):
         logger.debug('Reached the end of the batch; stop operation.')
-        logger.debug('Exit.')
         raise PreventUpdate
     
-    logger.debug('Exit.')
     return next_file
 
 @callback(
@@ -696,6 +688,7 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     State(  'select-file' , 'contents'          ),
     # background=True,
  )
+@log_func
 def process_batch(file_counter: int, filenames: list[str], all_contents: list[str]) -> tuple:
     '''Process one file in the batch, without user involvement.
 
@@ -794,6 +787,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     State( 'files-status' , 'data'    ),
     Input( {'type': 'saved-badge', 'index': ALL}, 'display'),
 )
+@log_func
 def batch_done(files_status: dict, displays: list[str]) -> tuple:
     '''Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
     
@@ -813,8 +807,6 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
                                       it's the same file(s) as previously loaded
 '''
 
-    logger.debug('Enter.')
-
     if displays:            # This also gets triggered when all batch-related badges disappear
         logger.debug(f'There are {len(displays)} files in progress: {displays}')
 
@@ -823,15 +815,12 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
             files_status['unsaved'] = False
             end_time: Patch         = Patch()
             end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-            logger.debug('Exit.')
             return files_status, end_time, []
         else:
             logger.debug(f'Batch not complete; so far only {len([d for d in displays if d == 'inline'])} files.')
-            logger.debug('Exit.')
             raise PreventUpdate
     else:
         logger.debug('No batch in progress.')
-        logger.debug('Exit.')
         raise PreventUpdate
 
 @callback(
@@ -846,6 +835,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
     State( 'append-file' , 'filename'),
     Input( 'append-file' , 'contents'),
 )
+@log_func
 def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: str, contents: str) -> tuple:
     '''An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
     
@@ -872,8 +862,6 @@ def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: st
 
     '''
     
-    logger.debug('Enter.')
-
     try:
         base_frames: dict[str, Any] = helpers.load_data(contents, filename)
         logger.debug('Existing file data initialized.')
@@ -881,7 +869,6 @@ def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: st
         combined_frames, status['qa_range'] = helpers.append(base_frames, new_frames)
         status['qa_status']             = 'Ready'
         logger.info(f'Base {len(base_frames["data"])}; New {len(new_frames["data"])}; Combined {len(combined_frames["data"])}')
-        logger.debug('Exit.')
 
         return Serverside(combined_frames, key='Frames'), status, [], False, '', ''
     except helpers.UnmatchedColumnsError as e:
@@ -891,6 +878,5 @@ def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: st
     except Exception as e:
         logger.exception(e)
         logger.error(f'File Read Error:\n{e}')
-        logger.debug('Exit.')
         return no_update, no_update, no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 

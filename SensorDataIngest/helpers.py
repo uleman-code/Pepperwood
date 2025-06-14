@@ -4,6 +4,7 @@ import base64
 import io
 import logging
 import typing
+import decorator
 
 from   pathlib import Path
 from   typing  import Any
@@ -14,15 +15,34 @@ from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # 
 class UnmatchedColumnsError(ValueError):
     pass
 
+@decorator.decorator
+def log_func(fn, *args, **kwargs):
+    '''Function entry and exit logger, capturing exceptions as well.
+    
+    Very simplistic; no argument logging or execution timing.
+    '''
+    
+    ee_logger: logging.Logger = logging.getLogger(f'ingest.{__name__}')
+    ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
+
+    try:
+        out = fn(*args, **kwargs)
+    except Exception as ex:
+        ee_logger.debug(f'<<< Exception: {ex}', exc_info=True, extra={'fname': fn.__name__})
+        raise
+
+    ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
+    return out
+
 # The following are subject to revision. They may be used by more than one function.
-
 # TODO: Should these worksheet names be data-driven (e.g., from a configuration file)?
-worksheet_names   = 'Data Columns Meta Notes'.split()
-qa_report_columns = ['Start of issue', 'End of issue', 'Sensor or Data Field', 'Data Omitted', 'Nature of problem']
+worksheet_names:   list[str] = ['Data', 'Columns', 'Meta', 'Notes']
+qa_report_columns: list[str] = ['Start of issue', 'End of issue', 'Sensor or Data Field', 'Data Omitted', 'Nature of problem']
 
-logger = logging.getLogger(f'Ingest.{__name__.capitalize()}')        # Child logger inherits root logger settings
+logger: logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
 pd.set_option('plotting.backend', 'plotly')
 
+@log_func
 def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]: 
     '''Load a data file (CSV, .dat or .csv suffix; or Excel) and return three DataFrames: data, metadata, and site data.
 
@@ -48,7 +68,6 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
         Four or three DataFrames: data, metadata, site data, and (unless from an early version) QA notes
     '''
 
-    logger.debug('Enter.')
     logger.debug(f'Uploaded contents: {contents[:80]}')
 
     content_string: str
@@ -105,9 +124,9 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
         raise
 
     logger.debug('DataFrames for data, metadata, and site data populated.')
-    logger.debug('Exit.')
     return frames
 
+@log_func
 def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> bytes:
     '''Save three DataFrames to a single Excel file buffer: data, (column) metadata, and site data.
 
@@ -122,7 +141,6 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     '''
 
-    logger.debug('Enter.')
     buffer: io.BytesIO                               = io.BytesIO()
     sheets: dict[typing.LiteralString, pd.DataFrame] = dict(zip(worksheet_names, frames.values()))
 
@@ -141,9 +159,9 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
                 xl.sheets[sheet].set_column(column_index, column_index, column_width)
 
     logger.debug('Excel file buffer written.')
-    logger.debug('Exit.')
     return buffer.getvalue()            # Must return a byte string, not the IO buffer itself
 
+@log_func
 def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
     '''For each of the selected columns, generate a Plotly graph.
 
@@ -157,7 +175,6 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
         A Plotly Figure containing all graphs
     '''
 
-    logger.debug('Enter.')
     df_show: pd.DataFrame = df_data.set_index('TIMESTAMP')[showcols]            # TIMESTAMP is the independent (X-axis) variable for all plots
     
     # Using Plotly facet graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
@@ -170,7 +187,6 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
           )
     
     logger.debug('Plot generated.')
-    logger.debug('Exit.')
     return fig
 
 # def ts_is_regular(timeseries: pd.Series, interval_minutes: int = 15) -> bool:
@@ -184,9 +200,7 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
 #         True if interval between all pairs of consecutive values equals interval_minutes; otherwise False
 #     '''
 
-#     logger.debug('Enter.')
 #     is_regular: bool = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
-#     logger.debug('Exit.')
 
 #     return is_regular
 
@@ -200,12 +214,11 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
 #         True if difference between all pairs of consecutive values is one; otherwise False
 #     '''
 
-#     logger.debug('Enter.')
 #     is_regular: bool = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
-#     logger.debug('Exit.')
 
 #     return is_regular
 
+@log_func
 def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD') -> pd.DataFrame:
     '''Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
@@ -235,7 +248,6 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seq
         ValueError, if an instance of case 3 is found.
     '''
 
-    logger.debug('Enter.')
 
     # Get just the rows with repeated timestamps. Usually empty.
     # In what follows, ignore the sequence number column. It is not a sensor data variable and we don't care about it.
@@ -250,17 +262,16 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seq
 
     if len(nunique) and max(nunique) > 1:           # max() doesn't deal with an empty argument, so test for content
         logger.info('Duplicate timestamps found.')
-        logger.debug('Exit.')
         raise ValueError(f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel.')
     else:
         if len(ts_repeat):
             logger.info('Duplicate samples found.')
-        logger.debug('Exit.')
         return pd.DataFrame(dict(zip(qa_report_columns,
                                      [ts_repeat, ts_repeat, 'All', 'No', 
                                       f'Repeated samples; {len(df_repeat) - len(ts_repeat)} duplicate(s) removed.'])),
                             columns=qa_report_columns)
 
+@log_func
 def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Series | slice, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
     '''Construct a missing-value report for each occurrence or range of missing values in a given column.
     
@@ -286,7 +297,6 @@ def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Ser
         A DataFrame (possibly empty) with the rows representing the report
     '''
 
-    logger.debug('Enter.')
     
     nan_mask: pd.Series[bool]
 
@@ -316,9 +326,9 @@ def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Ser
     if not report.empty:
         logger.info(f'Missing values found in column {column}.')
 
-    logger.debug('Exit.')
     return report
 
+@log_func
 def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
                       seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
     '''Complete a regular time series by inserting NaN-valued records wherever there are gaps.
@@ -345,7 +355,6 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
         The input DataFrame, with zero or more new rows inserted
     '''
 
-    logger.debug('Enter.')
     df_fixed: pd.DataFrame = (df
                               .set_index(timestamp_column, drop=True)
                               .drop(columns=seqno_column)               # Will reconstruct later
@@ -355,9 +364,9 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
                               .loc[:, df.columns]                       # Restore the original column order
                              ) # type: ignore
 
-    logger.debug('Exit.')
     return df_fixed
 
+@log_func
 def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
                            seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
     '''Given the datetime index before and after insertion of missing rows, report what was found and changed.
@@ -384,7 +393,6 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
         A DataFrame (possibly empty) with the rows representing the report
     '''
 
-    logger.debug('Enter.')
     inserted_timestamps: pd.Series     = new_dt_index.difference(old_dt_index).to_series(name='')
     grouped:             SeriesGroupBy = (inserted_timestamps
                                           .groupby(inserted_timestamps
@@ -405,9 +413,9 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     if not report.empty:
         logger.info('Missing samples found.')
 
-    logger.debug('Exit.')
     return report
 
+@log_func
 def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None,
            timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD', interval: str = '15min'
           ) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
@@ -470,7 +478,6 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
     except ValueError as err:
         # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
         logger.info(err)
-        logger.debug('Exit.')
         raise
 
     variable_columns:      pd.Index[str] = df_fixed.columns.drop([timestamp_column, seqno_column])
@@ -495,9 +502,9 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
 
     report = pd.concat([df_notes, duplicates_report, missing_values_report, missing_samples_report]).sort_values(['Start of issue', 'End of issue'])
 
-    logger.debug('Exit.')
     return duplicates_found, missing_values_found, missing_samples_found, report, df_fixed
 
+@log_func
 def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFrame], timestamp_column: str = 'TIMESTAMP',
            seqno_column: str = 'RECORD') -> tuple[dict[str, pd.DataFrame], list[str]]:
     '''Append new sensor data to an existing set.
@@ -532,7 +539,6 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
                                 do not match between the two files
     '''
 
-    logger.debug('Enter.')
 
     if not base_frames['data'].columns.drop(seqno_column).equals(new_frames['data'].columns.drop(seqno_column)):
         raise UnmatchedColumnsError('The two files are not compatible because their column lists do not match.')
@@ -592,5 +598,4 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
     if not base_frames['site'].equals(new_frames['site']):
         logger.warning('The site worksheets do not match. Keep the newer one.')
     
-    logger.debug('Exit.')
     return combined_frames, qa_range
