@@ -141,8 +141,8 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     '''
 
-    buffer: io.BytesIO                               = io.BytesIO()
-    sheets: dict[typing.LiteralString, pd.DataFrame] = dict(zip(worksheet_names, frames.values()))
+    buffer: io.BytesIO              = io.BytesIO()
+    sheets: dict[str, pd.DataFrame] = dict(zip(worksheet_names, frames.values()))
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
