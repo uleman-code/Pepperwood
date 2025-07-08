@@ -13,3 +13,5 @@ Usage:
     This starts a web server; using a browser, open localhost:8050 (or whichever port is listed in the response
     to running the script).
 '''
+
+__version__: str = '0.5'        # Placeholder. Need a proper versioning setup
