@@ -12,9 +12,7 @@ from pathlib   import Path
 from layout    import layout
 from callbacks import *           # In this case, a star import is acceptable: we want to define all callbacks but won't call them directly.
 
-def main():
-    _dash_renderer._set_react_version('18.2.0')     # Required by Dash Mantine Components 0.14.3; the need should go away in a future release.
-
+def main() -> None:
     # Set up logging.
     # Write logs to a subdirectory of the current directory (from where the script was started).
     # TODO: Set this up to be overridden by a command-line argument
