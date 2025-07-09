@@ -412,11 +412,20 @@ def toggle_save_clear(files_status: dict) -> tuple:
         clear-button/disabled  True to disable (no data); False to enable (data in memory)
     '''
     
-    filename: str   = files_status['filename']
-    have_file       = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
-    logger.debug(f'{"One file" if have_file else "Zero or multiple files"} in memory. {"En" if have_file else "Dis"}able Save and Clear buttons.')
+    filename: str = files_status['filename']
+    have_file     = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
+    do_not_save   = 'qa_status' in files_status and files_status['qa_status'] == 'Do not save'
 
-    return (False, False, False) if have_file else (True, True, True)
+    if have_file:
+        if do_not_save:
+            logger.debug('One file in memory, but a data problem makes it unwise to save. Enable Clear but disable Save and Append buttons.')
+            return True, True, False
+        else:
+            logger.debug('One file in memory. Enable Save, Append, and Clear buttons.')
+            return (False,)*3
+    else:
+        logger.debug('Zero or multiple files in memory. Disable Save, Append and Clear buttons.')
+        return (True,)*3
 
 @callback(
     Output('file-name'    , 'children'),
@@ -438,9 +447,10 @@ def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
     '''
 
     filename: str = files_status['filename'] # type: ignore
-    if isinstance(filename, str) and filename and 'qa_status' not in files_status:         # Make sure there's only one file and we're not appending
+    
+    # Make sure there's only one file and we're not appending.
+    if isinstance(filename, str) and filename and 'qa_status' not in files_status or files_status['qa_status'] == 'Do not save':
         modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
-        
         logger.debug('Data in memory; show file information.')
         return filename, modified
     else:
@@ -488,7 +498,8 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
 
 @callback(
     Output( 'sanity-checks', 'children'          ),
-    Output( 'save-button'  , 'disabled'          , allow_duplicate=True),
+    # Output( 'save-button'  , 'disabled'          , allow_duplicate=True),
+    # Output( 'append-button', 'disabled'          , allow_duplicate=True),
     Output( 'files-status' , 'data'              , allow_duplicate=True),
     Output( 'frame-store'  , 'data'              , allow_duplicate=True),
     State(  'sanity-checks', 'children'          ),
@@ -496,7 +507,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
     Input(  'frame-store'  , 'data'              ),
 )
 @log_func
-def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, frames: dict) -> tuple[list[dmc.Text], bool, dict, Serverside[dict]]:
+def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, frames: dict) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     '''Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
     If anything like data dropouts is found, record that in a separate DataFrame, which will become
@@ -510,7 +521,6 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
-        save-button/disabled    Disable Save if duplicate timestamps found
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     '''
 
@@ -518,7 +528,7 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
     
     if not frames or 'data' not in frames:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
-        return ([],) + (no_update,)*3       # type: ignore
+        return [], no_update, no_update      # type: ignore
     
     if 'notes' in frames and 'qa_status' not in status:
         logger.debug('Notes worksheet already populated . Do nothing.')
@@ -551,13 +561,14 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
     try:
         qa_report, frames['notes'], frames['data']  = run_sanity_checks(data, notes, qa_range)
     except ValueError as err:                               # Duplicate timestamp with distinct variable values found
-        disable_save = True                                 # Do not save; requires manual intervention
-        qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+        disable_save        = True                          # Do not save; requires manual intervention
+        qa_report           = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+        status['qa_status'] = 'Do not save'
 
     report += qa_report
     report  = list({t.children:t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
-    return report, disable_save, status, Serverside(frames, key='Frames')
+    return report, status, Serverside(frames, key='Frames')
 
 @callback(
     Output('file-name'    , 'children', allow_duplicate=True),
@@ -861,13 +872,12 @@ def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: st
         logger.debug('Existing file data initialized.')
         combined_frames: dict[str, Any]
         combined_frames, status['qa_range'] = helpers.append(base_frames, new_frames)
-        status['qa_status']             = 'Ready'
+        status['qa_status']                 = 'Ready'
         logger.info(f'Base {len(base_frames["data"])}; New {len(new_frames["data"])}; Combined {len(combined_frames["data"])}')
 
         return Serverside(combined_frames, key='Frames'), status, [], False, '', ''
     except helpers.UnmatchedColumnsError as e:
         logger.error(e)
-        logger.debug('Exit')
         return no_update, no_update, no_update, True, 'Unmatched files', str(e)
     except Exception as e:
         logger.exception(e)
