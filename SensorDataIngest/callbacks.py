@@ -414,7 +414,7 @@ def toggle_save_clear(files_status: dict) -> tuple:
     
     filename: str = files_status['filename']
     have_file     = bool(filename and isinstance(filename, str))      # Must coerce type to avoid non-boolean result if filename is empty
-    do_not_save   = 'qa_status' in files_status and files_status['qa_status'] == 'Do not save'
+    do_not_save   = 'no_save' in files_status and files_status['no_save']
 
     if have_file:
         if do_not_save:
@@ -449,7 +449,7 @@ def show_file_info(files_status: dict[str, str|bool], last_modified: list[int]):
     filename: str = files_status['filename'] # type: ignore
     
     # Make sure there's only one file and we're not appending.
-    if isinstance(filename, str) and filename and 'qa_status' not in files_status or files_status['qa_status'] == 'Do not save':
+    if isinstance(filename, str) and filename and 'qa_status' not in files_status:
         modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime('%Y-%m-%d %H:%M:%S')}'
         logger.debug('Data in memory; show file information.')
         return filename, modified
@@ -561,9 +561,8 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
     try:
         qa_report, frames['notes'], frames['data']  = run_sanity_checks(data, notes, qa_range)
     except ValueError as err:                               # Duplicate timestamp with distinct variable values found
-        disable_save        = True                          # Do not save; requires manual intervention
-        qa_report           = [dmc.Text(str(err), c='red', h='sm', ta='right')]
-        status['qa_status'] = 'Do not save'
+        qa_report         = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+        status['no_save'] = True                            # Do not save; requires manual intervention
 
     report += qa_report
     report  = list({t.children:t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
