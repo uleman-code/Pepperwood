@@ -16,11 +16,10 @@ from   dash_extensions.enrich  import (
                                    callback_context,
                                    Serverside,
                                    Trigger,
-                                   ctx,
+                                   set_props,
                                )
 from   dash                    import (             # A few definitions are not yet surfaced by dash-extensions
                                    Patch,
-                                   set_props,
                                )
 from   dash.exceptions         import PreventUpdate
 import dash_mantine_components as     dmc
@@ -163,7 +162,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     '''
 
 
-    if ctx.triggered_id == 'files-status' and ('qa_status' not in files_status or files_status['qa_status'] != 'Complete'):
+    if callback_context.triggered_id == 'files-status' and not ('qa_status' in files_status and files_status['qa_status'] == 'Complete'):
         logger.debug('Data is not ready to be saved.')
         raise PreventUpdate
 
@@ -517,11 +516,6 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
 
     disable_save = False            # This only gets turned on if sanity checks find a fatal data error.
     
-    # if ctx.triggered_id == 'files-status' and 'qa_range' not in status:
-    #     logger.debug('Files status changed but not in Append mode. Do nothing.')
-    #     logger.debug('Exit.')
-    #     raise PreventUpdate
-
     if not frames or 'data' not in frames:                                     
         logger.debug('No data loaded. Clear the sanity check reports.')
         return ([],) + (no_update,)*3       # type: ignore
