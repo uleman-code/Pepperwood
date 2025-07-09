@@ -172,7 +172,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
         # is a custom function specific to this app.
-        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
+        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile) # type: ignore
         files_status['unsaved']         = False
 
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
@@ -764,7 +764,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     # Dash provides a convenience function to create the required dictionary. That function in turn
     # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
     # is a custom function specific to this app.
-    data_for_download: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
+    data_for_download: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile) # type: ignore
     logger.debug(f'({file_counter}) Got byte string for Download.')
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
     logger.debug(f'({file_counter}) Download complete. Clean up.')
