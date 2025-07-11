@@ -7,7 +7,7 @@ import typing
 import decorator
 
 from   pathlib import Path
-from   typing  import Any
+from   typing  import Any, Callable
 import pandas  as     pd
 
 from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
@@ -16,10 +16,18 @@ class UnmatchedColumnsError(ValueError):
     pass
 
 @decorator.decorator
-def log_func(fn, *args, **kwargs):
+def log_func(fn: Callable, *args, **kwargs) -> Any:
     '''Function entry and exit logger, capturing exceptions as well.
     
-    Very simplistic; no argument logging or execution timing.
+    Very simplistic wrapper; no argument logging or execution timing.
+
+    Parameters:
+        fn      The function to be wrapped
+        args    Positional arguments to be passed into the function
+        kwargs  Keyword argments to be passed into the function
+
+    Returns:
+        The wrapped function's result
     '''
     
     ee_logger: logging.Logger = logging.getLogger(f'ingest.{__name__}')
