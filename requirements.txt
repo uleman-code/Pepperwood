@@ -8,3 +8,4 @@ dash_mantine_components==2.1.0
 decorator==5.2.1
 pandas==2.3.1
 plotly==6.2.0
+xlsxwriter==3.2.5
