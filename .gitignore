@@ -1,6 +1,6 @@
 __pycache__
 testing.ipynb
-*.spec
+# *.spec
 .DS_Store
 .vscode/
 .venv*/
