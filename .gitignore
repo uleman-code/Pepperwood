@@ -1,9 +1,12 @@
 __pycache__
 testing.ipynb
+*.spec
 .DS_Store
 .vscode/
 .venv*/
 cache/
 logs/
+build/
+dist*/
 file_system_backend/
 launch.json
