@@ -1,6 +1,5 @@
 __pycache__
 testing.ipynb
-*.pyc
 .DS_Store
 .vscode/
 .venv*/
