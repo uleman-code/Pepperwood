@@ -5,40 +5,51 @@ An interactive application for:
 - Visually inspecting the various time series contained in the files
 - Saving the data, along with column metadata and site information, in Excel workbooks
 
-## Installation (Windows only)
-### Prerequisite: Python 3.12.2
-Due to the use of libraries that do not yet support the latest versions of Python,<br/>this application requires version 3.12.2.
-1. Get the Windows web installer for Python 3.12.2 at<br/>https://www.python.org/ftp/python/3.12.2/python-3.12.2-amd64.exe
-1. Go through the Windows installer process:
-    - On the first screen,
-        - Check the box **Add Python 3.12 to PATH**
-        - Choose **Install Now**
-    - Beware of long paths.
-        - Deep hierarchies of directories with long names; may require a policy or registry change.
-1. Verify that the Python launcher was installed: Enter the following command in a command window.<br/>
-`py --list`<br/>
-This should show the currently installed version.
+## Installation (Windows ONLY)
+1. Go to [https://github.com/uleman-code/Pepperwood/blob/main/SensorDataIngest/ingest.exe](ingest.exe).
+1. Download the executable file (click <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/b824f999-f1ed-48b3-be5b-9dd6041b02ad" />).
+1. Save into a folder of your choice, or, if all downloads are saved automatically (for example, in your Downloads folder), copy the file there.
+    - For example, `C:\Users\<your-user-name>\AppData\Local`. But any location where you can easily find it will do.
+1. (Optional) Create a shortcut and put it on the taskbar and/or the desktop.
+    - Tip: Give it a more descriptive name, like "Ingest Sensor Data".
+
+## Running the application (Windows ONLY)
+Double-click on the filename or <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/1523a0ff-3153-4274-b94c-9d5f09c30125" />
+icon or shortcut (single-click in the taskbar). A command window will open:
+
+<img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
+
+Keep this window open (minimizing is okay); as you use the app, further messages informational messages will appear.
+
+Point your browser at http://localhost:8050/.
+- Note: `localhost` is a synonym for `127.0.0.1`, shown in the screen shot above.
+
+You can leave this program running indefinitely; it's only providing a simple web server, which should not interfere with anything when idle.
+
+To shut down, simply close the command window.
+
+------
+## Installation (non-Windows. WARNING: THIS PROCEDURE IS NOT TESTED; RESULTS NOT GUARANTEED)
+### Prerequisite: Python 3.12 or later
 
 ### Installing the application itself
 1. Download the zip file from https://github.com/uleman-code/Pepperwood/archive/refs/heads/main.zip
     - The downloaded file is `Pepperwood-main.zip`.
 1. Unzip the downloaded file in a directory of your choice.
-    - This creates `…\your-directory\Pepperwood-main`, with files and a subdirectory.
+    - This creates `…/your-directory/Pepperwood-main`, with files and a subdirectory.
         - NOTE: if the directory and files already exist, this will overwrite the earlier contents.
-1. Open a command window (or PowerShell).
-    1. Change directory to `…\Pepperwood-main`.
-    1. (**SKIP IF UPDATING AN EXISTING INSTALLATION**) Create a virtual environment in either type of window <br/>(CMD = Command, PS = PowerShell):<br/>
-        **CMD** `python -m venv .venv`<br/>
-        **PS** `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
-    1. Activate the virtual environment (again, Command window or PowerShell):<br/>
-        **CMD** `.venv\Scripts\activate.bat`<br/>
-        **PS** `.venv\Scripts\Activate.ps1`
+1. Open a terminal window.
+    1. Change directory to `…/Pepperwood-main`.
+    1. (**SKIP IF UPDATING AN EXISTING INSTALLATION**) Create a virtual environment:<br/>
+        `python -m venv .venv`<br/>
+    1. Activate the virtual environment:<br/>
+        `source .venv\bin\activate`<br/>
     1. Install the required packages:<br/>
         `pip install -r requirements.txt`
 
-## Running the application (Windows only)
+## Running the application
 Either:
-1. In a CMD or PS window, change directory to `…\Pepperwood-main\SensorDataIngest`.
+1. In a terminal window, change directory to `…\Pepperwood-main\SensorDataIngest`.
 1. Issue this command:<br/>
    `python ingest.py`<br/>
    This prints out something like this:
@@ -50,10 +61,6 @@ Dash is running on http://127.0.0.1:8050/
 Ingest|INFO Interactive ingest application started.
 Ingest|INFO Logging directory is C:\...\Pepperwood\SensorDataIngest\logs.
 ```
-or:
-1. In the File Explorer, navigate to `…\Pepperwood-main\SensorDataIngest`.
-1. Double-click on the Python file, `ingest.py`.
-    - **Optional:** Make a shortcut/launcher for this.
 
 and then:
 
