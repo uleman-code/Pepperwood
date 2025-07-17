@@ -14,7 +14,7 @@ An interactive application for:
     - Tip: Give it a more descriptive name, like "Ingest Sensor Data".
 
 ## Running the application (Windows ONLY)
-Double-click on the filename or <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/1523a0ff-3153-4274-b94c-9d5f09c30125" />
+Double-click on the `ingest.exe` filename or <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/1523a0ff-3153-4274-b94c-9d5f09c30125" />
 icon or shortcut (single-click in the taskbar). A command window will open:
 
 <img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
