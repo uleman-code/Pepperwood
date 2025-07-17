@@ -19,7 +19,7 @@ icon or shortcut (single-click in the taskbar). A command window will open:
 
 <img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
 
-Keep this window open (minimizing is okay); as you use the app, further messages informational messages will appear.
+Keep this window open (minimizing is okay); as you use the app, further informational messages will appear.
 
 Point your browser at http://localhost:8050/.
 - Note: `localhost` is a synonym for `127.0.0.1`, shown in the screen shot above.
