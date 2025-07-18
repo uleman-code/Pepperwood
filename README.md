@@ -6,8 +6,7 @@ An interactive application for:
 - Saving the data, along with column metadata and site information, in Excel workbooks
 
 ## Installation (Windows ONLY)
-1. Go to [https://github.com/uleman-code/Pepperwood/blob/main/SensorDataIngest/ingest.exe](ingest.exe).
-1. Download the executable file (click <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/b824f999-f1ed-48b3-be5b-9dd6041b02ad" />).
+1. Download the executable file `ingest.exe` by clicking [https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/SensorDataIngest/ingest.exe](this link).
 1. Save into a folder of your choice, or, if all downloads are saved automatically (for example, in your Downloads folder), move the file to its preferred location.
     - For example, `C:\Users\<your-user-name>\AppData\Local`. But any location where you can easily find it will do.
 1. (Optional) Create a shortcut and put it on the taskbar and/or the desktop.
