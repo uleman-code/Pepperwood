@@ -18,6 +18,7 @@ Double-click on the `ingest.exe` filename or <img width="32" height="32" alt="im
 icon or shortcut (single-click in the taskbar). A command window will open:
 
 <img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
+(The directory shown in this screenshot depend on where the executable happens to be stored, and will be different for you.)
 
 Keep this window open (minimizing is okay); as you use the app, further informational messages will appear.
 
@@ -29,10 +30,11 @@ You can leave this program running indefinitely; it's only providing a simple we
 To shut down, simply close the command window.
 
 ------
-## Installation (non-Windows. WARNING: THIS PROCEDURE IS NOT TESTED; RESULTS NOT GUARANTEED)
+## Non-Windows installation
+**WARNING: THIS PROCEDURE IS NOT TESTED; RESULTS NOT GUARANTEED**
 ### Prerequisite: Python 3.12 or later
 
-### Installing the application itself
+### Installation (MacOS, Linux)
 1. Download the zip file from https://github.com/uleman-code/Pepperwood/archive/refs/heads/main.zip
     - The downloaded file is `Pepperwood-main.zip`.
 1. Unzip the downloaded file in a directory of your choice.
@@ -47,7 +49,7 @@ To shut down, simply close the command window.
     1. Install the required packages:<br/>
         `pip install -r requirements.txt`
 
-## Running the application
+## Running the application (MacOS, Linux)
 Either:
 1. In a terminal window, change directory to `…\Pepperwood-main\SensorDataIngest`.
 1. Issue this command:<br/>
