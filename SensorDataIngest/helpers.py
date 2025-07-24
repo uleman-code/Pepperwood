@@ -274,9 +274,16 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seq
     else:
         if len(ts_repeat):
             logger.info('Duplicate samples found.')
-        return pd.DataFrame(dict(zip(qa_report_columns,
-                                     [ts_repeat, ts_repeat, 'All', 'No', 
-                                      f'Repeated samples; {len(df_repeat) - len(ts_repeat)} duplicate(s) removed.'])),
+        grouper: pd.Series     = (ts_repeat
+                                  .diff()                 # This compares each index label with its predecessor
+                                  .bfill()                # The first one has no predecessor so becomes NaN; copy the first diff value (this actually works)
+                                  .ne(1)                  # Only the ones after a gap become True/1
+                                  .cumsum()               # This increments after each gap
+                                 )
+        grouped: SeriesGroupBy = ts_repeat.groupby(grouper)
+        num_removed: int = len(df_repeat) - len(ts_repeat)
+        return pd.DataFrame(dict(zip(qa_report_columns, [grouped.first(), grouped.last(), 'All', 'No',
+                            f'Repeated samples; {num_removed} duplicate{"s" if num_removed > 1 else ""} removed.'])),
                             columns=qa_report_columns)
 
 @log_func
