@@ -16,10 +16,10 @@ from   dash_extensions.enrich  import (
                                    callback_context,
                                    Serverside,
                                    Trigger,
-                                   set_props,
                                )
 from   dash                    import (             # A few definitions are not yet surfaced by dash-extensions
                                    Patch,
+                                   set_props,
                                )
 from   dash.exceptions         import PreventUpdate
 import dash_mantine_components as     dmc
