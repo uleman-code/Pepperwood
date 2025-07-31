@@ -120,7 +120,12 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
             try:
                 frames['notes'] = pd.read_excel(buffer, sheet_name=worksheet_names[3])
-                logger.info('Notes worksheet found. Unless in Append mode, will copy worksheets unaltered upon save.')
+                logger.info('Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.')
+
+                # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
+                # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
+                if 'Link' in frames['notes'].columns:
+                    frames['notes'].drop(columns='Link') 
             except ValueError as e:                 # Worksheet named 'Notes' not found
                 logger.info('No Notes worksheet in this file. Will perform QA and write new worksheet upon save.')
         else:
@@ -149,21 +154,32 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     '''
 
-    buffer: io.BytesIO              = io.BytesIO()
+    # The worksheet names in the Excel file are not necessarily the same as keys in frames. But they
+    # are in the same order.
     sheets: dict[str, pd.DataFrame] = dict(zip(worksheet_names, frames.values()))
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
+    buffer: io.BytesIO = io.BytesIO()
     with pd.ExcelWriter(buffer) as xl:
         for sheet, df in sheets.items():
             logger.debug(f'Writing {type(df).__name__} to sheet {sheet}.')
-            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == 'Data' else '')
+
+            if sheet == worksheet_names[-1]:            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
+                df.insert(1, 'Link', [f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names[0]}!$A:$A,MATCH($A{row},{worksheet_names[0]}!$A:$A,0))),"   🔗")'
+                                      for row in range(2, len(df)+2)])
+
+            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == worksheet_names[0] else '')
 
             # Automatically adjust column widths to fit all text, including the column header
-            # NOTE: this may be an expensive operation. Beware of large files!
-            for column in df.columns:
-                column_width: int = pd.concat([df[column], pd.Series([column])]).astype(str).str.len().max()
-                column_index: int = df.columns.get_loc(column)  # type: ignore
+            # NOTE: This may be an expensive operation. Beware of large files!
+            # NOTE: This is only approximate; it's based on the number of characters in strings and numbers, not
+            #       what it actually looks like in Excel on the user's system.
+            for column_index, column in enumerate(df.columns):
+                # The Link column contains nothing but single hyperlink characters, so only check the column header to set the width.
+                header:   pd.Series = pd.Series([column])
+                to_check: pd.Series = header if column == 'Link' else pd.concat([header, df[column]])
+                column_width: int   = to_check.astype(str).str.len().max()
                 xl.sheets[sheet].set_column(column_index, column_index, column_width)
 
     logger.debug('Excel file buffer written.')
