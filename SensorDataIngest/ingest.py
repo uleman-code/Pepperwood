@@ -18,9 +18,6 @@ def main() -> None:
     # TODO: Set this up to be overridden by a command-line argument
     # If logging_dir does not exist, create it.
     # The current setup errors out if logging_dir exists but is not a directory (because then creating the log file fails).
-
-    _dash_renderer._set_react_version('18.2.0')     # Should no longer be required by Dash Mantine Components > 2.0 but for some reason it is.
-
     current_dir = Path('.')
     logging_dir = current_dir / 'logs'
 
