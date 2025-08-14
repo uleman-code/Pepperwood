@@ -335,8 +335,8 @@ def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Ser
     # In Append mode, limit the part of the time series analyzed.
     # But the mask that drives the analysis must have the same length as the DataFrame, initialized to False.
     if isinstance(qa_range, pd.Series):
-        nan_mask                  = pd.Series(False, index=df.index)
-        nan_mask[qa_range]        = df.loc[qa_range, column].isna()
+        nan_mask           = pd.Series(False, index=df.index)
+        nan_mask[qa_range] = df.loc[qa_range, column].isna()
     else:
         nan_mask = df[column].isna()
 
@@ -571,35 +571,75 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
                                 do not match between the two files
     '''
 
-
-    if not base_frames['data'].columns.drop(seqno_column).equals(new_frames['data'].columns.drop(seqno_column)):
-        raise UnmatchedColumnsError('The two files are not compatible because their column lists do not match.')
+    # Sanity check: yes, the schema may evolve, but the two files must have at least some columns in common.
+    # This should catch the most egregious mistakes, trying to combine files from completely different sets of sensors,
+    # while not causing too many false rejections.
+    df_base:      pd.DataFrame = base_frames['data']
+    df_new:       pd.DataFrame = new_frames['data']
+    base_columns: pd.Index     = df_base.columns
+    new_columns:  pd.Index     = df_new.columns
+    if base_columns.drop([timestamp_column, seqno_column]).intersection(new_columns.drop([timestamp_column, seqno_column])).empty:
+        raise UnmatchedColumnsError('The two files are not compatible because their column lists are completely different. ' +
+                                    'They are probably not from the same source.')
     
-    # Be sure to keep the ordering of the frames dict the same by assigning the frames in order: data, meta, site, notes.
-    # Concatenate the actual data; put the time series in order (just in case the files were loaded in the "wrong" order);
-    # reset the index (leave renumbering the sequence number column till after sanity checks).
-    combined_frames: dict[str, pd.DataFrame] = {}
-    combined_frames['data']                  = (pd.concat([base_frames['data'], new_frames['data']])
-                                                .sort_values(timestamp_column)
-                                                .reset_index(drop=True)
-                                               )
+    # Be sure to keep the ordering of the frames dict constant by assigning the frames in order: data, meta, site, notes.
+    # This determines the order in which the corresponding worksheets appear in the Excel file.
+    combined_frames: dict[str, pd.DataFrame] = {'data': pd.DataFrame([]), 'meta': pd.DataFrame([]),
+                                                'site': pd.DataFrame([]), 'notes': pd.DataFrame([])}
+
+    # Concatenate the actual data; put the time series in order (making it independent of whether the "new" file is actually
+    # newer or not); reset the index (leave renumbering the sequence number column till after sanity checks).
+    # Pandas concat already deals with any changes to the column list mostly in the way you'd expect:
+    #   - Columns of the same name are concatenated regardless of the order in which they appear in the list.
+    #       - Their position in the list is the same as in the new file; this allows any reshuffling to take hold and not be undone.
+    #   - In case of a change in column order, the first-mentioned frame prevails--in this case, the new file.
+    #   - A new column (not present in the base file) appears in the right position in the list.
+    #   - A dropped column (not present in the new file) ends up at the end of the list; this needs to be corrected separately.
+    #   - A renamed column looks like a combination of a dropped column and a new column; this can be consolidated later, once
+    #     we have a mechanism for loading metadata that includes column aliases.
+    combined_frames['data'] = pd.concat([df_new, df_base]).sort_values(timestamp_column).reset_index(drop=True)
+
+    # Fix up the case of dropped column(s). See the fourth item in the previous comment.
+    dropped_columns:  pd.Index = base_columns.difference(new_columns)
+    added_columns:    pd.Index = new_columns.difference(base_columns)
+    combined_columns: list     = combined_frames['data'].columns.to_list()           # Use a list to do insert() and pop()
+    for col in dropped_columns:
+        idx: int = base_columns.get_loc(col) + 1       # type: ignore
+        while idx < len(base_columns) and base_columns[idx] not in new_columns:     # Skip to the next column that was kept in the new file
+            idx += 1
+        
+        # If no kept columns found after this one, it and any dropped columns after it can just stay at the end of the list.
+        if idx >= len(base_columns):
+            continue
+        
+        combined_columns.insert(combined_columns.index(base_columns[idx]), combined_columns.pop(combined_columns.index(col)))
+    
+    combined_frames['data'].columns = combined_columns
 
     # Use the newest info (from the new file to be appended) for meta- and site data. In case of schema or content
     # evolution, this keeps each output file up to date with the standards at the time of saving.
+    # TODO: Fix up how this could mess up the Columns worksheet, losing info for dropped columns. But these worksheets will change anyway.
     for frame in ['meta', 'site']:
         combined_frames[frame] = new_frames[frame]
 
-    # Normally, we expect the most recently loaded file to be the older one, to which the data loaded earlier will be appended.
-    older: pd.DataFrame = base_frames['data']
-    newer: pd.DataFrame = new_frames['data']
+    if not base_frames['meta'].equals(new_frames['meta']):
+        logger.warning('The metadata worksheets do not match. Keep the newer one.')
+    
+    if not base_frames['site'].equals(new_frames['site']):
+        logger.warning('The site worksheets do not match. Keep the newer one.')
+    
+    # Normally, we expect the most recently loaded file (the base) to be the older one, to which the data loaded earlier (the new) 
+    # will be appended.
+    # But we can handle the reverse situation. The only criterion for which file is older is simple: whichever one has the older
+    # of the starting timestamps. Any other relationships between the two time series (end timestamp vs end or starting timestamp)
+    # get handled by how we set the QA range.
+    older: pd.DataFrame = df_base if df_base[timestamp_column].iloc[0] <= df_new[timestamp_column].iloc[0] else df_new
+    newer: pd.DataFrame = df_new if df_base[timestamp_column].iloc[0] <= df_new[timestamp_column].iloc[0] else df_base
 
-    # In case the assumption above does not hold, simply reverse the designation. The only criterion for which file is older
-    # is simple: whichever one has the older of the starting timestamps. Any other relationships between the two time series
-    # (end timestamp vs end or starting timestamp) get handled by how we set the QA range.
-    if older[timestamp_column].iloc[0] > newer[timestamp_column].iloc[0]:
-        logger.warning('The new file has older timestamps than the base file. Reversing the order of concatenation.')
-        older = newer
-        newer = base_frames['data']
+    if df_base[timestamp_column].iloc[0] > df_new[timestamp_column].iloc[0]:
+        logger.warning('Data in the "new" file is older than that in the base file. ' +
+                       'If the column order has changed, the result adopts that of the "new" (but older) file. ' +
+                       'If any columns have been added or dropped, the corresponding entries in Notes may point to the wrong timestamps.')
 
     # Updating the frame store triggers a new QA process. Limit this to at most the data from the existing file,
     # up to and including the first sample in the new data. If the existing has already been QA-ed, as indicated
@@ -622,12 +662,16 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
         qa_range[0]              = str(min(older_last, newer_first))
     else:
         combined_frames['notes'] = new_frames['notes']
-        qa_range[0]              = str(base_frames['data'][timestamp_column].min())
+        qa_range[0]              = str(df_base[timestamp_column].min())
 
-    if not base_frames['meta'].equals(new_frames['meta']):
-        logger.warning('The metadata worksheets do not match. Keep the newer one.')
-    
-    if not base_frames['site'].equals(new_frames['site']):
-        logger.warning('The site worksheets do not match. Keep the newer one.')
+    # If there are any schema changes, record the transitions.
+    # For now, don't worry about newer and older, overlaps and gaps; assume that the "new" file is indeed new
+    # and fits perfectly tip to tail.
+    combined_frames['notes'] = pd.concat([combined_frames['notes'],
+                                          pd.DataFrame([[newer_first, newer_first, col, 'No', 'New variable name introduced.']
+                                                        for col in added_columns], index=qa_report_columns),
+                                          pd.DataFrame([[newer_first, newer_first, col, 'No', 'Variable name dropped.']
+                                                        for col in dropped_columns], index=qa_report_columns)
+                                         ])
     
     return combined_frames, qa_range
