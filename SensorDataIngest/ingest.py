@@ -7,12 +7,61 @@ from dash_extensions.enrich import DashProxy, ServersideOutputTransform, Trigger
 from dash                   import _dash_renderer
 
 import dash_mantine_components as dmc
+import nestedtext              as nt
 
+from enum      import StrEnum
 from pathlib   import Path
+from pydantic  import BaseModel
 from layout    import layout
 from callbacks import *           # In this case, a star import is acceptable: we want to define all callbacks but won't call them directly.
 
+config: dict[str, Any] = {}       # All configuration settings and string literals are defined externally (in a file)
+
+class LoggingLevel(StrEnum):
+    DEBUG    = 'DEBUG'
+    INFO     = 'INFO'
+    WARNING  = 'WARNING'
+    ERROR    = 'ERROR'
+    CRITICAL = 'CRITICAL'
+class ApplicationCfg(BaseModel):
+    config_version:             str
+    application_version:        str
+    debug:                      bool = False
+    logging_level:              LoggingLevel = 'INFO'
+    logging_directory:          Path         = './logs'
+    datalogger_file_extensions: list[str]    = ['.dat', '.csv']
+    excel_file_extensions:      list[str]    = ['.xlsx', '.xls']
+
+class OutputCfg(BaseModel):
+    worksheet_names: dict[str,str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
+
+class MetadataCfg(BaseModel):
+    timestamp_column:       str
+    sequence_number_column: str
+    description_columns:    list[str]
+    site_columns:           list[str]
+    notes_columns:          list[str]
+
+class Config(BaseModel):
+    application: ApplicationCfg
+    output:      OutputCfg
+    metadata:    MetadataCfg
+
+def normalize_config_key(key: str, parent_keys: list[str]) -> str:
+    '''Make configuration keys case-insensitive and connect words by underscore.'''
+
+    return '_'.join(key.lower().split())
+
 def main() -> None:
+    # Get the configuration from a file in NestedText format.
+    filename = 'ingest.cfg'
+    try:
+        keymap = {}
+        config_raw: dict[str,Any] = nt.load(filename, keymap=keymap, normalize_key=normalize_config_key) # type: ignore
+        config:     Config        = Config.parse_obj(config_raw)
+    except nt.NestedTextError as e:
+        e.terminate()
+
     # Set up logging.
     # Write logs to a subdirectory of the current directory (from where the script was started).
     # TODO: Set this up to be overridden by a command-line argument
@@ -60,6 +109,8 @@ def main() -> None:
     logger.info(f'Logging directory is {logging_dir.resolve()}.')
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
+
+    logger.info(f'Configuration file {filename} read. Configuration is:\n {config}')
 
     app        = DashProxy(
                     prevent_initial_callbacks=True,             # type: ignore
