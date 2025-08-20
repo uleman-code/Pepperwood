@@ -17,7 +17,7 @@ load_save = [
     dmc.CardSection(
         children=
         [
-            dmc.Text('Load Data', id='load-label', size='lg', fw=700),
+            dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
             dcc.Upload(
                 dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
                     children=[
@@ -105,7 +105,7 @@ def make_file_info(n: int | None = None):
                     children=[
                         dmc.Stack(
                             children=[
-                                dmc.Text(id=f'file-name{suffix}', size='lg', fw=700, h='sm'),  # Filename in bold
+                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold', h='sm'),  # Filename in bold
                                 dmc.Group(
                                     children=[
                                         dmc.Text(id=f'last-modified{suffix}'),
@@ -148,7 +148,7 @@ page_main = dmc.Card(
     children=[
         dmc.Modal(
             dmc.Text(id='error-text'),
-            title=dmc.Text(id='error-title', fw=700),
+            title=dmc.Text(id='error-title', fw='bold'),
             id='read-error',
             zIndex=10000,
         ),
