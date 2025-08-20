@@ -9,13 +9,16 @@ from dash                   import _dash_renderer
 import dash_mantine_components as dmc
 import nestedtext              as nt
 
-from enum      import StrEnum
-from pathlib   import Path
-from pydantic  import BaseModel
-from layout    import layout
-from callbacks import *           # In this case, a star import is acceptable: we want to define all callbacks but won't call them directly.
+from enum              import StrEnum
+from pathlib           import Path
+from pydantic          import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from layout            import layout
+from callbacks         import *           # In this case, a star import is acceptable: we want to define all callbacks but won't call them directly.
 
-config: dict[str, Any] = {}       # All configuration settings and string literals are defined externally (in a file)
+# Configuration settings
+config: dict[str, Any] = {}       # All configuration settings and string literals are defined externally
+                                  # (in a file, in the environment, or on the command line)
 
 class LoggingLevel(StrEnum):
     DEBUG    = 'DEBUG'
@@ -27,13 +30,13 @@ class ApplicationCfg(BaseModel):
     config_version:             str
     application_version:        str
     debug:                      bool = False
-    logging_level:              LoggingLevel = 'INFO'
-    logging_directory:          Path         = './logs'
+    logging_level:              LoggingLevel = LoggingLevel.INFO
+    logging_directory:          Path         = Path('./logs')
     datalogger_file_extensions: list[str]    = ['.dat', '.csv']
     excel_file_extensions:      list[str]    = ['.xlsx', '.xls']
 
 class OutputCfg(BaseModel):
-    worksheet_names: dict[str,str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
+    worksheet_names: dict[str, str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
 
 class MetadataCfg(BaseModel):
     timestamp_column:       str
@@ -42,10 +45,13 @@ class MetadataCfg(BaseModel):
     site_columns:           list[str]
     notes_columns:          list[str]
 
-class Config(BaseModel):
-    application: ApplicationCfg
-    output:      OutputCfg
-    metadata:    MetadataCfg
+class Config(BaseSettings):
+    model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=True, env_prefix='ingest_') # pyright: ignore[reportIncompatibleVariableOverride]
+    
+    config_file:  Path               = Path('./ingest.cfg')
+    application:  ApplicationCfg
+    output:       OutputCfg
+    metadata:     MetadataCfg
 
 def normalize_config_key(key: str, parent_keys: list[str]) -> str:
     '''Make configuration keys case-insensitive and connect words by underscore.'''
@@ -54,11 +60,11 @@ def normalize_config_key(key: str, parent_keys: list[str]) -> str:
 
 def main() -> None:
     # Get the configuration from a file in NestedText format.
-    filename = 'ingest.cfg'
+    filename = './ingest.cfg'
     try:
         keymap = {}
-        config_raw: dict[str,Any] = nt.load(filename, keymap=keymap, normalize_key=normalize_config_key) # type: ignore
-        config:     Config        = Config.parse_obj(config_raw)
+        config_raw: dict[str, Any] = nt.load(filename, keymap=keymap, normalize_key=normalize_config_key) # type: ignore
+        config:     Config         = Config.model_validate(config_raw)
     except nt.NestedTextError as e:
         e.terminate()
 
@@ -110,7 +116,7 @@ def main() -> None:
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
-    logger.info(f'Configuration file {filename} read. Configuration is:\n {config}')
+    logger.info(f'Configuration file {filename} read. Configuration is:\n{nt.dumps(config.model_dump(mode='json'))}') # pyright: ignore[reportPossiblyUnboundVariable]
 
     app        = DashProxy(
                     prevent_initial_callbacks=True,             # type: ignore
