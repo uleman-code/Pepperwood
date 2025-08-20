@@ -14,4 +14,4 @@ Usage:
     to running the script).
 '''
 
-__version__: str = '0.5'        # Placeholder. Need a proper versioning setup
+__version__: str = '0.6'        # Placeholder. Need a proper versioning setup
