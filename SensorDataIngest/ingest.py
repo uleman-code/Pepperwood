@@ -1,9 +1,8 @@
-#! ../.venv/bin/python
 '''Main module for the SensorDataIngest package for Pepperwood.'''
 
 import logging
 
-from dash_extensions.enrich import DashProxy, ServersideOutputTransform, TriggerTransform
+from dash_extensions.enrich import DashBlueprint, DashProxy, ServersideOutputTransform, TriggerTransform
 from dash                   import _dash_renderer
 
 import dash_mantine_components as dmc
@@ -14,8 +13,8 @@ from enum              import StrEnum
 from pathlib           import Path
 from pydantic          import BaseModel, BeforeValidator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from layout            import get_layout
-from callbacks         import *           # In this case, a star import is acceptable: we want to define all callbacks but won't call them directly.
+
+import callbacks
 
 # Configuration settings and validation
 def normalize_config_key(key: str, parent_keys: list[str]) -> str:
@@ -56,7 +55,6 @@ class ApplicationCfg(BaseModel):
     '''General application-wide settings. Should not be sensor- or datalogger-specific.'''
 
     config_version:             str
-    title:                      str
     debug:                      bool         = False
     console_logging_level:      Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['INFO']
     file_logging_level:         Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['DEBUG']
@@ -80,6 +78,7 @@ class MetadataCfg(BaseModel):
 
     timestamp_column:       str
     sequence_number_column: str
+    sampling_interval:      str
     description_columns:    list[str]
     site_columns:           list[str]
     notes_columns:          list[str]
@@ -100,7 +99,7 @@ class Config(BaseSettings):
     metadata:     MetadataCfg    | None = None
 
 # Declare as a global: should be accessible from all modules and functions.
-config: dict[str, Any] = {}
+# config: dict[str, Any] = {}
 
 def main() -> None:
     # Get the configuration from a file in NestedText format. The default path may be overridden in the environment or on the command line.
@@ -159,14 +158,15 @@ def main() -> None:
 
     logger.info(f'Configuration file {config_file.resolve()} read. Configuration is:\n{nt.dumps(config.model_dump(mode='json'))}') # pyright: ignore[reportPossiblyUnboundVariable]
 
+    callbacks.set_config(config.model_dump()) # pyright: ignore[reportPossiblyUnboundVariable]
     app        = DashProxy(
+                    blueprint=callbacks.blueprint,
                     prevent_initial_callbacks=True,             # type: ignore
-                    title=config.application.title,             # pyright: ignore[reportPossiblyUnboundVariable, reportOptionalMemberAccess]
-                    update_title=None,                          # Don't change tab title to "Updating..." when callbacks are running
+                    title='Sensor Data Ingest',
+                    update_title=None,                          # Don't change tab title to "Updating..." when the page is being rebuilt
                     # background_callback_manager='diskcache',
                     transforms=[ServersideOutputTransform(), TriggerTransform()],
                  )
-    app.layout = dmc.MantineProvider(get_layout(config.application.title)) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
     
     app.run(debug=config.application.debug) # pyright: ignore[reportPossiblyUnboundVariable, reportOptionalMemberAccess]
 

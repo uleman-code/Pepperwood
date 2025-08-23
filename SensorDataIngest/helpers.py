@@ -42,10 +42,26 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-# The following are subject to revision. They may be used by more than one function.
-# TODO: Should these worksheet names be data-driven (e.g., from a configuration file)?
-worksheet_names:   list[str] = ['Data', 'Columns', 'Meta', 'Notes']
-qa_report_columns: list[str] = ['Start of issue', 'End of issue', 'Sensor or Data Field', 'Data Omitted', 'Nature of problem']
+worksheet_names:   dict[str, str]
+qa_report_columns: list[str]
+timestamp_column:  str
+seqno_column:      str
+sampling_interval: str
+
+def set_config(config: dict[str, Any]) -> None:
+    '''Set worksheet and column names from the configuration settings.'''
+ 
+    global qa_report_columns
+    global worksheet_names
+    global timestamp_column
+    global seqno_column
+    global sampling_interval
+
+    qa_report_columns = config['metadata']['notes_columns']
+    worksheet_names   = config['output']['worksheet_names']
+    timestamp_column  = config['metadata']['timestamp_column']
+    seqno_column      = config['metadata']['sequence_number_column']
+    sampling_interval = config['metadata']['sampling_interval']
 
 logger: logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
 pd.set_option('plotting.backend', 'plotly')
@@ -81,7 +97,6 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     content_string: str
     _, content_string = contents.split(',')                  # File contents are preceded by a file type string
 
-    # TODO: Get these column names from a (configuration?) file.
     # TODO: Figure out what the "UnknownNN" columns are for and give them real names.
     meta_columns: list[typing.LiteralString] = 'Name Alias Sample/Average'.split()
     site_columns: list[typing.LiteralString] = 'Unknown01 SiteId DataLoggerModel Unknown02 DataLoggerOsVersion Unknown03 Unknnown04 SamplingInterval'.split()
@@ -114,12 +129,12 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             logger.info('Reading Excel workbook. Expect three or four worksheets.')
             buffer = io.BytesIO(b64decoded)
 
-            frames['data']  = pd.read_excel(buffer, sheet_name=worksheet_names[0], na_values='NAN')
-            frames['meta']  = pd.read_excel(buffer, sheet_name=worksheet_names[1])
-            frames['site']  = pd.read_excel(buffer, sheet_name=worksheet_names[2])
+            frames['data']  = pd.read_excel(buffer, sheet_name=worksheet_names['data'], na_values='NAN')
+            frames['meta']  = pd.read_excel(buffer, sheet_name=worksheet_names['meta'])
+            frames['site']  = pd.read_excel(buffer, sheet_name=worksheet_names['site'])
 
             try:
-                frames['notes'] = pd.read_excel(buffer, sheet_name=worksheet_names[3])
+                frames['notes'] = pd.read_excel(buffer, sheet_name=worksheet_names['notes'])
                 logger.info('Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.')
 
                 # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
@@ -154,9 +169,9 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     '''
 
-    # The worksheet names in the Excel file are not necessarily the same as keys in frames. But they
-    # are in the same order.
-    sheets: dict[str, pd.DataFrame] = dict(zip(worksheet_names, frames.values()))
+    # The worksheet names in the Excel file are not necessarily the same as the keys in frames.
+    # So match each sheet name to the right frame. And keep them in the same order.
+    sheets: dict[str, pd.DataFrame] = {worksheet_names[k]:frames[k] for k in frames}
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
@@ -165,11 +180,11 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
         for sheet, df in sheets.items():
             logger.debug(f'Writing {type(df).__name__} to sheet {sheet}.')
 
-            if sheet == worksheet_names[-1]:            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
-                df.insert(1, 'Link', [f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names[0]}!$A:$A,MATCH($A{row},{worksheet_names[0]}!$A:$A,0))),"   🔗")'
+            if sheet == worksheet_names['notes']:            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
+                df.insert(1, 'Link', [f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names['data']}!$A:$A,MATCH($A{row},{worksheet_names['data']}!$A:$A,0))),"   🔗")'
                                       for row in range(2, len(df)+2)])
 
-            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == worksheet_names[0] else '')
+            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == worksheet_names['data'] else '')
 
             # Automatically adjust column widths to fit all text, including the column header
             # NOTE: This may be an expensive operation. Beware of large files!
@@ -213,37 +228,8 @@ def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
     logger.debug('Plot generated.')
     return fig
 
-# def ts_is_regular(timeseries: pd.Series, interval_minutes: int = 15) -> bool:
-#     '''Check if the time-sequence column is "regular", meaning monotonically increasing at a fixed interval.
-
-#     Parameters:
-#         timeseries          Sequence of Datetime values
-#         interval_minutes    Expected interval, in minutes, between consecutive values
-
-#     Returns:
-#         True if interval between all pairs of consecutive values equals interval_minutes; otherwise False
-#     '''
-
-#     is_regular: bool = (timeseries[1:] - timeseries.shift()[1:] == pd.Timedelta(seconds=interval_minutes*60)).all()
-
-#     return is_regular
-
-# def seqno_is_regular(seqno_series: pd.Series) -> bool:
-#     '''Check if the record sequence-number column is "regular", meaning monotonically increasing by one, with no gaps.
-
-#     Parameters:
-#         seqno_series    Sequence of integers
-
-#     Returns
-#         True if difference between all pairs of consecutive values is one; otherwise False
-#     '''
-
-#     is_regular: bool = (seqno_series[1:] - seqno_series.shift()[1:].astype('int') == 1).all()
-
-#     return is_regular
-
 @log_func
-def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
+def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
     '''Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
     There are three distinct cases:
@@ -262,8 +248,6 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seq
     
     Parameters:
         df                  Input DataFrame
-        timestamp_column    Name of the column containing the datetime values constituting the time series index
-        seqno_column        Name of the column containing row sequence numbers
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -293,7 +277,7 @@ def report_duplicates(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP', seq
         grouper: pd.Series     = (ts_repeat
                                   .diff()                 # This compares each index label with its predecessor
                                   .bfill()                # The first one has no predecessor so becomes NaN; copy the first diff value (this actually works)
-                                  .ne(interval)           # Only the ones after a gap become True/1
+                                  .ne(sampling_interval)  # Only the ones after a gap become True/1
                                   .cumsum()               # This increments after each gap
                                  )
         grouped: SeriesGroupBy = ts_repeat.groupby(grouper)
@@ -361,8 +345,7 @@ def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Ser
     return report
 
 @log_func
-def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
-                      seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
+def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
     '''Complete a regular time series by inserting NaN-valued records wherever there are gaps.
     
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
@@ -379,9 +362,6 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
     
     Parameters:
         df                  Input DataFrame
-        timestamp_column    Name of the column containing the datetime values constituting the time series index
-        seqno_column        Name of the column containing row sequence numbers
-        interval            The time series sampling period. Must be a valid frequency string.
 
     Returns:
         The input DataFrame, with zero or more new rows inserted
@@ -390,7 +370,7 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
     df_fixed: pd.DataFrame = (df
                               .set_index(timestamp_column, drop=True)
                               .drop(columns=seqno_column)               # Will reconstruct later
-                              .asfreq(freq=interval)
+                              .asfreq(freq=sampling_interval)
                               .reset_index()                            # Bring TIMESTAMP back as column
                               .reset_index(names=seqno_column)          # Copy row sequence numbers into the sequence number column
                               .loc[:, df.columns]                       # Restore the original column order
@@ -399,8 +379,7 @@ def fill_missing_rows(df: pd.DataFrame, timestamp_column: str = 'TIMESTAMP',
     return df_fixed
 
 @log_func
-def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
-                           seqno_column: str = 'RECORD', interval: str = '15min') -> pd.DataFrame:
+def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex) -> pd.DataFrame:
     '''Given the datetime index before and after insertion of missing rows, report what was found and changed.
     
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -418,8 +397,6 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     Parameters:
         old_dt_index    The datetime index of the time series before restoration (with gaps)
         new_dt_index    The datetime index of the time series after restoration (gaps filled in)
-        seqno_column    The name of the column containing row sequence numbers
-        interval        The period (time between samples) of the regular time series
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -428,10 +405,10 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     inserted_timestamps: pd.Series     = new_dt_index.difference(old_dt_index).to_series(name='')
     grouped:             SeriesGroupBy = (inserted_timestamps
                                           .groupby(inserted_timestamps
-                                                   .diff()                                     # Find each timestamp's increment from its predecessor
-                                                   .bfill()                                    # Fill in the first one (which does not have a predecessor)
-                                                   .ne(pd.Timedelta(interval)) # type: ignore  # Mark (True) if it's bigger than expected (that is, a gap)
-                                                   .cumsum()                                   # This increments after each gap
+                                                   .diff()                                              # Find each timestamp's increment from its predecessor
+                                                   .bfill()                                             # Fill in the first one (which does not have a predecessor)
+                                                   .ne(pd.Timedelta(sampling_interval)) # type: ignore  # Mark (True) if it's bigger than expected (that is, a gap)
+                                                   .cumsum()                                            # This increments after each gap
                                                   )
                                          )
 
@@ -440,7 +417,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
 
     make_text = lambda x: f'Unknown; {x} NA-filled record{"s" if x > 1 else ""} inserted and {seqno_column} renumbered.'
     report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [first, last, 'All', 'Yes',
-            (((last - first)/pd.Timedelta(interval)).astype(int) + 1).apply(make_text)])))      # type: ignore
+            (((last - first)/pd.Timedelta(sampling_interval)).astype(int) + 1).apply(make_text)])))      # type: ignore
 
     if not report.empty:
         logger.info('Missing samples found.')
@@ -448,9 +425,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     return report
 
 @log_func
-def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None,
-           timestamp_column: str = 'TIMESTAMP', seqno_column: str = 'RECORD', interval: str = '15min'
-          ) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
+def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
     '''Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
     1. Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
@@ -487,9 +462,6 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
         df_data             Input/Output DataFrame: any restoration (inserted rows) is applied in place
         notes               If not None, the notes previously generated from the new data set (in Append mode)
         qa_range            If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
-        timestamp_column    Name of the column containing the datetime values constituting the time series index
-        seqno_column        Name of the column containing row sequence numbers
-        interval            The time series sampling period. Must be a valid frequency string.
 
     Returns:
         Duplicate samples found?
@@ -527,9 +499,9 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
                                            for col in variable_columns[missing_value_columns.astype(bool)]])
 
     original_index:         pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore
-    df_fixed                                 = fill_missing_rows(df_fixed, timestamp_column, seqno_column, interval)
+    df_fixed                                 = fill_missing_rows(df_fixed)
     new_index:              pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore
-    missing_samples_report: pd.DataFrame     = report_missing_samples(original_index, new_index, seqno_column, interval)
+    missing_samples_report: pd.DataFrame     = report_missing_samples(original_index, new_index)
     missing_samples_found:  bool             = bool(len(missing_samples_report))
 
     report = pd.concat([df_notes, duplicates_report, missing_values_report, missing_samples_report]).sort_values(['Start of issue', 'End of issue'])
@@ -559,8 +531,6 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
     Parameters:
         base_frames         The three or four DataFrames (data, meta, site, possibly notes) from the newly loaded base file
         new_frames          The three or four DataFrames (data, meta, site, possibly notes) from the previously loaded new file
-        timestamp_column    Name of the column containing the datetime values constituting the time series index
-        seqno_column        Name of the column containing row sequence numbers
     
     Returns:
         The four DataFrames for the combined files
@@ -645,9 +615,9 @@ def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFr
     # up to and including the first sample in the new data. If the existing has already been QA-ed, as indicated
     # by the presence of a Notes worksheet, only look at the transition from existing to new data, to detect
     # a possible gap or overlap.
-    # Normally, newer_first = older_last + interval.
-    #   newer_first > older_last  + interval ==> gap
-    #   newer_first <= older_last            ==> overlap
+    # Normally, newer_first = older_last + sampling_interval.
+    #   newer_first > older_last  + sampling_interval ==> gap
+    #   newer_first <= older_last                     ==> overlap
     older_last:  pd.Timestamp = older[timestamp_column].iloc[-1]
     newer_first: pd.Timestamp = newer[timestamp_column].iloc[0]
 

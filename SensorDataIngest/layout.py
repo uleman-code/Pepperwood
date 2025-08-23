@@ -3,6 +3,8 @@
 from   dash_extensions.enrich  import dcc
 import dash_mantine_components as     dmc
 
+from typing import Any
+
 import json
 
 header = dmc.Group(
@@ -187,3 +189,8 @@ layout = dmc.AppShell(
         'collapsed': {'mobile': True},
     },
 )
+
+def set_config(config: dict[str, Any]) -> None:
+    '''Placeholder: get settings for dynamic elements (for examle, text strings).'''
+
+    pass

@@ -16,6 +16,9 @@ from   dash_extensions.enrich  import (
                                    callback_context,
                                    Serverside,
                                    Trigger,
+                                   DashBlueprint,
+                                   ServersideOutputTransform,
+                                   TriggerTransform,
                                )
 from   dash                    import (             # A few definitions are not yet surfaced by dash-extensions
                                    Patch,
@@ -24,26 +27,21 @@ from   dash                    import (             # A few definitions are not 
 from   dash.exceptions         import PreventUpdate
 import dash_mantine_components as     dmc
 
-from   layout   import make_file_info
 from   datetime import datetime
 from   pathlib  import Path
-from   typing   import Any
+from   typing   import Any, Callable
 
+import layout
 import logging
 import decorator
 
 import helpers                          # Local module implementing Dash-independent actions
 
-# Set the names of the timestamp and sequence-number coluns.
-# TODO: find a way to get the names of these columns from the metadata.
-ts_col:    str = 'TIMESTAMP'
-seqno_col: str = 'RECORD'
-
 logger:      logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
 frame_store: dict           = {}
 
 @decorator.decorator
-def log_func(fn, *args, **kwargs):
+def log_func(fn: Callable, *args, **kwargs) -> Callable:
     '''Function entry and exit logger, capturing exceptions as well.
     
     Very simplistic; no argument logging or execution timing.
@@ -64,7 +62,25 @@ def log_func(fn, *args, **kwargs):
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-@callback(
+ts_col:    str
+seqno_col: str
+
+def set_config(config: dict[str, Any]) -> None:
+    '''From the configuration settings, set the names of the timestamp and sequence-number coluns; and pass the configuration on.'''
+
+    global ts_col
+    global seqno_col
+
+    ts_col    = config['metadata']['timestamp_column']
+    seqno_col = config['metadata']['sequence_number_column']
+
+    layout.set_config(config)
+    helpers.set_config(config)
+
+blueprint: DashBlueprint = DashBlueprint(transforms=[ServersideOutputTransform(), TriggerTransform()])
+blueprint.layout         = dmc.MantineProvider(layout.layout)
+
+@blueprint.callback(
     Output('frame-store'   , 'data'    ),
     Output('read-error'    , 'opened'  ),
     Output('error-title'   , 'children'),
@@ -128,7 +144,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
         logger.error(f'File Read Error:\n{e}')
         return no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
-@callback(
+@blueprint.callback(
     Output( 'save-xlsx'   , 'data'    ),
     Output( 'files-status', 'data'    , allow_duplicate=True),
     Output( 'select-file' , 'contents', allow_duplicate=True),
@@ -147,8 +163,8 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
     or opens the OS-native Save File dialog, allowing the user to choose any folder (and change the filename, too).
 
     NOTE: If the Save File dialog is opened, it's possible that the user clicks Cancel, in which case the file is not
-          saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
-          is always saved.
+        saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
+        is always saved.
     
     Parameters:
         files_status    Filename(s) and (un)saved status
@@ -186,7 +202,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
         logger.debug('Nothing to save.')
         raise PreventUpdate
 
-@callback(
+@blueprint.callback(
     Output( 'files-status' , 'data'      , allow_duplicate=True),
     Output( 'select-file'  , 'contents'  , allow_duplicate=True),
     Output( 'frame-store'  , 'clear_data'),
@@ -207,10 +223,10 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     elements that may be populated by the current file, in preparation for the new information.
 
     NOTE: The clearing of some UI components (file-name, last-modified) must happen here, because relying on another callback
-          to do it makes it difficult to guarantee that the clearing happens before the new information is shown. There is no
-          way to guarantee the execution order of callbacks triggered by the same trigger.
-          The exception is the Saved badge: since it is not reused for other purposes, showing or hiding it can be handled
-          by its own callback.
+        to do it makes it difficult to guarantee that the clearing happens before the new information is shown. There is no
+        way to guarantee the execution order of callbacks triggered by the same trigger.
+        The exception is the Saved badge: since it is not reused for other purposes, showing or hiding it can be handled
+        by its own callback.
     
     Parameters:
         all_contents    Base64-encoded file contents for all files in the batch
@@ -220,7 +236,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     Returns:
         files-status/data      (str)  JSON representation of a cleared data store: filename blank, unsaved flag False
         select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
-                                      it's the same file(s) as previously loaded
+                                    it's the same file(s) as previously loaded
         frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
         show-data/children     (list[objects]) Truncated contents of the main app area: remove batch processing output, if any
         file-name/children     (str)  Empty string to clear
@@ -250,7 +266,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
     return status, contents, True, show_data[:3], None, None
 
-@callback(
+@blueprint.callback(
     Output('select-file' , 'disabled'),
     Output('load-label'  , 'c'),
     Input( 'files-status', 'data'),
@@ -274,7 +290,7 @@ def toggle_loaddata(status: dict[str, Any]) -> tuple:
     logger.debug(f'Data {"not" if unsaved else "is"} saved{"" if unsaved else " or cleared"}; {"dis" if unsaved else "en"}able Load Data.')
     return unsaved, 'dimmed' if unsaved else 'black'
 
-@callback(
+@blueprint.callback(
     Output('inspect-data'  , 'display' ),
     Output('select-columns', 'label'   ),
     Output('data-columns'  , 'children'),
@@ -312,11 +328,9 @@ def show_columns(frames: dict, status: dict) -> tuple:
             logger.debug('DataFrame found. Populating variable selection list.')
             data = frames['data']
 
-            # Skip the timestamp and record number columns; these are not data columns.
-            # TODO: Try to find a way to get these names from the metadata, in case they're not
-            #       the same across data loggers or across time.
+            # Skip the timestamp and sequence number columns; these are not data columns.
             checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in data.columns
-                                              if c not in ['TIMESTAMP', 'RECORD']] 
+                                              if c not in [ts_col, seqno_col]] 
             return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
         else:
             raise PreventUpdate
@@ -324,7 +338,7 @@ def show_columns(frames: dict, status: dict) -> tuple:
         logger.debug('No data; clear column selection element.')
         return 'none', '', [], []
 
-@callback(
+@blueprint.callback(
     Output('stacked-graphs', 'figure' ),
     Output('plot-area'     , 'display'),
     Input( 'select-columns', 'value'  ),
@@ -343,7 +357,7 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
         plot-area/display     (str)    Hide the plot area if there are no graphs to show
-                                       (otherwise you see an empty set of axes)
+                                    (otherwise you see an empty set of axes)
     '''
     
     if showcols:
@@ -356,7 +370,7 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
         logger.debug('No columns selected; clear the graphs.')
         return {}, 'none'
 
-@callback(
+@blueprint.callback(
     Output('saved-badge' , 'display'),
     Output('save-xlsx'   , 'data'   , allow_duplicate=True),
     Input( 'files-status', 'data'   ),
@@ -391,7 +405,7 @@ def show_badge(files_status: dict) -> tuple:
 
     return retval, None
 
-@callback(
+@blueprint.callback(
     Output('save-button'  , 'disabled'),
     Output('append-button', 'disabled'),
     Output('clear-button' , 'disabled'),
@@ -427,7 +441,7 @@ def toggle_save_clear(files_status: dict) -> tuple:
         logger.debug('Zero or multiple files in memory. Disable Save, Append and Clear buttons.')
         return (True,)*3
 
-@callback(
+@blueprint.callback(
     Output('file-name'    , 'children'),
     Output('last-modified', 'children'),
     Input( 'files-status' , 'data'    ),
@@ -496,7 +510,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
 
     return report, notes, fixed
 
-@callback(
+@blueprint.callback(
     Output( 'sanity-checks', 'children'          ),
     # Output( 'save-button'  , 'disabled'          , allow_duplicate=True),
     # Output( 'append-button', 'disabled'          , allow_duplicate=True),
@@ -569,7 +583,7 @@ def report_sanity_checks(current_report: list[dmc.Text] | None, status: dict, fr
 
     return report, status, Serverside(frames, key='Frames')
 
-@callback(
+@blueprint.callback(
     Output('file-name'    , 'children', allow_duplicate=True),
     Output('last-modified', 'children', allow_duplicate=True),
     Output('next-file'    , 'data'    , allow_duplicate=True),
@@ -614,7 +628,7 @@ def setup_batch(files_status: dict) -> tuple:
     next_file:  int = 0                  # This triggers the start of the loop over file_counter
     return 'Batch mode operation', [f'Started at {start_time}'], next_file
 
-@callback(
+@blueprint.callback(
     Output( 'show-data'   , 'children'          ),
     Output( 'file-counter', 'data'              ),
     Trigger('next-file'   , 'modified_timestamp'),
@@ -641,7 +655,7 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
     logger.debug(f'Next file index is {next_file}.')
 
     # Construct a whole new CardSection element, to be appended to the show-data area
-    this_file_info: dmc.CardSection                                      = make_file_info(next_file)
+    this_file_info: dmc.CardSection                                      = layout.make_file_info(next_file)
     this_file_info.children.children[0].children[0].children             = filenames[next_file]                                                                                 # type: ignore
     this_file_info.children.children[0].children[1].children[0].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime('%Y-%m-%d %H:%M:%S')}'   # type: ignore
     this_file_info.children.children[1].display                          = 'flex'                                                                                               # type: ignore
@@ -652,7 +666,7 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified:list[int])
 
     return showdata, next_file
 
-@callback(
+@blueprint.callback(
     Output( 'next-file'   , 'data'              , allow_duplicate=True),
     Trigger('file-counter', 'modified_timestamp'),
     State(  'file-counter', 'data'              ),
@@ -682,7 +696,7 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     
     return next_file
 
-@callback(
+@blueprint.callback(
     Output( 'read-error'  , 'opened'            , allow_duplicate=True),
     Output( 'error-title' , 'children'          , allow_duplicate=True),
     Output( 'error-text'  , 'children'          , allow_duplicate=True),
@@ -691,7 +705,7 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     State(  'select-file' , 'filename'          ),
     State(  'select-file' , 'contents'          ),
     # background=True,
- )
+)
 @log_func
 def process_batch(file_counter: int, filenames: list[str], all_contents: list[str]) -> tuple:
     '''Process one file in the batch, without user involvement.
@@ -700,9 +714,9 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     When done, display the results of the sanity checks, hide the busy indicator, and show the Saved badge.
 
     NOTE: This callback uses set_props() to directly manipulate UI elements, instead of relying on return
-          values to do so. This is the only way I could think of to address dynamically created elements,
-          with generated names ending in a suffix indicating the batch index (file counter), such as
-          sanity-checks-0, saved-badge-3, etc.
+        values to do so. This is the only way I could think of to address dynamically created elements,
+        with generated names ending in a suffix indicating the batch index (file counter), such as
+        sanity-checks-0, saved-badge-3, etc.
 
     Parameters:
         file_counter    The index of the next file in the list of files (the batch)
@@ -784,7 +798,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
 
     logger.debug(f'({file_counter}) Exit.')
     return False, '', ''
-@callback(
+@blueprint.callback(
     Output('files-status' , 'data'    ),
     Output('last-modified', 'children', allow_duplicate=True),
     Output('select-file'  , 'contents', allow_duplicate=True),
@@ -808,7 +822,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
         files-status/data      (str)  Same as files_status parameter but with the unsaved flag set to False
         last-modified/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
         select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
-                                      it's the same file(s) as previously loaded
+                                    it's the same file(s) as previously loaded
 '''
 
     if displays:            # This also gets triggered when all batch-related badges disappear
@@ -827,7 +841,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
         logger.debug('No batch in progress.')
         raise PreventUpdate
 
-@callback(
+@blueprint.callback(
     Output('frame-store' , 'data'    , allow_duplicate=True),
     Output('files-status', 'data'    , allow_duplicate=True),
     Output('append-file' , 'contents'),
@@ -882,4 +896,3 @@ def append_file(new_frames: dict[str, Any], status: dict[str, Any], filename: st
         logger.exception(e)
         logger.error(f'File Read Error:\n{e}')
         return no_update, no_update, no_update, True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
-
