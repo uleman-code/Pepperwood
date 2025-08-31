@@ -8,7 +8,9 @@ import decorator
 
 from   pathlib import Path
 from   typing  import Any, Callable
-import pandas  as     pd
+
+import pandas               as pd
+import plotly.graph_objects as go
 
 from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
 
@@ -44,6 +46,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 worksheet_names:   dict[str, str]
 qa_report_columns: list[str]
+data_na_rep:       str
 timestamp_column:  str
 seqno_column:      str
 sampling_interval: str
@@ -53,12 +56,14 @@ def set_config(config: dict[str, Any]) -> None:
  
     global qa_report_columns
     global worksheet_names
+    global data_na_rep
     global timestamp_column
     global seqno_column
     global sampling_interval
 
     qa_report_columns = config['metadata']['notes_columns']
     worksheet_names   = config['output']['worksheet_names']
+    data_na_rep       = config['output']['data_na_representation']
     timestamp_column  = config['metadata']['timestamp_column']
     seqno_column      = config['metadata']['sequence_number_column']
     sampling_interval = config['metadata']['sampling_interval']
@@ -111,7 +116,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             decoded = io.StringIO(b64decoded.decode('utf-8'))
 
             # First pass to read the real data
-            frames['data'] = pd.read_csv(decoded, skiprows=[0,2,3], parse_dates=['TIMESTAMP'], na_values='NAN')
+            frames['data'] = pd.read_csv(decoded, skiprows=[0,2,3], parse_dates=[timestamp_column], na_values='NAN')
             
             # Second pass to read the column metadata
             decoded.seek(0)
@@ -155,15 +160,13 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     return frames
 
 @log_func
-def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> bytes:
+def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
     '''Save three DataFrames to a single Excel file buffer: data, (column) metadata, and site data.
 
     Each of the DataFrames becomes a separate worksheet in the file, named Data, Columns, and Site.
 
     Parameters:
         frames      The four DataFrames (data, meta, site, notes) for one file
-        na_rep      Representation of NaNs in the Excel file; empty string becomes a blank cell.
-                    Only applies to the "data" worksheet.
 
     Returns:
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
@@ -184,7 +187,7 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
                 df.insert(1, 'Link', [f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names['data']}!$A:$A,MATCH($A{row},{worksheet_names['data']}!$A:$A,0))),"   🔗")'
                                       for row in range(2, len(df)+2)])
 
-            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=na_rep if sheet == worksheet_names['data'] else '')
+            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=data_na_rep if sheet == worksheet_names['data'] else '')
 
             # Automatically adjust column widths to fit all text, including the column header
             # NOTE: This may be an expensive operation. Beware of large files!
@@ -201,29 +204,36 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame], na_rep: str = '#N/A') -> 
     return buffer.getvalue()            # Must return a byte string, not the IO buffer itself
 
 @log_func
-def render_graphs(df_data: pd.DataFrame, showcols: list[str]) -> Any:
+def render_graphs(df_data: pd.DataFrame, showcols: list[str], single_plot: bool = False) -> go.Figure:
     '''For each of the selected columns, generate a Plotly graph.
 
     The graphs are stacked vertically and rendered from the top down in the order in which the columns appear in the list.
 
     Parameters:
-        df_data  (DataFrame) The multicolumn time sequence of sensor data
-        showcols (list)      Names of the selected columns
+        df_data        The multicolumn time sequence of sensor data
+        showcols       Names of the selected columns
+        single_plot    If true, create a single multivariable plot; otherwise, multiple single-variable plots
 
     Returns:
         A Plotly Figure containing all graphs
     '''
 
-    df_show: pd.DataFrame = df_data.set_index('TIMESTAMP')[showcols]            # TIMESTAMP is the independent (X-axis) variable for all plots
+    df_show: pd.DataFrame = df_data.set_index(timestamp_column)[showcols]            # The timestamp column is the independent (X-axis) variable for all plots
     
-    # Using Plotly facet graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
-    # This is very convenient, but makes it somewhat inflexible with respect to individual plot titles/annotations. For now, good enough.
-    fig = (df_show.plot.line(facet_row='variable', height=120 + 200*len(showcols))        # Simplistic attempt at calculating the height depending on number of graphs
-           .update_yaxes(matches=None, title_text='')   # type: ignore                    # Each graph has its own value range; don't show the axis title 'value'
-           .update_xaxes(showticklabels=True)                                             # Repeat the time scale under each graph
-           .for_each_annotation(lambda a: a.update(text=a.text.replace('variable=', ''))) # Just print the variable (column) name
-           .update_layout(legend_title_text='Variable')
-          )
+    if single_plot:
+        fig = (df_show.plot.line(height=720)
+               .update_yaxes(title_text='')                 # pyright: ignore[reportAttributeAccessIssue]
+               .update_layout(legend_title_text='Variable')
+              )
+    else:
+        # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
+        # This is very convenient, but makes it somewhat inflexible with respect to individual plot titles/annotations. For now, good enough.
+        fig = (df_show.plot.line(facet_row='variable', height=120 + 200*len(showcols))        # Simplistic attempt at calculating the height depending on number of graphs
+               .update_yaxes(matches=None, title_text='')   # type: ignore                    # Each graph has its own value range; don't show the axis title 'value'
+               .update_xaxes(showticklabels=True)                                             # Repeat the time scale under each graph
+               .for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))           # Just print the variable (column) name
+               .update_layout(legend_title_text='Variable')
+              )
     
     logger.debug('Plot generated.')
     return fig
@@ -288,7 +298,7 @@ def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
                             columns=qa_report_columns)
 
 @log_func
-def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Series | slice, timestamp_column: str = 'TIMESTAMP') -> pd.DataFrame:
+def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Series | slice) -> pd.DataFrame:
     '''Construct a missing-value report for each occurrence or range of missing values in a given column.
     
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -307,7 +317,6 @@ def report_missing_column_values(df: pd.DataFrame, column: str, qa_range: pd.Ser
         df                  Input DataFrame
         column              The column to be examined
         qa_range            If not slice(None), a boolean Series indicating the range of timestamps to be sanity-checked (in Append mode)
-        timestamp_column    (optional) Normally "TIMESTAMP" but may be overridden
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -371,7 +380,7 @@ def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
                               .set_index(timestamp_column, drop=True)
                               .drop(columns=seqno_column)               # Will reconstruct later
                               .asfreq(freq=sampling_interval)
-                              .reset_index()                            # Bring TIMESTAMP back as column
+                              .reset_index()                            # Bring the timestamp back as a column
                               .reset_index(names=seqno_column)          # Copy row sequence numbers into the sequence number column
                               .loc[:, df.columns]                       # Restore the original column order
                              ) # type: ignore
@@ -437,7 +446,7 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
        In the case of missing samples, restore the regular time series by inserting rows with the expected timestamps and sequence numbers
        --the latter will be renumbered--, and with NaNs for all the other columns. 
 
-    3. In the test for duplicates, the sequential-numbering column (seqno_column, usually "RECORD") is ignored. This column is fairly meaningless
+    3. In the test for duplicates, the sequential-numbering column (seqno_column) is ignored. This column is fairly meaningless
        and gets reassigned at the end, erasing any effects of concatenation, duplicate removal, and gap filling.
 
     3. In Append mode, analyzing the combined dataset could potentially find the same issues found previously, leading to redundant report entries.
@@ -474,7 +483,7 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
     logger.debug('Enter')
 
     try:
-        duplicates_report: pd.DataFrame = report_duplicates(df_data, timestamp_column)
+        duplicates_report: pd.DataFrame = report_duplicates(df_data)
         duplicates_found:  bool         = bool(len(duplicates_report))
         df_fixed:          pd.DataFrame = df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True) if duplicates_found else df_data
         if duplicates_found:
@@ -509,8 +518,7 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
     return duplicates_found, missing_values_found, missing_samples_found, report, df_fixed
 
 @log_func
-def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFrame], timestamp_column: str = 'TIMESTAMP',
-           seqno_column: str = 'RECORD') -> tuple[dict[str, pd.DataFrame], list[str]]:
+def append(base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFrame]) -> tuple[dict[str, pd.DataFrame], list[str]]:
     '''Append new sensor data to an existing set.
     
     The data already in memory is considered the new file, with the newly loaded data the base file to which the new file is

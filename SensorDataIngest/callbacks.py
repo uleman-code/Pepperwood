@@ -342,10 +342,11 @@ def show_columns(frames: dict, status: dict) -> tuple:
     Output('stacked-graphs', 'figure' ),
     Output('plot-area'     , 'display'),
     Input( 'select-columns', 'value'  ),
+    Input( 'single-plot'   , 'checked'),
     State( 'frame-store'   , 'data'   ),
 )
 @log_func
-def draw_plots(showcols: list[str], frames: dict) -> tuple:
+def draw_plots(showcols: list[str], single_plot: bool, frames: dict) -> tuple:
     '''Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
@@ -353,17 +354,18 @@ def draw_plots(showcols: list[str], frames: dict) -> tuple:
     Parameters:
         showcols    Column names, in the order in which they were selected
         frames      The four DataFrames (data, meta, site, notes) for one file
+        single_plot If true draw a single multivariable plot, otherwise multiple single-variable plots
 
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
         plot-area/display     (str)    Hide the plot area if there are no graphs to show
-                                    (otherwise you see an empty set of axes)
+                                       (otherwise you see an empty set of axes)
     '''
     
     if showcols:
         logger.debug('Columns selected; generating graphs.')
         data = frames['data']
-        fig  = helpers.render_graphs(data, showcols)
+        fig  = helpers.render_graphs(data, showcols, single_plot)
 
         return fig, 'contents'
     else:

@@ -75,12 +75,14 @@ columns = [
             children=[
                 dmc.CheckboxGroup(
                     id='select-columns',
-                    description=
-                    [
-                        dmc.Text('Graphs are shown in the order', size='xs',),
-                        dmc.Text('in which you you select the variables.', size='xs',),
-                    ],
+                    # description=
+                    # [
+                    #     dmc.Text('Graphs are shown in the order', size='xs',),
+                    #     dmc.Text('in which you you select the variables.', size='xs',),
+                    # ],
                     children=[
+                        dmc.Space(h='sm'),
+                        dmc.Switch('Single plot', id='single-plot'),
                         dmc.Space(h='sm'),
                         dmc.Stack(
                             id='data-columns',
