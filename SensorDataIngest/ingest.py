@@ -72,6 +72,7 @@ class OutputCfg(BaseModel):
     '''Output settings. Don't know if there will ever be anything besides worksheet names.'''
 
     worksheet_names: dict[str, str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
+    data_na_representation: str     = '#N/A'
 
 class MetadataCfg(BaseModel):
     '''Metadata settings: not about the sensor data but only the standard index columns and what's in the other worksheets.'''
