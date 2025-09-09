@@ -504,7 +504,7 @@ def run_qa(df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[
         missing_values_report = pd.DataFrame([])
     else:
         # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
-        missing_values_report = pd.concat([report_missing_column_values(df_fixed, col, s_qa_range, timestamp_column)
+        missing_values_report = pd.concat([report_missing_column_values(df_fixed, col, s_qa_range)
                                            for col in variable_columns[missing_value_columns.astype(bool)]])
 
     original_index:         pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])           # type: ignore

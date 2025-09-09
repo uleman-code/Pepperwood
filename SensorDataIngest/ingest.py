@@ -160,15 +160,18 @@ def main() -> None:
     logger.info(f'Configuration file {config_file.resolve()} read. Configuration is:\n{nt.dumps(config.model_dump(mode='json'))}') # pyright: ignore[reportPossiblyUnboundVariable]
 
     callbacks.set_config(config.model_dump()) # pyright: ignore[reportPossiblyUnboundVariable]
-    app        = DashProxy(
-                    blueprint=callbacks.blueprint,
-                    prevent_initial_callbacks=True,             # type: ignore
-                    title='Sensor Data Ingest',
-                    update_title=None,                          # Don't change tab title to "Updating..." when the page is being rebuilt
-                    # background_callback_manager='diskcache',
-                    transforms=[ServersideOutputTransform(), TriggerTransform()],
-                 )
+    app: DashProxy = DashProxy(
+                               blueprint=callbacks.blueprint,
+                               prevent_initial_callbacks=True,             # type: ignore
+                               title='Sensor Data Ingest',
+                               update_title=None,                          # Don't change tab title to "Updating..." when the page is being rebuilt
+                               # background_callback_manager='diskcache',
+                               transforms=[ServersideOutputTransform(), TriggerTransform()],
+                              )
     
+    # NOTE: If the Dash app is run with debug=True, this main module is executed twice, resulting in duplicate logging output.
+    #       This has to do with Flask and its support for automatic reloading upon any code changes. It can be suppressed, but
+    #       only at the expense of that very convenient reloading behavior. The duplicate messages do not appear when debug=False.
     app.run(debug=config.application.debug) # pyright: ignore[reportPossiblyUnboundVariable, reportOptionalMemberAccess]
 
 if __name__ == '__main__':

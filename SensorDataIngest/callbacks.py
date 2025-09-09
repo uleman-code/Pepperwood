@@ -62,17 +62,17 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-ts_col:    str
-seqno_col: str
+timestamp_column: str
+seqno_column:     str
 
 def set_config(config: dict[str, Any]) -> None:
     '''From the configuration settings, set the names of the timestamp and sequence-number coluns; and pass the configuration on.'''
 
-    global ts_col
-    global seqno_col
+    global timestamp_column
+    global seqno_column
 
-    ts_col    = config['metadata']['timestamp_column']
-    seqno_col = config['metadata']['sequence_number_column']
+    timestamp_column = config['metadata']['timestamp_column']
+    seqno_column     = config['metadata']['sequence_number_column']
 
     layout.set_config(config)
     helpers.set_config(config)
@@ -292,7 +292,6 @@ def toggle_loaddata(status: dict[str, Any]) -> tuple:
 
 @blueprint.callback(
     Output('inspect-data'  , 'display' ),
-    Output('select-columns', 'label'   ),
     Output('data-columns'  , 'children'),
     Output('select-columns', 'value'   ),
     Input( 'frame-store'   , 'data'    ),
@@ -318,7 +317,6 @@ def show_columns(frames: dict, status: dict) -> tuple:
         
     Returns:
         inspect-data/display  (str)  Show the column selection part of the Navbar if there's data; otherwise blank it 
-        select-columns/label  (str)  Use the label (title) to show how many columns are available
         data-columns/children (list) A list of dmc.Checkbox elements, one for each data column
         select-columns/value  (list) Reset the current selection (uncheck all boxes)
     '''
@@ -330,8 +328,8 @@ def show_columns(frames: dict, status: dict) -> tuple:
 
             # Skip the timestamp and sequence number columns; these are not data columns.
             checkboxes: list[dmc.Checkbox] = [dmc.Checkbox(label=c, value=c, size='sm',) for c in data.columns
-                                              if c not in [ts_col, seqno_col]] 
-            return 'flex', f'{len(checkboxes)} Variables', checkboxes, []
+                                              if c not in [timestamp_column, seqno_column]] 
+            return 'flex', checkboxes, []
         else:
             raise PreventUpdate
     else:
