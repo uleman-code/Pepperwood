@@ -1,3 +1,4 @@
 pip install --upgrade pyinstaller
 pyinstaller ingest.spec
-copy dist\ingest.exe .
+@REM copy dist\ingest.exe .
+tar cvzf ingest.zip -C dist ingest.exe -C .. ingest.cfg
