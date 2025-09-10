@@ -3,13 +3,14 @@ An interactive application for:
 - Loading files produced by Campbell Scientific data loggers
 - Performing several automated sanity checks
 - Visually inspecting the various time series contained in the files
-- Saving the data, along with column metadata and site information, in Excel workbooks
+- Saving the data, along with column and site metadata and notes about data anomalies, in Excel workbooks
 
 ## Installation (Windows ONLY)
-1. Download the executable file `ingest.exe` by clicking [this link](https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/SensorDataIngest/ingest.exe).
-1. Save into a folder of your choice, or, if all downloads are saved automatically (for example, in your Downloads folder), move the file to its preferred location.
+1. Download the zip archive `ingest.zip` by clicking [this link](https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/SensorDataIngest/ingest.zip).
+1. Extract the zip archive into a folder of your choice.
     - For example, `C:\Users\<your-user-name>\AppData\Local`. But any location where you can easily find it will do.
-1. (Optional) Create a shortcut and put it on the taskbar and/or the desktop.
+    - You will get a binary executable, `ingest.exe`, along with a readable configuration file, `ingest.cfg`.
+1. (Optional) Create a shortcut to the executable and put it on the taskbar and/or the desktop.
     - Tip: Give it a more descriptive name, like "Ingest Sensor Data".
 
 ## Running the application (Windows ONLY)
