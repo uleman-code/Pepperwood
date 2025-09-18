@@ -18,7 +18,7 @@ Double-click on the `ingest.exe` filename or <img width="32" height="32" alt="im
 icon or shortcut (single-click in the taskbar). A command window will open:
 
 <img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
-(The directory shown in this screenshot depend on where the executable happens to be stored, and will be different for you.)
+(The directory shown in this screenshot depends on where the executable happens to be stored, and will be different for you.)
 
 Keep this window open (minimizing is okay); as you use the app, further informational messages will appear.
 
