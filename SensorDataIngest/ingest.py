@@ -5,16 +5,16 @@ import logging
 from dash_extensions.enrich import DashBlueprint, DashProxy, ServersideOutputTransform, TriggerTransform
 from dash                   import _dash_renderer
 
-import dash_mantine_components as dmc
 import nestedtext              as nt
 
 from typing            import Annotated, Any
-from enum              import StrEnum
 from pathlib           import Path
 from pydantic          import BaseModel, BeforeValidator, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import callbacks
+
+module_name = Path(__file__).stem
 
 # Configuration settings and validation
 def normalize_config_key(key: str, parent_keys: list[str]) -> str:
@@ -51,31 +51,41 @@ def prepare_logging_level(input: Any) -> int:
     except KeyError:
         raise ValueError(f'"{input}" is not a valid logging level. Use DEBUG, INFO, WARNING, or ERROR')
 
-class ApplicationCfg(BaseModel):
-    '''General application-wide settings. Should not be sensor- or datalogger-specific.'''
+class ApplicationCfg(BaseSettings):
+    '''General application-wide settings. Should not be sensor- or datalogger-specific.
 
-    config_version:             str
-    debug:                      bool         = False
-    console_logging_level:      Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['INFO']
-    file_logging_level:         Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['DEBUG']
-    logging_directory:          Path         = Path('./logs')
-    datalogger_file_extensions: list[str]    = ['.dat', '.csv']     # For now, keep these input settings here, too
+    All application-level configuration settings, except config_file, normally come from a file but may be overridden using
+    commandline arguments or equivalent environment variables.
+    For any commandline argument, for example "--debug true", the equivalent environment expression is
+    "INGEST_APPLICATION.DEBUG=true" (note the prefix "INGEST_").
+    The setting names, whether on the commandline or as environment variables, are not case-sensitive. but the values may well be,
+    depending on the specific setting and on the environment. For example, a file path is case-sensitive in MacOS but not in Windows.'''
+    
+    # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
+    model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=True, env_prefix=f'{module_name}_') # pyright: ignore[reportIncompatibleVariableOverride]
+
+    config_file:           Path = Path(f'./{module_name}.cfg')     # Any non-default value must come from the environment or the command line
+    debug:                 bool = False
+    console_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['INFO']
+    file_logging_level:    Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['DEBUG']
+    logging_directory:     Path = Path('./logs')
+
+class InputCfg(BaseModel):
+    '''Input settings: Anything to do with acceptable input files.'''
+
+    datalogger_file_extensions: list[str]    = ['.dat', '.csv']
     excel_file_extensions:      list[str]    = ['.xlsx', '.xls']
 
-class UiTextCfg(BaseModel):
-    '''All text that shows up in the browser (except the application title).'''
-
-    load_data:    str = 'Load Data'
-    drag_n_drop:  str = 'Drag and drop, or'
-    select_files: str = 'Select File(s)'
 class OutputCfg(BaseModel):
-    '''Output settings. Don't know if there will ever be anything besides worksheet names.'''
+    '''Output settings: Anything to do with the generated output.'''
 
     worksheet_names: dict[str, str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
     data_na_representation: str     = '#N/A'
 
 class MetadataCfg(BaseModel):
-    '''Metadata settings: not about the sensor data but only the standard index columns and what's in the other worksheets.'''
+    '''Metadata settings: not about the sensor data but only the standard index columns and what's in the other worksheets.
+    
+    Variable (column) metadata will be handled separately.'''
 
     timestamp_column:       str
     sequence_number_column: str
@@ -84,27 +94,20 @@ class MetadataCfg(BaseModel):
     site_columns:           list[str]
     notes_columns:          list[str]
 
-class Config(BaseSettings):
-    '''All configuration settings, except config_file, normally come from a file but may be overridden using commandline arguments or equivalent environment variables.
-    
-    For any commandline argument, for example "--application.debug true", the equivalent environment expression is "INGEST_APPLICATION.DEBUG=true" (note the prefix "INGEST_").
-    The setting names, whether on the commandline or as environment variables, are not case-sensitive. but the values may well be,
-    depending on the specific setting and on the environment. For example, a file path is case-sensitive in MacOS but not in Windows.'''
+class Config(BaseModel):
 
     # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
-    model_config: SettingsConfigDict    = SettingsConfigDict(cli_parse_args=True, env_prefix='ingest_') # pyright: ignore[reportIncompatibleVariableOverride]
+    # model_config:   SettingsConfigDict    = SettingsConfigDict(cli_parse_args=True, env_prefix='ingest_') # pyright: ignore[reportIncompatibleVariableOverride]
     
-    config_file:  Path                  = Path('./ingest.cfg')     # Any non-default value must come from the environment or the command line
-    application:  ApplicationCfg | None = None
-    output:       OutputCfg      | None = None
-    metadata:     MetadataCfg    | None = None
-
-# Declare as a global: should be accessible from all modules and functions.
-# config: dict[str, Any] = {}
+    config_version: str            | None = None
+    application:    ApplicationCfg | None = None
+    input:          InputCfg       | None = None
+    output:         OutputCfg      | None = None
+    metadata:       MetadataCfg    | None = None
 
 def main() -> None:
     # Get the configuration from a file in NestedText format. The default path may be overridden in the environment or on the command line.
-    config_file: Path = Config(application=None, output=None, metadata=None).config_file # pyright: ignore[reportCallIssue]
+    config_file: Path = ApplicationCfg().config_file # pyright: ignore[reportCallIssue]
     try:
         keymap = {}
         config_raw: dict[str, Any] = nt.load(config_file, keymap=keymap, normalize_key=normalize_config_key) # type: ignore
@@ -122,8 +125,6 @@ def main() -> None:
         warn_logging_dir_created = True
     else:
         warn_logging_dir_created = False
-
-    module_name = Path(__file__).stem
 
     # General-purpose logger
     logger           = logging.getLogger(module_name.capitalize())
