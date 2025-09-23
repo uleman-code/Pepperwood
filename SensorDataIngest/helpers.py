@@ -46,7 +46,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 worksheet_names:   dict[str, str]
 qa_report_columns: list[str]
-data_na_rep:       str
+data_na_repr:      str
 timestamp_column:  str
 seqno_column:      str
 sampling_interval: str
@@ -56,14 +56,14 @@ def set_config(config: dict[str, Any]) -> None:
  
     global qa_report_columns
     global worksheet_names
-    global data_na_rep
+    global data_na_repr
     global timestamp_column
     global seqno_column
     global sampling_interval
 
     qa_report_columns = config['metadata']['notes_columns']
     worksheet_names   = config['output']['worksheet_names']
-    data_na_rep       = config['output']['data_na_representation']
+    data_na_repr      = config['output']['data_na_representation']
     timestamp_column  = config['metadata']['timestamp_column']
     seqno_column      = config['metadata']['sequence_number_column']
     sampling_interval = config['metadata']['sampling_interval']
@@ -187,7 +187,7 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
                 df.insert(1, 'Link', [f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names['data']}!$A:$A,MATCH($A{row},{worksheet_names['data']}!$A:$A,0))),"   🔗")'
                                       for row in range(2, len(df)+2)])
 
-            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=data_na_rep if sheet == worksheet_names['data'] else '')
+            df.to_excel(xl, index=False, sheet_name=sheet, na_rep=data_na_repr if sheet == worksheet_names['data'] else '')
 
             # Automatically adjust column widths to fit all text, including the column header
             # NOTE: This may be an expensive operation. Beware of large files!
