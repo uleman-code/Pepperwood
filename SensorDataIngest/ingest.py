@@ -2,123 +2,26 @@
 
 import logging
 
-from dash_extensions.enrich import DashBlueprint, DashProxy, ServersideOutputTransform, TriggerTransform
-from dash                   import _dash_renderer
+from dash_extensions.enrich import DashProxy, ServersideOutputTransform, TriggerTransform
 
-import nestedtext              as nt
+from typing  import Any
+from pathlib import Path
 
-from typing            import Annotated, Any
-from pathlib           import Path
-from pydantic          import BaseModel, BeforeValidator, ValidationError
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import config
 
-import callbacks
-
+# Initialize the configuration module before importing any other modules from this project.
 module_name = Path(__file__).stem
+config.config_init(program_name=module_name)
+app_config: dict[str, Any] = config.config['application']       # Just a clutter reducing convenience
 
-# Configuration settings and validation
-def normalize_config_key(key: str, parent_keys: list[str]) -> str:
-    '''Make configuration keys case-insensitive and connect words by underscore.'''
-
-    return '_'.join(key.lower().split())
-
-def to_upper(input: Any) -> str:
-    '''Expect a string, or at least something that has a string representation; convert to uppercase.'''
-
-    return str(input).upper()
-
-def prepare_logging_level(input: Any) -> int:
-    '''Accept a case-insensitive logging-level string or an integer between 0 and 50; return the (equivalent) integer.
-    
-    Strings should be from the familiar logging levels: DEBUG, INFO, WARNING, ERROR (NOTSET and CRITICAL also exist).
-    Integers are truncated to the interval [0, 50] (equivalent to [NOTSET, CRITICAL]).
-
-    Raises:
-        ValueError  if input is neither an integer nor a valid logging-level string
-    '''
-
-    try:
-        # Keep it within the 0 - 50 range.
-        return min(max(int(input), logging.getLevelNamesMapping()['NOTSET']), logging.getLevelNamesMapping()['CRITICAL'])
-    except ValueError:
-        pass                # Not an integer; try string next
-
-    try:
-        if isinstance(input, str):
-            return logging.getLevelNamesMapping()[input.upper()]        # case-insensitive
-        else:
-            raise ValueError(f'"{input}" cannot be a valid logging level. It needs to be a string or an integer.')
-    except KeyError:
-        raise ValueError(f'"{input}" is not a valid logging level. Use DEBUG, INFO, WARNING, or ERROR')
-
-class ApplicationCfg(BaseSettings):
-    '''General application-wide settings. Should not be sensor- or datalogger-specific.
-
-    All application-level configuration settings, except config_file, normally come from a file but may be overridden using
-    commandline arguments or equivalent environment variables.
-    For any commandline argument, for example "--debug true", the equivalent environment expression is
-    "INGEST_APPLICATION.DEBUG=true" (note the prefix "INGEST_").
-    The setting names, whether on the commandline or as environment variables, are not case-sensitive. but the values may well be,
-    depending on the specific setting and on the environment. For example, a file path is case-sensitive in MacOS but not in Windows.'''
-    
-    # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
-    model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=True, env_prefix=f'{module_name}_') # pyright: ignore[reportIncompatibleVariableOverride]
-
-    config_file:           Path = Path(f'./{module_name}.cfg')     # Any non-default value must come from the environment or the command line
-    debug:                 bool = False
-    console_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['INFO']
-    file_logging_level:    Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['DEBUG']
-    logging_directory:     Path = Path('./logs')
-
-class InputCfg(BaseModel):
-    '''Input settings: Anything to do with acceptable input files.'''
-
-    datalogger_file_extensions: list[str]    = ['.dat', '.csv']
-    excel_file_extensions:      list[str]    = ['.xlsx', '.xls']
-
-class OutputCfg(BaseModel):
-    '''Output settings: Anything to do with the generated output.'''
-
-    worksheet_names: dict[str, str] = dict(data='Data', meta='Columns', site='Meta', notes='Notes')
-    data_na_representation: str     = '#N/A'
-
-class MetadataCfg(BaseModel):
-    '''Metadata settings: not about the sensor data but only the standard index columns and what's in the other worksheets.
-    
-    Variable (column) metadata will be handled separately.'''
-
-    timestamp_column:       str
-    sequence_number_column: str
-    sampling_interval:      str
-    description_columns:    list[str]
-    site_columns:           list[str]
-    notes_columns:          list[str]
-
-class Config(BaseModel):
-
-    # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
-    # model_config:   SettingsConfigDict    = SettingsConfigDict(cli_parse_args=True, env_prefix='ingest_') # pyright: ignore[reportIncompatibleVariableOverride]
-    
-    config_version: str            | None = None
-    application:    ApplicationCfg | None = None
-    input:          InputCfg       | None = None
-    output:         OutputCfg      | None = None
-    metadata:       MetadataCfg    | None = None
+import callbacks    # This module, and any others it in turn imports, now has access to the fully initialized config module.
 
 def main() -> None:
-    # Get the configuration from a file in NestedText format. The default path may be overridden in the environment or on the command line.
-    config_file: Path = ApplicationCfg().config_file # pyright: ignore[reportCallIssue]
-    try:
-        keymap = {}
-        config_raw: dict[str, Any] = nt.load(config_file, keymap=keymap, normalize_key=normalize_config_key) # type: ignore
-        config:     Config         = Config.model_validate(config_raw)
-    except nt.NestedTextError as e:
-        e.terminate()
 
     # Set up logging.
     # If logging_dir does not exist, create it.
     # The current setup errors out if logging_dir exists but is not a directory (because then creating the log file fails).
-    logging_dir: Path = config.application.logging_directory # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    logging_dir: Path = app_config['logging_directory']
 
     if not logging_dir.exists():
         logging_dir.mkdir()
@@ -133,12 +36,12 @@ def main() -> None:
     file_formatter   = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{funcName:28s}: {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
     stream_formatter = logging.Formatter('{levelname}|{name}: {message}', style='{')
 
-    file_handler.setLevel(config.application.file_logging_level) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    file_handler.setLevel(app_config['file_logging_level'])
     file_handler.setFormatter(file_formatter)
-    stream_handler.setLevel(config.application.console_logging_level) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    stream_handler.setLevel(app_config['console_logging_level'])
     stream_handler.setFormatter(stream_formatter)
 
-    logger.setLevel(config.application.file_logging_level) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    logger.setLevel(app_config['file_logging_level'])
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
 
@@ -147,9 +50,9 @@ def main() -> None:
     ee_handler   = logging.FileHandler(logging_dir / (module_name + '.log'))
     ee_formatter = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{fname:28s}: {message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
 
-    ee_handler.setLevel(config.application.file_logging_level) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    ee_handler.setLevel(app_config['file_logging_level'])
     ee_handler.setFormatter(ee_formatter)
-    ee_logger.setLevel(config.application.file_logging_level) # pyright: ignore[reportOptionalMemberAccess, reportPossiblyUnboundVariable]
+    ee_logger.setLevel(app_config['file_logging_level'])
     ee_logger.addHandler(ee_handler)
 
     # Start the application
@@ -158,9 +61,9 @@ def main() -> None:
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
-    logger.info(f'Configuration file {config_file.resolve()} read. Configuration is:\n{nt.dumps(config.model_dump(mode='json'))}') # pyright: ignore[reportPossiblyUnboundVariable]
+    logger.info(f'Configuration file {app_config['config_file'].resolve()} read. Configuration is:\n{config.config_print()}')
 
-    callbacks.set_config(config.model_dump()) # pyright: ignore[reportPossiblyUnboundVariable]
+    # callbacks.set_config(config.model_dump()) # pyright: ignore[reportPossiblyUnboundVariable]
     app: DashProxy = DashProxy(
                                blueprint=callbacks.blueprint,
                                prevent_initial_callbacks=True,             # type: ignore
@@ -173,7 +76,7 @@ def main() -> None:
     # NOTE: If the Dash app is run with debug=True, this main module is executed twice, resulting in duplicate logging output.
     #       This has to do with Flask and its support for automatic reloading upon any code changes. It can be suppressed, but
     #       only at the expense of that very convenient reloading behavior. The duplicate messages do not appear when debug=False.
-    app.run(debug=config.application.debug) # pyright: ignore[reportPossiblyUnboundVariable, reportOptionalMemberAccess]
+    app.run(debug=app_config['debug'])
 
 if __name__ == '__main__':
     main()

@@ -11,7 +11,6 @@ from   dash_extensions.enrich  import (
                                    State,
                                    Output,
                                    ALL,
-                                   callback,
                                    no_update,
                                    callback_context,
                                    Serverside,
@@ -31,13 +30,14 @@ from   datetime import datetime
 from   pathlib  import Path
 from   typing   import Any, Callable
 
-import layout
 import logging
 import decorator
 
+from   config import config, capitalized_program_name
+import layout
 import helpers                          # Local module implementing Dash-independent actions
 
-logger:      logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
+logger:      logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')        # Child logger inherits root logger settings
 frame_store: dict           = {}
 
 @decorator.decorator
@@ -47,7 +47,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     Very simplistic; no argument logging or execution timing.
     '''
     
-    ee_logger: logging.Logger = logging.getLogger(f'ingest.{__name__}')
+    ee_logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:
@@ -62,20 +62,8 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-timestamp_column: str
-seqno_column:     str
-
-def set_config(config: dict[str, Any]) -> None:
-    '''From the configuration settings, set the names of the timestamp and sequence-number coluns; and pass the configuration on.'''
-
-    global timestamp_column
-    global seqno_column
-
-    timestamp_column = config['metadata']['timestamp_column']
-    seqno_column     = config['metadata']['sequence_number_column']
-
-    layout.set_config(config)
-    helpers.set_config(config)
+timestamp_column: str = config['metadata']['timestamp_column']
+seqno_column:     str = config['metadata']['sequence_number_column']
 
 blueprint: DashBlueprint = DashBlueprint(transforms=[ServersideOutputTransform(), TriggerTransform()])
 blueprint.layout         = dmc.MantineProvider(layout.layout)

@@ -13,6 +13,7 @@ import pandas               as pd
 import plotly.graph_objects as go
 
 from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
+from config                      import config, capitalized_program_name
 
 class UnmatchedColumnsError(ValueError):
     pass
@@ -32,7 +33,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
         The wrapped function's result
     '''
     
-    ee_logger: logging.Logger = logging.getLogger(f'ingest.{__name__}')
+    ee_logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:
@@ -44,31 +45,14 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-worksheet_names:   dict[str, str]
-qa_report_columns: list[str]
-data_na_repr:      str
-timestamp_column:  str
-seqno_column:      str
-sampling_interval: str
+worksheet_names:   dict[str, str] = config['output']['worksheet_names']
+data_na_repr:      str            = config['output']['data_na_representation']
+timestamp_column:  str            = config['metadata']['timestamp_column']
+seqno_column:      str            = config['metadata']['sequence_number_column']
+sampling_interval: str            = config['metadata']['sampling_interval']
+qa_report_columns: list[str]      = config['metadata']['notes_columns']
 
-def set_config(config: dict[str, Any]) -> None:
-    '''Set worksheet and column names from the configuration settings.'''
- 
-    global qa_report_columns
-    global worksheet_names
-    global data_na_repr
-    global timestamp_column
-    global seqno_column
-    global sampling_interval
-
-    qa_report_columns = config['metadata']['notes_columns']
-    worksheet_names   = config['output']['worksheet_names']
-    data_na_repr      = config['output']['data_na_representation']
-    timestamp_column  = config['metadata']['timestamp_column']
-    seqno_column      = config['metadata']['sequence_number_column']
-    sampling_interval = config['metadata']['sampling_interval']
-
-logger: logging.Logger = logging.getLogger(f'Ingest.{__name__}')        # Child logger inherits root logger settings
+logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')        # Child logger inherits root logger settings
 pd.set_option('plotting.backend', 'plotly')
 
 @log_func
