@@ -322,7 +322,7 @@ def show_columns(frames: dict, status: dict) -> tuple:
             raise PreventUpdate
     else:
         logger.debug('No data; clear column selection element.')
-        return 'none', '', [], []
+        return 'none', '', []
 
 @blueprint.callback(
     Output('stacked-graphs', 'figure' ),
