@@ -4,6 +4,6 @@ pip.exe install --upgrade pyinstaller
 Write-Output "Using pyinstaller to build the distribution:"
 Write-Output "  pyinstaller.exe ingest.spec"
 pyinstaller.exe ingest.spec
-Write-Output "Creating compressed archive ..."
-Write-Output "  Compress-Archive -Force -Path .\ingest.cfg, .\dist\ingest.exe -DestinationPath .\ingest.zip"
-Compress-Archive -Force -Path .\ingest.cfg, .\dist\ingest.exe -DestinationPath .\ingest.zip
+Write-Output "Creating setup package ..."
+Write-Output "  'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' ..\ingest_installer.iss"
+& 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe' ..\ingest_installer.iss
