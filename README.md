@@ -6,24 +6,20 @@ An interactive application for:
 - Saving the data, along with column and site metadata and notes about data anomalies, in Excel workbooks
 
 ## Installation (Windows ONLY)
-1. Download the zip archive `ingest.zip` by clicking [this link](https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/SensorDataIngest/ingest.zip).
-1. Extract the zip archive into a folder of your choice.
-    - For example, `C:\Users\<your-user-name>\AppData\Local`. But any location where you can easily find it will do.
-    - You will get a binary executable, `ingest.exe`, along with a readable configuration file, `ingest.cfg`.
-1. (Optional) Create a shortcut to the executable and put it on the taskbar and/or the desktop.
-    - Tip: Give it a more descriptive name, like "Ingest Sensor Data".
+1. Download the installer by clicking [this link](https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/ingest_installer.exe).
+1. Run the downloaded installer (a Setup Wizard), `ingest_installer.exe`.
+    - By default, it installs into `C:\Users\<your-username>\AppData\Local\Programs\Ingest`; you can override this.
+    - A shortcut is automatically added to the Start menu. In addition, you can choose (by filling a checkbox) to create a desktop shortcut.
+    - Before finishing and closing the Setup Wizard, you can choose to launch the program (by leaving the checkbox filled). Since the application is intended to run in the background at all times, you might as well.
+1. As part of the installation process, an uninstaller called `unins000.exe` is added to the same folder where the program is installed (see above). Uninstalling will remove anything created by the installer, including the program itself, any shortcuts, and the configuration settings file. Anything created later by the application (such as the `logs` and `file_system_backend` folders and any additional configuration files) is left alone.
 
 ## Running the application (Windows ONLY)
-Double-click on the `ingest.exe` filename or <img width="32" height="32" alt="image" src="https://github.com/user-attachments/assets/1523a0ff-3153-4274-b94c-9d5f09c30125" />
-icon or shortcut (single-click in the taskbar). A command window will open:
+If not already launched by the installer, you can start the application in the usual ways of clicking "Ingest" in the Start menu or double-clicking the desktop shortcut. Or you can launch it from an existing Command or PowerShell window by typing the full path and filename:  `C:\Users\<your-username>\AppData\Local\Programs\Ingest\ingest.exe`.
 
-<img width="1116" height="225" alt="image" src="https://github.com/user-attachments/assets/2d99acc9-7523-4d5c-99ef-21aaf49c8fcf" />
-(The directory shown in this screenshot depends on where the executable happens to be stored, and will be different for you.)
-
+A command window will open, showing the tail end of the current configuration settings (most of it will have scrolled off-screen).
 Keep this window open (minimizing is okay); as you use the app, further informational messages will appear.
 
 Point your browser at http://localhost:8050/.
-- Note: `localhost` is a synonym for `127.0.0.1`, shown in the screen shot above.
 
 You can leave this program running indefinitely; it's only providing a simple web server, which should not interfere with anything when idle.
 
