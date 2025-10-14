@@ -12,7 +12,7 @@ from   typing  import Any, Callable
 import pandas               as pd
 import plotly.graph_objects as go
 
-from pandas.core.groupby.generic import SeriesGroupBy, DataFrameGroupBy       # Just for type hinting
+from pandas.core.groupby.generic import SeriesGroupBy                      # Just for type hinting
 from config                      import config, capitalized_program_name
 
 class UnmatchedColumnsError(ValueError):
@@ -130,7 +130,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
                 # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
                 if 'Link' in frames['notes'].columns:
                     frames['notes'].drop(columns='Link') 
-            except ValueError as e:                 # Worksheet named 'Notes' not found
+            except ValueError:                               # Worksheet named 'Notes' not found
                 logger.info('No Notes worksheet in this file. Will perform QA and write new worksheet upon save.')
         else:
             # This should not happen: the Upload element limits the supported filename extensions.
@@ -408,7 +408,9 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     first = grouped.first()
     last  = grouped.last()
 
-    make_text = lambda x: f'Unknown; {x} NA-filled record{"s" if x > 1 else ""} inserted and {seqno_column} renumbered.'
+    def make_text(n: int) -> str:
+        return f'Unknown; {n} NA-filled record{"s" if n > 1 else ""} inserted and {seqno_column} renumbered.'
+
     report: pd.DataFrame = pd.DataFrame(dict(zip(qa_report_columns, [first, last, 'All', 'Yes',
             (((last - first)/pd.Timedelta(sampling_interval)).astype(int) + 1).apply(make_text)])))      # type: ignore
 

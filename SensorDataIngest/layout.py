@@ -1,15 +1,13 @@
-'''Static Dash layout: app shell with header, navigation bar, and main area.'''
-
-from   dash_extensions.enrich  import dcc
-import dash_mantine_components as     dmc
-
-from typing import Any
+"""Static Dash layout: app shell with header, navigation bar, and main area."""
 
 import json
 
+import dash_mantine_components as dmc
+from dash_extensions.enrich import dcc
+
 header = dmc.Group(
     [
-        dmc.Burger(id='burger-button', opened=False, hiddenFrom='md'),      # Won't matter unless on a mobile device
+        dmc.Burger(id='burger-button', opened=False, hiddenFrom='md'),      # Mobile only?
         dmc.Title('Sensor Data Ingest'),
     ],
     justify='center',
@@ -21,7 +19,7 @@ load_save = [
         [
             dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
             dcc.Upload(
-                dmc.Stack(                          # The entire Stack serves as the drag-and-drop area
+                dmc.Stack(                          # The entire Stack is the drag-and-drop area
                     children=[
                         dmc.Text('Drag and drop, or', h='xs'),
                         dmc.Button('Select File(s)'),
@@ -84,19 +82,30 @@ columns = [
                             gap='xs',
                         ),
                     ],
-                    pt='lg',           # For some reason, without this the ScrollArea hides the top of the text
+                    pt='lg',           # Without this the ScrollArea hides the top of the text???
                 ),
             ],
             display='none',
             inheritPadding=True,
         ),
-        scrollbars='y',                # This may be too rigid in case very long column names are possible
-    )
+        scrollbars='y',                # May be too rigid in case of very long column names
+    ),
 ]
 
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
-def make_file_info(n: int | None = None):
+def make_file_info(n: int | None = None) -> dmc.CardSection:
+    """Create a card section for one file's file info, progress, and QA results.
+
+    In a batch process, one of these is created for each file, with the suffix n (1, 2, 3, ...)
+    ensuring unique IDs. In case of a single file, no suffix is applied to the ID.
+
+    Parameters:
+        n  Numeric suffix for the element ID (batch case). If single file, None means no suffix.
+
+    Returns:
+        dmc.CardSection: This file's info/progress/QA area
+    """
     suffix   = '' if n is None else '-' + str(n)
     badge_id = 'saved-badge' if n is None else {'type': 'saved-badge', 'index': n}
     return  dmc.CardSection(
@@ -104,7 +113,7 @@ def make_file_info(n: int | None = None):
                     children=[
                         dmc.Stack(
                             children=[
-                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold', h='sm'),  # Filename in bold
+                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold', h='sm'),
                                 dmc.Group(
                                     children=[
                                         dmc.Text(id=f'last-modified{suffix}'),
@@ -112,10 +121,10 @@ def make_file_info(n: int | None = None):
                                             'Saved',
                                             id=badge_id,
                                             ml='sm',
-                                            display='none'
+                                            display='none',
                                         ),
-                                    ]
-                                )
+                                    ],
+                                ),
                             ],
                             py='xs',
                             mt=25,
@@ -166,14 +175,14 @@ page_main = dmc.Card(
 layout = dmc.AppShell(
     children=[
         dmc.AppShellHeader(header, px=25),
-        dmc.AppShellNavbar(navbar,),
+        dmc.AppShellNavbar(navbar),
         dmc.AppShellMain(page_main,
                             pt=17,
                             ml=10,
                         ),
         dcc.Store(
             id='files-status',
-            data=json.dumps(dict(filename='', unsaved=False)),
+            data=json.dumps({'filename': '', 'unsaved': False}),
         ),
         dcc.Store(id='frame-store'),
         dcc.Store(id='file-counter'),
