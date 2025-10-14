@@ -64,6 +64,8 @@ class ApplicationCfg(BaseSettings):
     console_logging_level:      Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['INFO']
     file_logging_level:         Annotated[int, BeforeValidator(prepare_logging_level)] = logging.getLevelNamesMapping()['DEBUG']
     logging_directory:          Path         = Path('./logs')
+    logfile_max_size:           int          = 10*1024*1024
+    logfile_backup_count:       int          = 3
 
 class InputCfg(BaseModel):
     '''Input settings: Anything to do with acceptable input files.'''

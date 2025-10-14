@@ -1,6 +1,7 @@
 """Main module for the SensorDataIngest application for Pepperwood."""
 
 import logging
+from logging import handlers
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,9 @@ def main() -> None:
 
     # General-purpose logger
     logger           = logging.getLogger(module_name.capitalize())
-    file_handler     = logging.FileHandler(logging_dir / (module_name + '.log'))
+    file_handler     = handlers.RotatingFileHandler(logging_dir / (module_name + '.log'),
+                                                    maxBytes=app_config['logfile_max_size'],
+                                                    backupCount=app_config['logfile_backup_count'])
     stream_handler   = logging.StreamHandler()
     file_formatter   = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{funcName:28s}:'
                                          '{message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
