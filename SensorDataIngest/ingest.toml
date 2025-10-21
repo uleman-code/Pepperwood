@@ -1,0 +1,56 @@
+config_version = "0.5"
+
+[application]
+debug = true
+console_logging_level = "INFO"
+file_logging_level = "DEBUG"
+logging_directory = "./logs"
+logfile_max_size = 10_485_760
+logfile_backup_count = 3
+
+[input]
+datalogger_file_extensions = [
+    ".dat",
+    ".csv",
+]
+excel_file_extensions = [
+    ".xlsx",
+    ".xls",
+]
+
+[output]
+data_na_representation = "#N/A"
+
+[output.worksheet_names]
+data    = "Data"
+meta    = "Columns"
+station = "Meta"
+notes   = "Notes"
+
+
+[metadata]
+timestamp_column = "TIMESTAMP"
+sequence_number_column = "RECORD"
+sampling_interval = "15min"
+variable_description_columns = [
+    "Name",
+    "Units",
+    "DataProcess",
+]
+station_columns = [
+    "DataFileFormat",
+    "StationName",
+    "DataLoggerModel",
+    "DataLoggerSerialNumber",
+    "DataLoggerOsVersion",
+    "DataLoggerProgramName",
+    "DataLoggerProgramSignature",
+    "TableName",
+]
+notes_columns = [
+    "Start_of_issue",
+    "End_of_issue",
+    "Sensor_or_Data_Field",
+    "Data_Omitted",
+    "Nature_of_problem",
+]
