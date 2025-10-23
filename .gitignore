@@ -4,6 +4,7 @@ testing.ipynb
 .DS_Store
 .vscode/
 .venv*/
+.coverage
 cache/
 logs/
 build/
