@@ -173,11 +173,13 @@ def config_init(program_name: str) -> None:
         config_raw: dict[str, Any] = tomllib.load(f)
 
     config_model = Config.model_validate(config_raw)
-    config_model.application.config_file = config_file  # pyright: ignore[reportOptionalMemberAccess] # Just for accurate logging purposes
+    config_model.application.config_file = config_file  # Just for accurate logging purposes
     config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
 
 
 def config_print() -> str:
     """Return a readable representation of the configuration settings with the same format as the configuration file."""
 
-    return tomli_w.dumps(config_model.model_dump(mode='json'))      # JSON mode to avoid non-serializable values
+    return tomli_w.dumps(
+        config_model.model_dump(mode='json')
+    )  # JSON mode to avoid non-serializable values

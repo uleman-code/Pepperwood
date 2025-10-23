@@ -48,9 +48,9 @@ station_columns = [
     "TableName",
 ]
 notes_columns = [
-    "Start_of_issue",
-    "End_of_issue",
-    "Sensor_or_Data_Field",
-    "Data_Omitted",
-    "Nature_of_problem",
+    "Start of issue",
+    "End of issue",
+    "Sensor or Data Field",
+    "Data Omitted",
+    "Nature of problem",
 ]

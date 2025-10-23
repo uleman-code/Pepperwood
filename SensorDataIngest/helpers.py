@@ -57,9 +57,8 @@ qa_report_columns: list[str] = config['metadata']['notes_columns']
 meta_columns: list[str] = config['metadata']['variable_description_columns']
 station_columns: list[str] = config['metadata']['station_columns']
 
-logger: logging.Logger = logging.getLogger(
-    f'{capitalized_program_name}.{__name__}'
-)  # Child logger inherits root logger settings
+# Child logger inherits root logger settings
+logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
 pd.set_option('plotting.backend', 'plotly')
 
 
@@ -183,9 +182,8 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
         for sheet, df in sheets.items():
             logger.debug(f'Writing {type(df).__name__} to sheet {sheet}.')
 
-            if (
-                sheet == worksheet_names['notes']
-            ):  # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
+            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
+            if (sheet == worksheet_names['notes']):
                 df.insert(
                     1,
                     'Link',
@@ -243,21 +241,18 @@ def render_graphs(
     if single_plot:
         fig = (
             df_show.plot.line(height=720)
-            .update_yaxes(title_text='')  # pyright: ignore[reportAttributeAccessIssue]
+            .update_yaxes(title_text='')
             .update_layout(legend_title_text='Variable')
         )
     else:
         # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
         # This is very convenient, but makes it somewhat inflexible with respect to individual plot titles/annotations. For now, good enough.
         fig = (
-            df_show.plot.line(
-                facet_row='variable', height=120 + 200 * len(showcols)
-            )  # Simplistic attempt at calculating the height depending on number of graphs
-            .update_yaxes(matches=None, title_text='')  # type: ignore                    # Each graph has its own value range; don't show the axis title 'value'
+            # Use a simplistic attempt at calculating the height, depending on the number of graphs
+            df_show.plot.line(facet_row='variable', height=120 + 200 * len(showcols))
+            .update_yaxes(matches=None, title_text='')  # Don't show the axis title 'value'
             .update_xaxes(showticklabels=True)  # Repeat the time scale under each graph
-            .for_each_annotation(
-                lambda a: a.update(text=a.text.split('=')[-1])
-            )  # Just print the variable (column) name
+            .for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))  # Just print the variable name
             .update_layout(legend_title_text='Variable')
         )
 
@@ -308,9 +303,7 @@ def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
         df_repeat.groupby(timestamp_column, as_index=True).nunique().max(axis='columns')
     )
 
-    if (
-        len(nunique) and max(nunique) > 1
-    ):  # max() doesn't deal with an empty argument, so test for content
+    if (len(nunique) and max(nunique) > 1):
         logger.info('Duplicate timestamps found.')
         raise ValueError(
             f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel.'
@@ -429,11 +422,9 @@ def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
         .drop(columns=seqno_column)  # Will reconstruct later
         .asfreq(freq=sampling_interval)
         .reset_index()  # Bring the timestamp back as a column
-        .reset_index(
-            names=seqno_column
-        )  # Copy row sequence numbers into the sequence number column
+        .reset_index(names=seqno_column)
         .loc[:, df.columns]  # Restore the original column order
-    )  # type: ignore
+    )
 
     return df_fixed
 
@@ -468,12 +459,12 @@ def report_missing_samples(
     grouped: SeriesGroupBy = inserted_timestamps.groupby(
         inserted_timestamps.diff()  # Find each timestamp's increment from its predecessor
         .bfill()  # Fill in the first one (which does not have a predecessor)
-        .ne(pd.Timedelta(sampling_interval))  # type: ignore  # Mark (True) if it's bigger than expected (that is, a gap)
+        .ne(pd.Timedelta(sampling_interval))  # Mark if it's bigger than expected (so, a gap)
         .cumsum()  # This increments after each gap
     )
 
-    first = grouped.first()
-    last = grouped.last()
+    first: pd.Series = grouped.first()
+    last: pd.Series = grouped.last()
 
     def make_text(n: int) -> str:
         return f'Unknown; {n} NA-filled record{"s" if n > 1 else ""} inserted and {seqno_column} renumbered.'
@@ -493,7 +484,7 @@ def report_missing_samples(
                 ],
             )
         )
-    )  # type: ignore
+    )
 
     if not report.empty:
         logger.info('Missing samples found.')
@@ -516,10 +507,10 @@ def run_qa(
        In the case of missing samples, restore the regular time series by inserting rows with the expected timestamps and sequence numbers
        --the latter will be renumbered--, and with NaNs for all the other columns.
 
-    3. In the test for duplicates, the sequential-numbering column (seqno_column) is ignored. This column is fairly meaningless
+    3. In the test for duplicates, the sequence number column (seqno_column) is ignored. This column is fairly meaningless
        and gets reassigned at the end, erasing any effects of concatenation, duplicate removal, and gap filling.
 
-    3. In Append mode, analyzing the combined dataset could potentially find the same issues found previously, leading to redundant report entries.
+    4. In Append mode, analyzing the combined dataset could potentially find the same issues found previously, leading to redundant report entries.
        However, since missing samples and duplicate whole samples result in corrected data, and duplicate timestamps prevent saving and appending
        altogether, the only test for which it is important to limit the analysis to only the QA range indicated is the one for missing values
        in individual variables.
@@ -533,14 +524,14 @@ def run_qa(
       or missing samples, an indication that rows were dropped/inserted).
 
     Limitations:
-        In Append mode, it is theoretically possible (but probably rare) that a run of missing variable values, missing values, or
+        In Append mode, it is theoretically possible (but probably rare) that a run of missing variable values, missing samples, or
         duplicates extends from the end of previously saved data through the beginning of the current set. This function would report on
         each part separately and make no attempt to consolidate the two parts into a single run.
 
     Parameters:
-        df_data             Input/Output DataFrame: any restoration (inserted rows) is applied in place
-        notes               If not None, the notes previously generated from the new data set (in Append mode)
-        qa_range            If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
+        df_data     Input/Output DataFrame: any restoration (inserted rows) is applied in place
+        df_notes    If not None, the notes previously generated from the new data set (in Append mode)
+        qa_range    If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
 
     Returns:
         Duplicate samples found?
@@ -573,13 +564,13 @@ def run_qa(
     s_qa_range: pd.Series[bool] | slice = (
         df_fixed[timestamp_column].between(qa_range[0], qa_range[1]) if qa_range else slice(None)
     )
-    missing_value_columns: pd.Series = df_fixed.loc[s_qa_range, variable_columns].isna().sum()  # type: ignore
+    missing_value_columns: pd.Series = df_fixed.loc[s_qa_range, variable_columns].isna().sum()
     missing_values_found: bool = bool(missing_value_columns.sum())
 
     missing_values_report: pd.DataFrame
     if not missing_values_found:
         logger.info('No missing values found. Moving on to look for missing samples.')
-        missing_values_report = pd.DataFrame([])
+        missing_values_report = pd.DataFrame([], columns=qa_report_columns)
     else:
         # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
         missing_values_report = pd.concat(
@@ -589,9 +580,9 @@ def run_qa(
             ]
         )
 
-    original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])  # type: ignore
+    original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
     df_fixed = fill_missing_rows(df_fixed)
-    new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])  # type: ignore
+    new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
     missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index)
     missing_samples_found: bool = bool(len(missing_samples_report))
 
@@ -679,14 +670,10 @@ def append(
     # Fix up the case of dropped column(s). See the fourth item in the previous comment.
     dropped_columns: pd.Index = base_columns.difference(new_columns)
     added_columns: pd.Index = new_columns.difference(base_columns)
-    combined_columns: list = combined_frames[
-        'data'
-    ].columns.to_list()  # Use a list to do insert() and pop()
+    combined_columns: list = combined_frames['data'].columns.to_list()
     for col in dropped_columns:
-        idx: int = base_columns.get_loc(col) + 1  # type: ignore
-        while (
-            idx < len(base_columns) and base_columns[idx] not in new_columns
-        ):  # Skip to the next column that was kept in the new file
+        idx: int = base_columns.get_loc(col) + 1
+        while (idx < len(base_columns) and base_columns[idx] not in new_columns):  # Skip to the next column that was kept in the new file
             idx += 1
 
         # If no kept columns found after this one, it and any dropped columns after it can just stay at the end of the list.

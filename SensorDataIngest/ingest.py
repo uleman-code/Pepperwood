@@ -78,7 +78,7 @@ def main() -> None:
 
     app: DashProxy = DashProxy(
                 blueprint=callbacks.blueprint,
-                prevent_initial_callbacks=True,             # pyright: ignore[reportArgumentType]
+                prevent_initial_callbacks=True,
                 title='Sensor Data Ingest',
                 update_title=None,                          # While rebuilding the page, don't
                                                             # change tab title to "Updating..."

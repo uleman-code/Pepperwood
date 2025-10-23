@@ -83,7 +83,7 @@ blueprint.layout = dmc.MantineProvider(layout.layout)
     State('select-file', 'contents'),
 )
 @log_func
-def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
+def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> tuple:
     """If one file was opened, load it.
 
     Triggered by a change in files-status after the user selects a single file, read the base64-encoded file contents
@@ -155,7 +155,7 @@ def load_file(files_status: dict[str, Any], all_contents: list[str]) -> tuple:
     ],  # Show busy indicator while saving
 )
 @log_func
-def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
+def save_file(files_status: dict[str, str | bool], frames: dict[str, Any]) -> tuple:
     """Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -192,7 +192,7 @@ def save_file(files_status: dict[str, Any], frames: dict[str, Any]) -> tuple:
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
         # is a custom function specific to this app.
-        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)  # type: ignore
+        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
         files_status['unsaved'] = False
 
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
@@ -248,7 +248,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
         last-modified/children (str)  Empty string to clear
     """
 
-    status: dict[str, Any]
+    status: dict[str, str | bool]
     if callback_context.triggered_id == 'clear-button':
         logger.debug(
             'Responding to Clear button click. Reset files-status and select-file contents.'
@@ -280,7 +280,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
     Input('files-status', 'data'),
 )
 @log_func
-def toggle_loaddata(status: dict[str, Any]) -> tuple:
+def toggle_loaddata(status: dict[str, str | bool]) -> tuple:
     """Disable the Load Data element when new data is loaded and not (yet) saved; re-enable when data is cleared or saved.
 
     This includes graying out the label of the Load Data area; the rest is governed by the Upload component
@@ -490,7 +490,7 @@ def show_file_info(files_status: dict[str, str | bool], last_modified: list[int]
         last-modified/children  (str) Formatted last-modified timestamp of the currently loaded file
     """
 
-    filename: str = files_status['filename']  # type: ignore
+    filename: str = files_status['filename']
 
     # Make sure there's only one file and we're not appending.
     if isinstance(filename, str) and filename and 'qa_status' not in files_status:
@@ -589,7 +589,7 @@ def report_sanity_checks(
 
     if not frames or 'data' not in frames:
         logger.debug('No data loaded. Clear the sanity check reports.')
-        return [], no_update, no_update  # type: ignore
+        return [], no_update, no_update
 
     if 'notes' in frames and 'qa_status' not in status:
         logger.debug('Notes worksheet already populated . Do nothing.')
@@ -716,12 +716,12 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]
 
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection = layout.make_file_info(next_file)
-    this_file_info.children.children[0].children[0].children = filenames[next_file]  # type: ignore
+    this_file_info.children.children[0].children[0].children = filenames[next_file]
     this_file_info.children.children[0].children[1].children[
         0
-    ].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime("%Y-%m-%d %H:%M:%S")}'  # type: ignore
-    this_file_info.children.children[1].display = 'flex'  # type: ignore
-    this_file_info.children.children[1].type = 'dots'  # type: ignore
+    ].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime("%Y-%m-%d %H:%M:%S")}'
+    this_file_info.children.children[1].display = 'flex'
+    this_file_info.children.children[1].type = 'dots'
 
     showdata: Patch = Patch()
     showdata.append(this_file_info)
@@ -867,7 +867,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     # is a custom function specific to this app.
     data_for_download: dict[str, Any | None] = dcc.send_bytes(
         helpers.multi_df_to_excel(frames), outfile
-    )  # type: ignore
+    )
     logger.debug(f'({file_counter}) Got byte string for Download.')
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
     logger.debug(f'({file_counter}) Download complete. Clean up.')
@@ -939,7 +939,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
 )
 @log_func
 def append_file(
-    new_frames: dict[str, Any], status: dict[str, Any], filename: str, contents: str
+    new_frames: dict[str, Any], status: dict[str, str | bool], filename: str, contents: str
 ) -> tuple:
     """An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
 
@@ -952,7 +952,7 @@ def append_file(
 
     Parameters:
         new_frames       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
-        files_status     Filename (of the new data) and (un)saved status
+        status           Filename (of the new data) and (un)saved status
         filename         Filename of the newly loaded existing Excel file
         all_contents     Base64-encoded file contents of the newly loaded existing Excel file
 
