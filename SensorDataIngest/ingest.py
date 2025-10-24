@@ -1,7 +1,6 @@
 """Main module for the SensorDataIngest application for Pepperwood."""
 
 import logging
-from logging import handlers
 from pathlib import Path
 from typing import Any
 
@@ -30,17 +29,17 @@ def main() -> None:
     # creating the log file fails).
     logging_dir: Path = app_config['logging_directory']
 
-    if not logging_dir.exists():
+    if logging_dir.exists():
+        warn_logging_dir_created = False
+    else:
         logging_dir.mkdir()
         warn_logging_dir_created = True
-    else:
-        warn_logging_dir_created = False
 
     # General-purpose logger
     logger           = logging.getLogger(module_name.capitalize())
-    file_handler     = handlers.RotatingFileHandler(logging_dir / (module_name + '.log'),
-                                                    maxBytes=app_config['logfile_max_size'],
-                                                    backupCount=app_config['logfile_backup_count'])
+    file_handler     = logging.handlers.RotatingFileHandler(logging_dir / (module_name + '.log'),
+                                                            maxBytes=app_config['logfile_max_size'],
+                                                            backupCount=app_config['logfile_backup_count'])
     stream_handler   = logging.StreamHandler()
     file_formatter   = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{funcName:28s}:'
                                          '{message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')

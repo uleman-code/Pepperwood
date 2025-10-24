@@ -568,10 +568,7 @@ def run_qa(
     missing_values_found: bool = bool(missing_value_columns.sum())
 
     missing_values_report: pd.DataFrame
-    if not missing_values_found:
-        logger.info('No missing values found. Moving on to look for missing samples.')
-        missing_values_report = pd.DataFrame([], columns=qa_report_columns)
-    else:
+    if missing_values_found:
         # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
         missing_values_report = pd.concat(
             [
@@ -579,6 +576,9 @@ def run_qa(
                 for col in variable_columns[missing_value_columns.astype(bool)]
             ]
         )
+    else:
+        logger.info('No missing values found. Moving on to look for missing samples.')
+        missing_values_report = pd.DataFrame([], columns=qa_report_columns)
 
     original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
     df_fixed = fill_missing_rows(df_fixed)
@@ -673,13 +673,16 @@ def append(
     combined_columns: list = combined_frames['data'].columns.to_list()
     for col in dropped_columns:
         idx: int = base_columns.get_loc(col) + 1
-        while (idx < len(base_columns) and base_columns[idx] not in new_columns):  # Skip to the next column that was kept in the new file
+
+        # Skip to the next column that was kept in the new file
+        while (idx < len(base_columns) and base_columns[idx] not in new_columns):
             idx += 1
 
         # If no kept columns found after this one, it and any dropped columns after it can just stay at the end of the list.
         if idx >= len(base_columns):
             continue
 
+        # Move the dropped column to just before the next kept column
         combined_columns.insert(
             combined_columns.index(base_columns[idx]),
             combined_columns.pop(combined_columns.index(col)),
