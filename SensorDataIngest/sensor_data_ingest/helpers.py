@@ -12,7 +12,8 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from pandas.core.groupby.generic import SeriesGroupBy  # Just for type hinting
-from config import config, capitalized_program_name
+
+from . import config as cfg
 
 
 class UnmatchedColumnsError(ValueError):
@@ -34,7 +35,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
         The wrapped function's result
     """
 
-    ee_logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
+    ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:
@@ -48,17 +49,17 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 
 # Configuration-derived constants for brevity
-worksheet_names: dict[str, str] = config['output']['worksheet_names']
-data_na_repr: str = config['output']['data_na_representation']
-timestamp_column: str = config['metadata']['timestamp_column']
-seqno_column: str = config['metadata']['sequence_number_column']
-sampling_interval: str = config['metadata']['sampling_interval']
-qa_report_columns: list[str] = config['metadata']['notes_columns']
-meta_columns: list[str] = config['metadata']['variable_description_columns']
-station_columns: list[str] = config['metadata']['station_columns']
+worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
+data_na_repr: str = cfg.config['output']['data_na_representation']
+timestamp_column: str = cfg.config['metadata']['timestamp_column']
+seqno_column: str = cfg.config['metadata']['sequence_number_column']
+sampling_interval: str = cfg.config['metadata']['sampling_interval']
+qa_report_columns: list[str] = cfg.config['metadata']['notes_columns']
+meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
+station_columns: list[str] = cfg.config['metadata']['station_columns']
 
 # Child logger inherits root logger settings
-logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
+logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 pd.set_option('plotting.backend', 'plotly')
 
 

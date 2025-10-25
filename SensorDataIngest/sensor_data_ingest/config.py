@@ -9,6 +9,8 @@ from pydantic import BaseModel, BeforeValidator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 import logging
+from logging import handlers
+
 import tomllib
 import tomli_w
 
@@ -137,12 +139,77 @@ class Config(BaseModel):
             )
 
 
-config_model: Config = Config()  # Empty model (only Nones)
+config_model: Config = Config()
 config: dict[str, Any] = {}
-capitalized_program_name: str = ''
+program_name: str = ''
 
+def config_print() -> str:
+    """Return a readable representation of the configuration settings with the same format as the configuration file."""
 
-def config_init(program_name: str) -> None:
+    return tomli_w.dumps(
+        config_model.model_dump(mode='json')
+    )  # JSON mode to avoid non-serializable values
+
+def logging_init() -> None:
+    """Set up the loggers. Call after initializing the configuration settings (for the logging directory).
+
+    If logging_dir does not exist, create it.
+
+    Limitations:
+        Errors out if logging_dir exists but is not a directory (because then
+        creating the log file fails).
+    """
+
+    app_config: dict[str, Any] = config['application']   # Just a clutter reducing convenience
+    logging_dir: Path          = app_config['logging_directory']
+
+    if logging_dir.exists():
+        warn_logging_dir_created = False
+    else:
+        logging_dir.mkdir()
+        warn_logging_dir_created = True
+
+    # General-purpose logger
+    logger           = logging.getLogger(program_name)
+    file_handler     = handlers.RotatingFileHandler(logging_dir / (program_name + '.log'),
+                                                    maxBytes=app_config['logfile_max_size'],
+                                                    backupCount=app_config['logfile_backup_count'])
+    stream_handler   = logging.StreamHandler()
+    file_formatter   = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{funcName:28s}: ' +
+                                         '{message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
+    stream_formatter = logging.Formatter('{levelname}|{name}: {message}', style='{')
+
+    file_handler.setLevel(app_config['file_logging_level'])
+    file_handler.setFormatter(file_formatter)
+    stream_handler.setLevel(app_config['console_logging_level'])
+    stream_handler.setFormatter(stream_formatter)
+
+    logger.setLevel(app_config['file_logging_level'])
+    logger.addHandler(file_handler)
+    logger.addHandler(stream_handler)
+
+    # Function entry/exit logger: fname substitutes a custom name (the name of the wrapped function,
+    # instead of the wrapper itself) for funcName.
+    ee_logger    = logging.getLogger(program_name + '_ee')
+    ee_handler   = logging.FileHandler(logging_dir / (program_name + '.log'))
+    ee_formatter = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{fname:28s}: {message}',
+                                     style='{', datefmt='%Y-%m-%d %H:%M:%S')
+
+    ee_handler.setLevel(app_config['file_logging_level'])
+    ee_handler.setFormatter(ee_formatter)
+    ee_logger.setLevel(app_config['file_logging_level'])
+    ee_logger.addHandler(ee_handler)
+
+    # Start the application
+    logger.info('Interactive ingest application started.')
+    logger.info('Logging directory is %s', logging_dir.resolve())
+    if warn_logging_dir_created:
+        logger.warning('Logging directory did not yet exist and had to be created by this app.')
+
+    logger.info('Configuration file %s read. Configuration is:\n%s',
+                app_config['config_file'].resolve(), config_print())
+
+def config_init(app_name: str) -> None:
     """Initialize the configuration settings.
 
     The first step is to identify the settings file. The default is provided by the caller, usually from the main module.
@@ -153,20 +220,20 @@ def config_init(program_name: str) -> None:
     make them available to all modules that import this one.
 
     Parameters:
-        program_name    Used in the default name of the configuration settings file, and (capitalized) in log records.
+        app_name    Used in the default name of the configuration settings file, and in logger names.
 
     Terminates the program (by not catching any exceptions) if there's a validation error or the indicated configuration file cannot be found.
     """
 
     global config_model
     global config
-    global capitalized_program_name
+    global program_name
 
-    capitalized_program_name = program_name.capitalize()
+    program_name = app_name
 
-    temp_config: ApplicationCfg = ApplicationCfg(
-        config_file=Path(f'{program_name}.toml')
-    )  # The default path may be overridden in the environment or on the command line.
+    # Find the config file. By running it through pydantic, the default config-file path
+    # may be overridden in the environment or on the command line.
+    temp_config: ApplicationCfg = ApplicationCfg(config_file=Path(f'{app_name}.toml'))
     config_file: Path = temp_config.config_file
 
     with config_file.open('rb') as f:
@@ -176,10 +243,5 @@ def config_init(program_name: str) -> None:
     config_model.application.config_file = config_file  # Just for accurate logging purposes
     config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
 
-
-def config_print() -> str:
-    """Return a readable representation of the configuration settings with the same format as the configuration file."""
-
-    return tomli_w.dumps(
-        config_model.model_dump(mode='json')
-    )  # JSON mode to avoid non-serializable values
+    # Logging needs the configuration to be complete to get the logging directory.
+    logging_init()

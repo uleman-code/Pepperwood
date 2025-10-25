@@ -13,9 +13,6 @@ from typing import Any
 
 import dash_mantine_components as dmc
 import decorator
-import helpers  # Local module implementing Dash-independent actions
-import layout
-from config import capitalized_program_name, config
 from dash import (  # A few definitions are not yet surfaced by dash-extensions
     Patch,
     set_props,
@@ -36,9 +33,11 @@ from dash_extensions.enrich import (
     no_update,
 )
 
-logger: logging.Logger = logging.getLogger(
-    f'{capitalized_program_name}.{__name__}'
-)  # Child logger inherits root logger settings
+from . import config as cfg
+from . import helpers
+from . import layout
+
+logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 frame_store: dict = {}
 
 
@@ -49,7 +48,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     Very simplistic; no argument logging or execution timing.
     """
 
-    ee_logger: logging.Logger = logging.getLogger(f'{capitalized_program_name}.{__name__}')
+    ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:
@@ -65,8 +64,8 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     return out
 
 
-timestamp_column: str = config['metadata']['timestamp_column']
-seqno_column: str = config['metadata']['sequence_number_column']
+timestamp_column: str = cfg.config['metadata']['timestamp_column']
+seqno_column: str = cfg.config['metadata']['sequence_number_column']
 
 blueprint: DashBlueprint = DashBlueprint(
     transforms=[ServersideOutputTransform(), TriggerTransform()]
