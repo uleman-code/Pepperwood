@@ -71,8 +71,8 @@ class ApplicationCfg(BaseSettings):
     depending on the specific setting and on the environment. For example, a file path is case-sensitive in MacOS but not in Windows."""
 
     # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
-    # TODO: Is there any way around hardcoding the 'ingest_' prefix here?
-    model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=True, env_prefix='ingest_')
+    # TODO: Is there any way around hardcoding the 'INGEST_' prefix here?
+    model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=False, env_prefix='INGEST_')
 
     config_file: Path = Path(
         './<program name>.toml'

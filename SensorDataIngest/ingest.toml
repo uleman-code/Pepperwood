@@ -1,7 +1,7 @@
 config_version = "0.5"
 
 [application]
-debug = true
+debug = false
 console_logging_level = "INFO"
 file_logging_level = "DEBUG"
 logging_directory = "./logs"
