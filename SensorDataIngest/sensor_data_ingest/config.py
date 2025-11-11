@@ -242,6 +242,3 @@ def config_init(app_name: str) -> None:
     config_model = Config.model_validate(config_raw)
     config_model.application.config_file = config_file  # Just for accurate logging purposes
     config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
-
-    # Logging needs the configuration to be complete to get the logging directory.
-    logging_init()
