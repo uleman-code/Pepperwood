@@ -9,11 +9,12 @@ from dash_extensions.enrich import (
     ServersideOutputTransform,
     TriggerTransform,
 )
-from flask.logging import default_handler
 
 # Initialize the configuration module before importing any other modules from this project.
 module_name = Path(__file__).stem
 cfg.config_init(app_name=module_name)
+cfg.logging_init()
+logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Suppress endless GET and POST logs from Flask
 
 # Now that the config is initialized, we can import other modules.
 # This import has as a side-effect that it registers all the Dash callbacks.
@@ -30,9 +31,7 @@ app: DashProxy = DashProxy(
             # background_callback_manager='diskcache',  # noqa: ERA001
             transforms=[ServersideOutputTransform(), TriggerTransform()],
             )
-server = app.server  # noqa: F841             # Expose the Flask server for deployment
-app.logger.removeHandler(default_handler)     # Suppress endless GET and POST logs from Flask
-cfg.logging_init()                            # Must do this after removing the app's default handler
+server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 
 if __name__ == '__main__':
     # NOTE: If the Dash app is run with debug=True, this main module is executed twice, resulting
