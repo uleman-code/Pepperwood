@@ -11,8 +11,7 @@ from dash_extensions.enrich import (
 )
 
 # Initialize the configuration module before importing any other modules from this project.
-module_name = Path(__file__).stem
-cfg.config_init(app_name=module_name)
+cfg.config_init(app_name=Path(__file__).stem)
 cfg.logging_init()
 logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Suppress endless GET and POST logs from Flask
 
