@@ -45,7 +45,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\ingest.cfg"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\ingest.toml"; DestDir: "{app}"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
