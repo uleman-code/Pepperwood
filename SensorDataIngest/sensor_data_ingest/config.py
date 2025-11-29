@@ -13,6 +13,7 @@ from logging import handlers
 
 import tomllib
 import tomli_w
+import humanfriendly as hf
 
 
 # Configuration settings and validation
@@ -58,6 +59,11 @@ def prepare_logging_level(input: Any) -> int:
         raise ValueError(
             f'"{input}" is not a valid logging level. Use DEBUG, INFO, WARNING, or ERROR'
         )
+    
+def prepare_logfile_max_size(input: str | int) -> int:
+    """Accept either an integer number of bytes or a human-friendly size string; return the size in bytes as an integer."""
+
+    return hf.parse_size(str(input), binary=True)
 
 
 class ApplicationCfg(BaseSettings):
@@ -85,7 +91,7 @@ class ApplicationCfg(BaseSettings):
         logging.getLevelNamesMapping()['DEBUG']
     )
     logging_directory: Path = Path('./logs')
-    logfile_max_size: int = 10 * 1024 * 1024
+    logfile_max_size: Annotated[int, BeforeValidator(prepare_logfile_max_size)] = hf.parse_size('10 MiB')
     logfile_backup_count: int = 3
 
 

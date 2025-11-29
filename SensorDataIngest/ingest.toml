@@ -5,7 +5,7 @@ debug = false
 console_logging_level = "INFO"
 file_logging_level = "DEBUG"
 logging_directory = "./logs"
-logfile_max_size = 10_485_760
+logfile_max_size = "10 MB"
 logfile_backup_count = 3
 
 [input]
