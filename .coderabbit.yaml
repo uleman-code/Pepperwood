@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  path_filters:
+    -  !.gitignore"
+    - "!testing.ipynb"
+    - "!~*"
+    - "!*.spec"
+    - "!.vscode/*"
+    - "!.venv*/**/*"
+    - "!**.*cache"
+    - "!cache/*"
+    - "!logs/*"
+    - "!file_system_backend/*"
+  path_instructions:
+    - path: "**/*.py"
+      instructions: |
+        Review the Python code for conformity with Ruff linter and formatter. Confirm that:
+        - The docstrings are up-to-date with the implementations. Please highlight the outdated ones.
+        - When an API in a module changes, ensure that all modules that depend on the changed module are updated accordingly.
+        - When seeing a TODO comment, try to write code to complete the todo.
+    - path: "**/tests/**/*"
+      instructions: |
+        Assess the unit test code employing the Pytest testing framework. Confirm that:
+        - The tests adhere to Pytest's established best practices.
+        - Test descriptions are sufficiently detailed to clarify the purpose of each test.
+        - The tests cover all methods, classes, and errors.
+auto_review:
+    enabled: true
+    ignore_title_keywords:
+      - "WIP"
+      - "DO NOT MERGE"
+    drafts: false
+  tools:
+    ruff:
+      enabled: true
+chat:
+  auto_reply: true
