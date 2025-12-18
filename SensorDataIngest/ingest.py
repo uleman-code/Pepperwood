@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Final
 
 from sensor_data_ingest import config as cfg
 from dash_extensions.enrich import (
@@ -10,10 +11,13 @@ from dash_extensions.enrich import (
     TriggerTransform,
 )
 
+FLASK_LOGGER: Final = 'werkzeug'
+
 # Initialize the configuration module before importing any other modules from this project.
 cfg.config_init(app_name=Path(__file__).stem)
 cfg.logging_init()
-logging.getLogger('werkzeug').setLevel(logging.WARNING)  # Suppress endless GET and POST logs from Flask
+cfg.metadata_init()
+logging.getLogger(FLASK_LOGGER).setLevel(logging.WARNING)  # Suppress endless GET and POST logs from Flask
 
 # Now that the config is initialized, we can import other modules.
 # This import has as a side-effect that it registers all the Dash callbacks.

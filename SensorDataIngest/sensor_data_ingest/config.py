@@ -4,6 +4,7 @@ Import this from the main module first, and call config_init there; every subseq
 gets access to the result in a clean and threadsafe manner."""
 
 from typing import Annotated, Any, Self
+import os
 from pathlib import Path
 from pydantic import BaseModel, BeforeValidator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -14,6 +15,7 @@ from logging import handlers
 import tomllib
 import tomli_w
 import humanfriendly as hf
+import pandas as pd
 
 
 # Configuration settings and validation
@@ -60,7 +62,7 @@ def prepare_logging_level(input: Any) -> int:
             f'"{input}" is not a valid logging level. Use DEBUG, INFO, WARNING, or ERROR'
         )
     
-def prepare_logfile_max_size(input: str | int) -> int:
+def prepare_logfile_max_size(input: str | int | float) -> int:
     """Accept either an integer number of bytes or a human-friendly size string; return the size in bytes as an integer."""
 
     return hf.parse_size(str(input), binary=True)
@@ -76,20 +78,16 @@ class ApplicationCfg(BaseSettings):
     The setting names, whether on the commandline or as environment variables, are not case-sensitive. but the values may well be,
     depending on the specific setting and on the environment. For example, a file path is case-sensitive in MacOS but not in Windows."""
 
-    # BaseSettings (as opposed to BaseModel) looks for environment variables; look for command-line arguments as well.
+    # BaseSettings (as opposed to BaseModel) looks for environment variables.
     # TODO: Is there any way around hardcoding the 'INGEST_' prefix here?
     model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=False, env_prefix='INGEST_')
 
-    config_file: Path = Path(
-        './<program name>.toml'
-    )  # Just a placeholder for the benefit of --help output
+    config_file: Path
+    site_metadata_file: Path = Path('./site_metadata.csv')
+    column_metadata_file: Path = Path('./column_metadata.csv')
     debug: bool = False
-    console_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = (
-        logging.getLevelNamesMapping()['INFO']
-    )
-    file_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = (
-        logging.getLevelNamesMapping()['DEBUG']
-    )
+    console_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.INFO
+    file_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.DEBUG
     logging_directory: Path = Path('./logs')
     logfile_max_size: Annotated[int, BeforeValidator(prepare_logfile_max_size)] = hf.parse_size('10 MiB')
     logfile_backup_count: int = 3
@@ -107,19 +105,20 @@ class OutputCfg(BaseModel):
 
     worksheet_names: dict[str, str] = {}
     data_na_representation: str = '#N/A'
+    notes_columns: list[str]
 
 
 class MetadataCfg(BaseModel):
-    """Metadata settings: not about the sensor data but only the standard index columns and what's in the other worksheets.
+    """Metadata settings: not about the sensor data but only the standard index columns and other info contained in .dat files.
 
-    Variable (column) metadata will be handled separately."""
+    Variable (column) and site metadata are handled separately."""
 
     timestamp_column: str
     sequence_number_column: str
-    sampling_interval: str
-    variable_description_columns: list[str]
-    station_columns: list[str]
-    notes_columns: list[str]
+    sampling_interval: str                      # TODO: Get this from site metadata instead
+    variable_description_columns: list[str]     # From the .dat file; combine with static metadata
+    station_columns: list[str]                  # From the .dat file; combine with static metadata
+    site_key_column: str
 
 
 class Config(BaseModel):
@@ -145,9 +144,49 @@ class Config(BaseModel):
             )
 
 
-config_model: Config = Config()
-config: dict[str, Any] = {}
-program_name: str = ''
+config_model: Config = Config()         # Actual configuration model instance
+config: dict[str, Any] = {}             # Configuration settings as a standard dictionary
+config_is_set: bool = False             # To make sure initializations happen in the right order
+metadata: dict[str, pd.DataFrame] = {}  # Site and column metadata are read from separate CSV files
+program_name: str = ''                  # Name of the main program; used in logger names
+logger: logging.Logger | None = None    # Root logger; set up in logging_init()
+
+def config_init(app_name: str) -> None:
+    """Initialize the configuration settings.
+
+    The first step is to identify the settings file. The default is provided by the caller, usually from the main module.
+    By using that default to initialize an instance of ApplicationCFg, we automatically get the ability to override it by
+    any value provided as an environment variable. Then use the actual file path to read the whole configuration.
+
+    Set the resulting configuration model, a dictionary version of the same, and the program name as globals, to
+    make them available to all modules that import this one.
+
+    Parameters:
+        app_name    Used in the default name of the configuration settings file, and in logger names.
+
+    Terminates the program (by not catching any exceptions) if there's a validation error or the indicated configuration file cannot be found.
+    """
+
+    global config_model
+    global config
+    global program_name
+    global config_is_set
+
+    program_name = app_name
+
+    # Find the config file. By running it through pydantic, the default config-file path
+    # may be overridden in the environment.
+    # temp_config: ApplicationCfg = ApplicationCfg()
+    # config_file: Path = temp_config.config_file
+    config_file: Path = Path(os.environ.get('INGEST_CONFIG_FILE', f'./{program_name}.toml'))
+
+    with config_file.open('rb') as f:
+        config_raw: dict[str, Any] = tomllib.load(f)
+
+    config_raw['application']['config_file'] = str(config_file)
+    config_model = Config.model_validate(config_raw)
+    config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
+    config_is_set = True
 
 def config_print() -> str:
     """Return a readable representation of the configuration settings with the same format as the configuration file."""
@@ -166,6 +205,9 @@ def logging_init() -> None:
         creating the log file fails).
     """
 
+    assert config_is_set, 'Initialize configuration settings before logging.'
+
+    global logger
     app_config: dict[str, Any] = config['application']   # Just a clutter reducing convenience
     logging_dir: Path          = app_config['logging_directory']
 
@@ -206,7 +248,7 @@ def logging_init() -> None:
     ee_logger.setLevel(app_config['file_logging_level'])
     ee_logger.addHandler(ee_handler)
 
-    # Start the application
+    # Announce the start of the application
     logger.info('Interactive ingest application started.')
     logger.info('Logging directory is %s', logging_dir.resolve())
     if warn_logging_dir_created:
@@ -215,36 +257,48 @@ def logging_init() -> None:
     logger.info('Configuration file %s read. Configuration is:\n%s',
                 app_config['config_file'].resolve(), config_print())
 
-def config_init(app_name: str) -> None:
-    """Initialize the configuration settings.
-
-    The first step is to identify the settings file. The default is provided by the caller, usually from the main module.
-    By using that default to initialize an instance of ApplicationCFg, we automatically get the ability to override it by any value provided
-    as a commandline argument or environment variable. Then use the actual file path to read the whole configuration.
-
-    Set the resulting configuration model, a dictionary version of the same, and the program name (capitalized) as globals, to
-    make them available to all modules that import this one.
-
-    Parameters:
-        app_name    Used in the default name of the configuration settings file, and in logger names.
-
-    Terminates the program (by not catching any exceptions) if there's a validation error or the indicated configuration file cannot be found.
+def metadata_init() -> None:
+    """Load the site and column metadata from the Excel file indicated in the configuration settings.
+    
+    Call after initializing both the configuration settings and logging.
+    
+    Metadata files can be specified using either absolute or relative paths in the configuration settings.
+    Relative paths are interpreted as relative to the configuration file location.
     """
 
-    global config_model
-    global config
-    global program_name
+    assert config_is_set, 'Initialize configuration settings before metadata.'
 
-    program_name = app_name
+    config_file: Path = config['application']['config_file']
+    site_file: Path = config['application']['site_metadata_file']
+    column_file: Path = config['application']['column_metadata_file']
 
-    # Find the config file. By running it through pydantic, the default config-file path
-    # may be overridden in the environment or on the command line.
-    temp_config: ApplicationCfg = ApplicationCfg(config_file=Path(f'{app_name}.toml'))
-    config_file: Path = temp_config.config_file
+    # Allow for relative paths, in which case use the path to the config file.
+    site_file = site_file if site_file.is_absolute() else config_file.with_name(str(site_file))
+    metadata['sites'] = pd.read_csv(site_file)
 
-    with config_file.open('rb') as f:
-        config_raw: dict[str, Any] = tomllib.load(f)
+    # Site ID is the first column; normalize it.
+    metadata['sites'].iloc[:, 0] = metadata['sites'].iloc[:, 0].str.replace(' ', '_').str.lower()
 
-    config_model = Config.model_validate(config_raw)
-    config_model.application.config_file = config_file  # Just for accurate logging purposes
-    config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
+    column_file = column_file if column_file.is_absolute() else config_file.with_name(str(column_file))
+    df_columns: pd.DataFrame = pd.read_csv(column_file)
+
+    # Aliases should be lists of comma-separated strings (ignoring spaces), but are read in as strings. 
+    # Convert them to lists. Also, turn NaNs into empty lists.
+    no_aliases = df_columns['Aliases'].isna()
+    df_columns['Aliases'] = (df_columns['Aliases']
+                             .str.replace(', +', ',', regex=True)
+                             .str.split(',')
+                            )
+    df_columns.loc[no_aliases, 'Aliases'] = pd.Series([[]] * no_aliases.sum()).values
+
+    # For lookup purposes, add the current field name to the list of aliases. Then, after exploding the aliases,
+    # each name in Aliases has its own row mapping to the same metadata, including the same current field name.
+    # (Applying split() to the Field column is just a trick to turn a single string into a list, which will always
+    # have just one element.)
+    df_columns['Aliases'] += df_columns['Field'].str.split(',')
+
+    # Remove duplicates, if any, before exploding.
+    df_columns['Aliases'] = df_columns['Aliases'].apply(lambda alias_list: list(set(alias_list)))
+    metadata['columns'] = df_columns.assign(merge_key=df_columns['Aliases']).explode('merge_key')
+
+    logger.info('Site and column metadata files %s and %s read.', site_file.resolve(), column_file.resolve())

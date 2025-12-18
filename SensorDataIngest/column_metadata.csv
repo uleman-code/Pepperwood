@@ -1,0 +1,109 @@
+﻿Field,Aliases,Description,Units,Units-2,Sensor,Manufacturer,Notes,SiteKey
+Timestamp,TIMESTAMP,Date and time of data collection ,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,New_MET
+SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,New_MET
+WindSpeed,"WindSpd_WVc(1),WindSpd_WVc1",Average wind speed,m/s,Meters per second,05103,RM Young,,New_MET
+WindDir,"WindSpd_WVc(2),WindSpd_WVc2",Average wind direction,deg N,Degrees from north,05103,RM Young,,New_MET
+WindMax,WindSpd_Max,Maximum wind  speed,m/s,Meters per second,05103,RM Young,,New_MET
+WindDir_SMM,,Direction of max windspeed,deg N,Degrees from north,05103,RM Young,,New_MET
+AirTemp_F_Avg,,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
+RH_Avg,,Average relative humidity,%,Percent,HMP60,Vaisala,,New_MET
+DewPt_F_Avg,,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
+FuelTemp_Avg,,Average fuel temperature,°F,Degrees Fahrenheit,CS205/107,Campbell Scientific,,New_MET
+FuelMoisture_Avg,,Average fuel moisture,% ,Percent,CS506/266,Campbell Scientific,,New_MET
+SoilMoist_15cm,"SoilMoist1,SoilMoist(1)",Soil moisture (volumetric water content) 15cm,%,Percent,CS655,Campbell Scientific,,New_MET
+SoilMoist_30cm,"SoilMoist2,SoilMoist(2)",Soil moisture (volumetric water content) 30cm,%,Percent,CS655,Campbell Scientific,,New_MET
+SoilMoist_50cm,"SoilMoist3,SoilMoist(3)",Soil moisture (volumetric water content) 50cm,%,Percent,CS655,Campbell Scientific,,New_MET
+SoilMoist_100cm,"SoilMoist4,SoilMoist(4)",Soil moisture (volumetric water content) 100cm,%,Percent,CS655,Campbell Scientific,,New_MET
+SoilEC_15cm,SoilEC1,Soil electical conductivity 15cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,New_MET
+SoilEC_30cm,SoilEC2,Soil electical conductivity 30cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,New_MET
+SoilEC_50cm,SoilEC3,Soil electical conductivity 50cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,New_MET
+SoilEC_100cm,SoilEC4,Soil electical conductivity 100cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,New_MET
+SoilT_F_15cm,SoilT1_F,Soil temperature 15cm,°F,Degrees Fahrenheit,CS655,Campbell Scientific,,New_MET
+SoilT_F_30cm,SoilT2_F,Soil temperature 30cm,°F,Degrees Fahrenheit,CS655,Campbell Scientific,,New_MET
+SoilT_F_50cm,SoilT3_F,Soil temperature 50cm,°F,Degrees Fahrenheit,CS655,Campbell Scientific,,New_MET
+SoilT_F_100cm,SoilT4_F,Soil temperature 100cm,°F,Degrees Fahrenheit,CS655,Campbell Scientific,,New_MET
+SoilPerm_15cm,SoilPerm1,Soil relative dielectric permittivity 15cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilPerm_30cm,SoilPerm2,Soil relative dielectric permittivity 30cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilPerm_50cm,SoilPerm3,Soil relative dielectric permittivity 50cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilPerm_100cm,SoilPerm4,Soil relative dielectric permittivity 100cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilPeriod_15cm,SoilPeriod1,Soil period average 15cm,µs,Microseconds,CS655,Campbell Scientific,,New_MET
+SoilPeriod_30cm,SoilPeriod2,Soil period average 30cm,µs,Microseconds,CS655,Campbell Scientific,,New_MET
+SoilPeriod_50cm,SoilPeriod3,Soil period average 50cm,µs,Microseconds,CS655,Campbell Scientific,,New_MET
+SoilPeriod_100cm,SoilPeriod4,Soil period average 100cm,µs,Microseconds,CS655,Campbell Scientific,,New_MET
+SoilVoltR_15cm,SoilVoltR1,Soil voltage ratio 15cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilVoltR_30cm,SoilVoltR2,Soil voltage ratio 30cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilVoltR_50cm,SoilVoltR3,Soil voltage ratio 50cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+SoilVoltR_100cm,SoilVoltR4,Soil voltage ratio 100cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
+RainGauge_Tot,,15min precipitation total,in,Inches,TE525WS,Texas Electronics,,New_MET
+LeafWetness,LWmv_avg,Leaf wetness,mV,Millivolts,LWS,Meter Group,,New_MET
+DailyMaxGust,,Maximum wind speed up to that point in the day,m/s,Meters per second,05103,RM Young,,New_MET
+TimeofMaxGust,,Time of maximum wind speed up to that point in the day,hhmm,Time of day,CR1000X,Campbell Scientific,,New_MET
+DirofMaxGust,,Direction of maximum gust up to that point in the day,deg N,Degrees from north,05103,RM Young,,New_MET
+DailyMaxTemp,,Maximum temperature up to that point in the day,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
+DailyMinTemp,,Minimum temperature up to that point in the day,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
+DailyMaxFuelTemp,,Maximum fuel temperature up to that point in the day,°F,Degrees Fahrenheit,CS205/107,Campbell Scientific,,New_MET
+DailyMinFuelMoisture,,Minimum fuel moisture up to that point in the day,%,Percent,CS506/266,Campbell Scientific,,New_MET
+DailyRain,,cummulative daily rainfall (resets at midnight),in,Inches,TE525WS,Texas Electronics,,New_MET
+LoggerTemp_F_Avg,,Data logger temperature,°F,Degrees Fahrenheit,CR1000X,Campbell Scientific,,New_MET
+BatteryVolts_Avg,,Battery voltage,V,Volts,battery,Dakota Lithium,,New_MET
+Timestamp,timeStamp,The date and 15min time interval the data was recorded,mm/dd/yyyy hh:mm,Date and time,NA,NA,,GrassMETMeteo
+SeqNum,RN,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,"This does not run continuously through the record; every time a new program is sent or the logger is power-cycled, the program restarts and record number starts back at 0",GrassMETMeteo
+WindSpeed,"windSpeed,WSpd_ms",Windspeed from a cup anemometer,m/s,Meters per second,014A,MetOne,Has historically been reported to underestimate windspeeds due to corrosion on the bearings. Bearings should be replaced every 1-2 years or whenever large discrepancies appear between Windspeed sensors,GrassMETMeteo
+WindDir,"windDir,W_Dir",Wind Direction from a wind vane,deg N,Degrees from north,024A  ,MetOne,"Wind vane tail tends to get off-kilter in high winds; it still returns good values, just need to tighten it up with an allan wrench",GrassMETMeteo
+WindMax,"windMax,WS_ms_Max",Maximum wind speed recorded via a cup anemometer during the 15min interval,m/s,Meters per second,014A,MetOne,Has historically been reported to underestimate windspeeds due to corrosion on the bearings. Bearings should be replaced every 1-2 years or whenever large discrepancies appear between Windspeed sensors,GrassMETMeteo
+WindSpeed2d,"windSpeed2d,WSp_2D",Wind speed,m/s,Meters per second,WINDSONIC,Gill ,Need to make sure the North markers on the sensor head are aligned north.,GrassMETMeteo
+WindDir2d,"windDir2d,WDir_2D",Wind direction,deg N,Degrees from north,WINDSONIC,Gill ,,GrassMETMeteo
+WindMax2d,"windMax2d,ws_2D_Max",Maximum wind speed during the 15min interval,m/s,Meters per second,WINDSONIC,Gill ,,GrassMETMeteo
+SolarRad,"solarRad,SlrkW_Avg",Average incoming solar radiation during 15min interval,kW/m²,Kilowatts per square meter,LI200,LiCOR,Good idea to wipe the dust and bird poop off occasionally,GrassMETMeteo
+SolarTot,"solarTot,SlrMJ_Tot",Total incoming solar radiation summed during the 15min interval,MJ/m²,Megajoules per square meter,LI200,LiCOR,Good idea to wipe the dust and bird poop off occasionally,GrassMETMeteo
+AirTemp,"airTemp,AirTC_Avg",Air temperature,°C,Degrees Celcius ,HMP45,Vaisala,,GrassMETMeteo
+RH,RH_Avg,Relative humidity,%,Percent,HMP45,Vaisala,Will sometimes produce values over 100% during rainfall events but usually 100-103%,GrassMETMeteo
+RainHun_15min,"rainHun15min,TE525_Rain_Tot",The number of tips of the rain bucket (.01 in) during the 15min interval,-,integer count,TE525,Texas Electronics,Guy wires and a screen on the bottom help prevent wind driven tips and wasp colonization respectively,GrassMETMeteo
+LeafWetness,"leafWetness,LWmV_Avg",Leaf wetness ,mV,Millivolts,LWS,Meter,There is a continous 250mV floating charge on the sensor that responds in the postive direction when mositure forms or falls on the sensor. Not all but some rain events that occur after long dry spells will begin with LW values below 250mV …maybe dust on the sensors that creates a temporary film,GrassMETMeteo
+BarometricPressure,"barometricPressure,BP_mmHg_Avg",Barometric or atmospheric pressure,mmHg,millimeters of mercury ,CS106,Campbell Scientific,,GrassMETMeteo
+RainInchYear,"rainInchYear,TE525_Rain_yr",Cumulative rainfall since the start of the water year (Oct 1 – Sep 30),in,inches,TE525,Texas Electronics,"This value will automatically reset to zero if the station losses power or something else crazy happens. For the purpose of this spreadsheet I like to populate this column by manually summing up ""rainInch15min Formula""",GrassMETMeteo
+Davis_Rain_yr,,Does not exist anymore,in,inches,NA,NA,,GrassMETMeteo
+RainInchFormula_15min,rainInch15min Formula,This is a postprocessed product of rainHun15min / 100 ,in,inches,TE525,Texas Electronics,"By performing a running total on this column I can QC and in some cases produce the ""rainInchYear"" data.",GrassMETMeteo
+Timestamp,,The date and 60min time interval the data was recorded,mm/dd/yyyy hh:mm,Date and time,NA,,,GrassMETSoils
+SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,GrassMETSoils
+VWC_15cm,vwc(1),Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS650,Campbell Scientific,,GrassMETSoils
+VWC_30cm,vwc(2),Soil moisture (volumetric water content) 30cm,-,Water fraction by volume,CS650,Campbell Scientific,,GrassMETSoils
+VWC_56cm,vwc(3),Soil moisture (volumetric water content) 56cm,-,Water fraction by volume,CS650,Campbell Scientific,,GrassMETSoils
+VWC_91cm,vwc(4),Soil moisture (volumetric water content) 91cm,-,Water fraction by volume,CS650,Campbell Scientific,,GrassMETSoils
+StartTempC_15cm,StartTempC(1),Soil temperature 15cm,°C,Degrees Celcius,CS650,Campbell Scientific,,GrassMETSoils
+StartTempC_30cm,StartTempC(2),Soil temperature 30cm,°C,Degrees Celcius,CS650,Campbell Scientific,,GrassMETSoils
+StartTempC_56cm,StartTempC(3),Soil temperature 56cm,°C,Degrees Celcius,CS650,Campbell Scientific,,GrassMETSoils
+StartTempC_91cm,StartTempC(4),Soil temperature 91cm,°C,Degrees Celcius,CS650,Campbell Scientific,,GrassMETSoils
+WaterPotential_psi_15cm,WaterPotential_psi(1),Soil matrix potential 15cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
+WaterPotential_psi_30cm,WaterPotential_psi(2),Soil matrix potential 30cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
+WaterPotential_psi_56cm,WaterPotential_psi(3),Soil matrix potential 56cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
+WaterPotential_psi_91cm,WaterPotential_psi(4),Soil matrix potential 91cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
+Timestamp,TIMESTAMP,Date and time of data collection ,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
+SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
+AirTemp_F_Avg,,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,LongTermVegetationPlots_Met
+RH_Avg,,Average relative humidity,%,Percent,HMP60,Vaisala,,LongTermVegetationPlots_Met
+DewPt_F_Avg,,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
+LeafWetness,Leaf_Wet_mV_Avg,15min average of leaf wetness ,mV,Millivolts,LWS,Meter,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
+SoilVWC_15cm,SoilVWC1,Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS655,Campbell Scientific,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
+SoilEC_15cm,SoilEC1,Soil electical conductivity 15cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
+SoilT_C_15cm,SoilT1_C,Soil temperature 15cm,°C,Degrees Celcius,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilVWC_30cm,SoilVWC2,Soil moisture (volumetric water content) 30cm,-,Water fraction by volume,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilEC_30cm,SoilEC2,Soil electical conductivity 30cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilT_C_30cm,SoilT2_C,Soil temperature 30cm,°C,Degrees Celcius,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilVWC_50cm,SoilVWC3,Soil moisture (volumetric water content) 50cm,-,Water fraction by volume,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilEC_50cm,SoilEC3,Soil electical conductivity 50cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilT_C_50cm,SoilT3_C,Soil temperature 50cm,°C,Degrees Celcius,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+Timestamp,TIMESTAMP,The date and 60min time interval the data was recorded,mm/dd/yyyy hh:mm,Date and time,NA,,,OakSoilMoisture
+SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,OakSoilMoisture
+VWC_5cm,VWC1,Soil moisture (volumetric water content) 5cm,-,Water fraction by volume,CS650,Campbell Scientific,,OakSoilMoisture
+VWC_20cm,VWC2,Soil moisture (volumetric water content) 20cm,-,Water fraction by volume,CS650,Campbell Scientific,,OakSoilMoisture
+VWC_46cm,VWC3,Soil moisture (volumetric water content) 46cm,-,Water fraction by volume,CS650,Campbell Scientific,,OakSoilMoisture
+VWC_66cm,VWC4,Soil moisture (volumetric water content) 66cm,-,Water fraction by volume,CS650,Campbell Scientific,,OakSoilMoisture
+StartTempC_5cm,StartTempC1,Soil temperature 5cm,°C,Degrees Celcius,CS650,Campbell Scientific,,OakSoilMoisture
+StartTempC_20cm,StartTempC2,Soil temperature 20cm,°C,Degrees Celcius,CS650,Campbell Scientific,,OakSoilMoisture
+StartTempC_46cm,StartTempC3,Soil temperature 46cm,°C,Degrees Celcius,CS650,Campbell Scientific,,OakSoilMoisture
+StartTempC_66cm,StartTempC4,Soil temperature 66cm,°C,Degrees Celcius,CS650,Campbell Scientific,,OakSoilMoisture
+WaterPotential_psi_5cm,WaterPotential1_psi,Soil matrix potential 5cm,psi,Pounds per square inch,229-L,Campbell Scientific,,OakSoilMoisture
+WaterPotential_psi_20cm,WaterPotential2_psi,Soil matrix potential 20cm,psi,Pounds per square inch,229-L,Campbell Scientific,,OakSoilMoisture
+WaterPotential_psi_46cm,WaterPotential3_psi,Soil matrix potential 46cm,psi,Pounds per square inch,229-L,Campbell Scientific,,OakSoilMoisture
+WaterPotential_psi_66cm,WaterPotential4_psi,Soil matrix potential 66cm,psi,Pounds per square inch,229-L,Campbell Scientific,,OakSoilMoisture

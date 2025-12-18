@@ -63,7 +63,6 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
-
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
 
@@ -122,17 +121,8 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
 
     try:
         frames: dict[str, Any] = helpers.load_data(contents, filename)
-
         logger.debug('Data initialized.')
-
-        # Keep the DataFrames store on the server. This avoids potentially large transfers between
-        # server and browser, along with all the associated conversions (JSON) and encodings
-        # (base64). Instead, we can store a DataFrame as-is. This simplifies code and improves
-        # performance in plot rendering and file saving, sometimes dramatically.
-        # Providing a key to the Serverside constructor makes the serverside cache use and reuse a
-        # single file, preventing unlimited storage growth.
-        return Serverside(frames, key='Frames'), False, '', ''
-    except Exception as e:
+    except Exception as e:          # TODO: More specific exception types
         logger.exception('File Read Error.')
         return (
             no_update,
@@ -140,6 +130,19 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
             'Error Reading File',
             f'We could not process the file "{filename}": {e}',
         )
+
+    try:
+        helpers.merge_metadata(frames)
+    except helpers.SiteIdNotFoundError as e:
+        logger.info('Continuing with incomplete metadata: %s', e)
+
+    # Keep the DataFrames store on the server. This avoids potentially large transfers between
+    # server and browser, along with all the associated conversions (JSON) and encodings
+    # (base64). Instead, we can store a DataFrame as-is. This simplifies code and improves
+    # performance in plot rendering and file saving, sometimes dramatically.
+    # Providing a key to the Serverside constructor makes the serverside cache use and reuse a
+    # single file, preventing unlimited storage growth.
+    return Serverside(frames, key='Frames'), False, '', ''
 
 
 @blueprint.callback(
@@ -527,10 +530,8 @@ def run_sanity_checks(
     missing_samples: bool
 
     try:
-        duplicate_samples, missing_values, missing_samples, notes, fixed = helpers.run_qa(
-            data, notes, qa_range
-        )
-    except ValueError:
+        duplicate_samples, missing_values, missing_samples, notes, fixed = helpers.run_qa(data, notes, qa_range)
+    except helpers.DuplicateTimestampError:
         raise
 
     if duplicate_samples:
@@ -823,10 +824,13 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         logger.debug(f'({file_counter}) Exit.')
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
+    try:
+        helpers.merge_metadata(frames)
+    except helpers.SiteIdNotFoundError as e:
+        logger.info('Continuing with incomplete metadata: %s', e)
+
     data = frames['data']
-    report: list[dmc.Text] = [
-        dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')
-    ]
+    report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')]
 
     no_save = False
 

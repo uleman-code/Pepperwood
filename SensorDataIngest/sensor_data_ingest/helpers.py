@@ -3,6 +3,7 @@
 import base64
 import io
 import logging
+from turtle import title
 import decorator
 
 from pathlib import Path
@@ -19,6 +20,14 @@ from . import config as cfg
 class UnmatchedColumnsError(ValueError):
     pass
 
+class UnsupportedFileType(ValueError):
+    pass
+
+class DuplicateTimestampError(ValueError):
+    pass
+
+class SiteIdNotFoundError(ValueError):
+    pass
 
 @decorator.decorator
 def log_func(fn: Callable, *args, **kwargs) -> Any:
@@ -48,15 +57,18 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
     return out
 
 
-# Configuration-derived constants for brevity
+# Configuration-derived variables for brevity
 worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
 data_na_repr: str = cfg.config['output']['data_na_representation']
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
 sampling_interval: str = cfg.config['metadata']['sampling_interval']
-qa_report_columns: list[str] = cfg.config['metadata']['notes_columns']
+qa_report_columns: list[str] = cfg.config['output']['notes_columns']
 meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
 station_columns: list[str] = cfg.config['metadata']['station_columns']
+df_meta_sites: pd.DataFrame = cfg.metadata['sites']
+df_meta_columns: pd.DataFrame = cfg.metadata['columns']
+site_key_column: str = cfg.config['metadata']['site_key_column']
 
 # Child logger inherits root logger settings
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
@@ -106,7 +118,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
             # First pass to read the real data
             frames['data'] = pd.read_csv(
-                decoded, skiprows=[0, 2, 3], parse_dates=[timestamp_column], na_values='NAN'
+                decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN'
             )
 
             # Second pass to read the column metadata
@@ -127,9 +139,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             logger.info('Reading Excel workbook. Expect three or four worksheets.')
             buffer = io.BytesIO(b64decoded)
 
-            frames['data'] = pd.read_excel(
-                buffer, sheet_name=worksheet_names['data'], na_values='NAN'
-            )
+            frames['data'] = pd.read_excel(buffer, sheet_name=worksheet_names['data'], na_values='NAN')
             frames['meta'] = pd.read_excel(buffer, sheet_name=worksheet_names['meta'])
             frames['station'] = pd.read_excel(buffer, sheet_name=worksheet_names['station'])
 
@@ -143,14 +153,14 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
                 # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
                 if 'Link' in frames['notes'].columns:
                     frames['notes'].drop(columns='Link')
-            except ValueError:  # Worksheet named 'Notes' not found
+            except ValueError:
                 logger.info(
                     'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
                 )
         else:
             # This should not happen: the Upload element limits the supported filename extensions.
             logger.error(f'Unsupported file type: {Path(filename).suffix}.')
-            raise ValueError(f'We do not support the **{Path(filename).suffix}** file type.')
+            raise UnsupportedFileType(f'We do not support the **{Path(filename).suffix}** file type.')
     except (UnicodeDecodeError, ValueError) as e:
         logger.error(f'Error reading file {filename}. {e}')
         raise
@@ -158,6 +168,64 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     logger.debug('DataFrames for data, metadata, and station data populated.')
     return frames
 
+
+@log_func
+def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
+    """Merge the limited metadata from the .DAT file with the static metadata read at startup; standardize field names.
+
+    This also provides an opportunity for a few simple consistency checks. Any errors should not be
+    treated as fatal: we can still ingest the data but metadata in the output will be limited.
+
+    Args:
+        frames      The four DataFrames (data, meta, station, notes) for one file
+
+    Raises:
+        SiteIdNotFoundError: The site ID in the station DataFrame was not found in the site or column metadata.
+                             Output metadata will be limited to what the .DAT file provides.
+    """
+
+    site_id_dat = station_columns[1]                     # Just the way Campbell Scientific .DAT files are
+    site_id_meta = df_meta_sites.columns[0]
+    site_id = frames['station'].at[0, site_id_dat]                      # For logging purposes, the original site ID
+    frames['station'][site_id_dat] = frames['station'][site_id_dat].str.replace(' ', '_').str.lower()    # Normalize the site ID
+    # df_site = frames['station'].merge(df_meta_sites, left_on=site_id_dat, right_on=site_id_meta, how='inner')
+    df_site = df_meta_sites.merge(frames['station'], left_on=site_id_meta, right_on=site_id_dat, how='inner')
+    if df_site.empty:
+        logger.info(f'Site ID {site_id} not found in static site metadata. Output will only have metadata from the file.')
+        raise SiteIdNotFoundError(f'Site ID {site_id} not found in static site metadata.')
+    
+    frames['station'] = df_site.drop(columns=[site_key_column, site_id_dat]).assign(**{site_id_meta: site_id})
+    logger.info(f'Site ID {site_id} found in static site metadata. Site metadata merged.')
+
+    site_key = df_site.at[0, site_key_column]
+    column_metadata = df_meta_columns[df_meta_columns[site_key_column] == site_key]
+    if column_metadata.empty:
+        logger.info(f'No static column metadata found for site ID {site_id}. Output will have limited column metadata.')
+        raise SiteIdNotFoundError(f'No column metadata found for site key {site_key}.')
+    
+    # The "Units" column will come from the static metadata; get rid of the one from the .DAT file before merging,
+    # to avoid name collision.
+    df_columns = frames['meta'].drop(columns=meta_columns[1])
+    df_columns = df_columns.merge(column_metadata, left_on=meta_columns[0], right_on='merge_key', how='left')
+
+    # Replace the Name from the .DAT file with the standardized Field name from the static metadata, wherever available.
+    df_columns[meta_columns[0]] = df_columns[meta_columns[0]].where(df_columns['Field'].isna(), df_columns['Field'])
+
+    # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
+    # But first replace NaNs with empty lists.
+    isna = df_columns['Aliases'].isna()
+    df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
+    df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
+    df_columns.drop(columns=['merge_key', 'Field'], inplace=True)
+
+    logger.info(f'Column metadata merged for site ID {site_id}.')
+    num_missing_columns = isna.sum()
+    if num_missing_columns:
+        logger.info(f'Incomplete metadata: No static column metadata found for {num_missing_columns} column{"s" if num_missing_columns > 1 else ""}.')
+    
+    frames['meta'] = df_columns
+    frames['data'].columns = df_columns[meta_columns[0]]  # Rename data columns to standard names
+    return
 
 @log_func
 def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
@@ -235,15 +303,13 @@ def render_graphs(
         A Plotly Figure containing all graphs
     """
 
-    df_show: pd.DataFrame = df_data.set_index(timestamp_column)[
-        showcols
-    ]  # The timestamp column is the independent (X-axis) variable for all plots
+    df_show: pd.DataFrame = df_data.set_index(timestamp_column)[showcols]
 
     if single_plot:
         fig = (
             df_show.plot.line(height=720)
             .update_yaxes(title_text='')
-            .update_layout(legend_title_text='Variable')
+            .update_layout(legend_title_text='Variable', title_text=', '.join(showcols))
         )
     else:
         # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
@@ -286,7 +352,7 @@ def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
         A DataFrame (possibly empty) with the rows representing the report
 
     Raises:
-        ValueError, if an instance of case 3 is found.
+        DuplicateTimestampError, if an instance of case 3 is found.
     """
 
     # Get just the rows with repeated timestamps. Usually empty.
@@ -306,7 +372,7 @@ def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
     if (len(nunique) and max(nunique) > 1):
         logger.info('Duplicate timestamps found.')
-        raise ValueError(
+        raise DuplicateTimestampError(
             f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel.'
         )
     else:
@@ -556,7 +622,7 @@ def run_qa(
             logger.info(
                 f'Duplicates found. Original size: {len(df_data)}. Deduplicated size: {len(df_fixed)}.'
             )
-    except ValueError as err:
+    except DuplicateTimestampError as err:
         # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
         logger.info(err)
         raise

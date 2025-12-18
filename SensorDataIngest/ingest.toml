@@ -1,6 +1,8 @@
 config_version = "0.5"
 
 [application]
+site_metadata_file = "site_metadata.csv"
+column_metadata_file = "column_metadata.csv"
 debug = false
 console_logging_level = "INFO"
 file_logging_level = "DEBUG"
@@ -20,17 +22,22 @@ excel_file_extensions = [
 
 [output]
 data_na_representation = "#N/A"
-
+notes_columns = [
+    "Start of issue",
+    "End of issue",
+    "Sensor or Data Field",
+    "Data Omitted",
+    "Nature of problem",
+]
 [output.worksheet_names]
 data    = "Data"
 meta    = "Columns"
 station = "Meta"
 notes   = "Notes"
 
-
 [metadata]
-timestamp_column = "TIMESTAMP"
-sequence_number_column = "RECORD"
+timestamp_column = "Timestamp"
+sequence_number_column = "SeqNum"
 sampling_interval = "15min"
 variable_description_columns = [
     "Name",
@@ -47,10 +54,4 @@ station_columns = [
     "DataLoggerProgramSignature",
     "TableName",
 ]
-notes_columns = [
-    "Start of issue",
-    "End of issue",
-    "Sensor or Data Field",
-    "Data Omitted",
-    "Nature of problem",
-]
+site_key_column = "SiteKey"
