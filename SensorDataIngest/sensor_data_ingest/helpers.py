@@ -224,7 +224,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
         logger.info(f'Incomplete metadata: No static column metadata found for {num_missing_columns} column{"s" if num_missing_columns > 1 else ""}.')
     
     frames['meta'] = df_columns
-    frames['data'].columns = df_columns[meta_columns[0]]  # Rename data columns to standard names
+    frames['data'].columns = df_columns[meta_columns[0]].to_list()  # Rename data columns to standard names
     return
 
 @log_func
