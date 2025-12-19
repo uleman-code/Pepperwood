@@ -630,7 +630,7 @@ def report_sanity_checks(
 
     try:
         qa_report, frames['notes'], frames['data'] = run_sanity_checks(data, notes, qa_range)
-    except ValueError as err:  # Duplicate timestamp with distinct variable values found
+    except helpers.DuplicateTimestampError as err:  # Duplicate timestamp with distinct variable values found
         qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
         status['no_save'] = True  # Do not save; requires manual intervention
 
@@ -842,7 +842,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
 
         try:
             qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'], None)
-        except ValueError as err:
+        except helpers.DuplicateTimestampError as err:
             no_save = True
             qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
 

@@ -3,7 +3,7 @@
 import base64
 import io
 import logging
-from turtle import title
+
 import decorator
 
 from pathlib import Path
@@ -213,8 +213,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
 
     # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
     # But first replace NaNs with empty lists.
-    isna = df_columns['Aliases'].isna()
-    df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
+    df_columns['Aliases'] = df_columns['Aliases'].apply(lambda x: [] if pd.isna(x) else x)
     df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
     df_columns.drop(columns=['merge_key', 'Field'], inplace=True)
 

@@ -9,7 +9,7 @@ reviews:
   review_status: true
   collapse_walkthrough: false
   path_filters:
-    -  !.gitignore"
+    - "!.gitignore"
     - "!testing.ipynb"
     - "!~*"
     - "!*.spec"
@@ -32,7 +32,7 @@ reviews:
         - The tests adhere to Pytest's established best practices.
         - Test descriptions are sufficiently detailed to clarify the purpose of each test.
         - The tests cover all methods, classes, and errors.
-auto_review:
+  auto_review:
     enabled: true
     ignore_title_keywords:
       - "WIP"

@@ -174,12 +174,7 @@ def config_init(app_name: str) -> None:
 
     program_name = app_name
 
-    # Find the config file. By running it through pydantic, the default config-file path
-    # may be overridden in the environment.
-    # temp_config: ApplicationCfg = ApplicationCfg()
-    # config_file: Path = temp_config.config_file
     config_file: Path = Path(os.environ.get('INGEST_CONFIG_FILE', f'./{program_name}.toml'))
-
     with config_file.open('rb') as f:
         config_raw: dict[str, Any] = tomllib.load(f)
 
@@ -249,7 +244,7 @@ def logging_init() -> None:
     ee_logger.addHandler(ee_handler)
 
     # Announce the start of the application
-    logger.info('Interactive ingest application started.')
+    logger.info('%s application started.', program_name)
     logger.info('Logging directory is %s', logging_dir.resolve())
     if warn_logging_dir_created:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
@@ -258,7 +253,7 @@ def logging_init() -> None:
                 app_config['config_file'].resolve(), config_print())
 
 def metadata_init() -> None:
-    """Load the site and column metadata from the Excel file indicated in the configuration settings.
+    """Load the site and column metadata from the CSV files indicated in the configuration settings.
     
     Call after initializing both the configuration settings and logging.
     
@@ -267,19 +262,19 @@ def metadata_init() -> None:
     """
 
     assert config_is_set, 'Initialize configuration settings before metadata.'
-
+    assert logger is not None, 'Initialize logging before metadata.'
     config_file: Path = config['application']['config_file']
     site_file: Path = config['application']['site_metadata_file']
     column_file: Path = config['application']['column_metadata_file']
 
     # Allow for relative paths, in which case use the path to the config file.
-    site_file = site_file if site_file.is_absolute() else config_file.with_name(str(site_file))
+    site_file = site_file if site_file.is_absolute() else config_file.parent / site_file
     metadata['sites'] = pd.read_csv(site_file)
 
     # Site ID is the first column; normalize it.
     metadata['sites'].iloc[:, 0] = metadata['sites'].iloc[:, 0].str.replace(' ', '_').str.lower()
 
-    column_file = column_file if column_file.is_absolute() else config_file.with_name(str(column_file))
+    column_file = column_file if column_file.is_absolute() else config_file.parent / column_file
     df_columns: pd.DataFrame = pd.read_csv(column_file)
 
     # Aliases should be lists of comma-separated strings (ignoring spaces), but are read in as strings. 
