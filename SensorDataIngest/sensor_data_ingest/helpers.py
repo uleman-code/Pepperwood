@@ -213,12 +213,12 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
 
     # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
     # But first replace NaNs with empty lists.
+    num_missing_columns = df_columns['Aliases'].isna().sum()
     df_columns['Aliases'] = df_columns['Aliases'].apply(lambda x: [] if pd.isna(x) else x)
     df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
     df_columns.drop(columns=['merge_key', 'Field'], inplace=True)
 
     logger.info(f'Column metadata merged for site ID {site_id}.')
-    num_missing_columns = isna.sum()
     if num_missing_columns:
         logger.info(f'Incomplete metadata: No static column metadata found for {num_missing_columns} column{"s" if num_missing_columns > 1 else ""}.')
     
