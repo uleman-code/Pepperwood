@@ -82,10 +82,10 @@ Timestamp,TIMESTAMP,Date and time of data collection ,mm/dd/yyyy hh:mm,Date and 
 SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
 AirTemp_F_Avg,,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,LongTermVegetationPlots_Met
 RH_Avg,,Average relative humidity,%,Percent,HMP60,Vaisala,,LongTermVegetationPlots_Met
-DewPt_F_Avg,,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
-LeafWetness,Leaf_Wet_mV_Avg,15min average of leaf wetness ,mV,Millivolts,LWS,Meter,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
-SoilVWC_15cm,SoilVWC1,Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS655,Campbell Scientific,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
-SoilEC_15cm,SoilEC1,Soil electical conductivity 15cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,05103/RM Young after/before 20??,LongTermVegetationPlots_Met
+DewPt_F_Avg,,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,,LongTermVegetationPlots_Met
+LeafWetness,Leaf_Wet_mV_Avg,15min average of leaf wetness ,mV,Millivolts,LWS,Meter,,LongTermVegetationPlots_Met
+SoilVWC_15cm,SoilVWC1,Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
+SoilEC_15cm,SoilEC1,Soil electical conductivity 15cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
 SoilT_C_15cm,SoilT1_C,Soil temperature 15cm,°C,Degrees Celcius,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
 SoilVWC_30cm,SoilVWC2,Soil moisture (volumetric water content) 30cm,-,Water fraction by volume,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
 SoilEC_30cm,SoilEC2,Soil electical conductivity 30cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
