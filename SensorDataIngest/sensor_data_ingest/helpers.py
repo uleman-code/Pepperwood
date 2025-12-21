@@ -7,7 +7,6 @@ import logging
 import decorator
 
 from pathlib import Path
-from functools import cache
 from typing import Any, Callable
 
 import pandas as pd
@@ -230,18 +229,46 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     return
 
 @log_func
-def get_sampling_interval(df_site: pd.DataFrame) -> str:
-    """Determine the sampling interval for the site, either from the static metadata or from the data itself.
+def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
+    """Determine the sampling interval for the site, from the static metadata or the configuration default.
+
+    Look up the sampling interval in the metadata. This must be an integer (interpreted as the number of
+    minutes) or a string that can be converted to a valid pandas.Timedelta object. If not,
+    use the default value from the configuration settings.
 
     Args:
         df_site     The combined site metadata (from .DAT file and static metadata)
+
+    Returns:
+        The sampling interval
     """
 
     # Find the sampling interval in the site metadata. If it's not there, use the default value from the
     # configuration settings. Be flexible about the column name, but it must contain the word "interval".
-    interval_column = next((col for col in df_site.columns if 'interval' in col.lower()), None)
-    sampling_minutes = df_site.at[0, interval_column] if interval_column else None
-    return f'{sampling_minutes}min' if sampling_minutes else default_sampling_interval
+    interval_column: str | None = next((col for col in df_site.columns if 'interval' in col.lower()), None)
+    interval_value: str | int = df_site.at[0, interval_column] if interval_column else None
+
+    site_id_column = df_meta_sites.columns[0]
+    site_id: str = df_site.at[0, site_id_column]        # For logging purposes
+
+    sampling_interval: pd.Timedelta | None
+    if interval_value:
+        try:
+            sampling_interval = pd.Timedelta(f'{int(interval_value)}min')
+        except ValueError:
+            sampling_interval = None
+
+    if interval_value and sampling_interval is None:
+        try:
+            sampling_interval = pd.Timedelta(interval_value)
+        except ValueError:
+            logger.warning(f'Invalid sampling interval {interval_value} for site {site_id} in metadata. Using default value from configuration settings.')
+            sampling_interval = None
+    
+    if not interval_value or not sampling_interval:
+        sampling_interval = pd.Timedelta(default_sampling_interval)
+
+    return sampling_interval
 
 
 @log_func
@@ -580,7 +607,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
 
 @log_func
 def run_qa(
-    df_data: pd.DataFrame, df_site: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None
+    frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None
 ) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
     """Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
@@ -601,59 +628,55 @@ def run_qa(
        altogether, the only test for which it is important to limit the analysis to only the QA range indicated is the one for missing values
        in individual variables.
 
-    The report is a DataFrame with zero or more rows and the following columns:
+    The report is a DataFrame ("notes") with zero or more rows and the following columns:
     - The timestamps of any duplicates;
     - The first and last timestamps of the run of missing data (equal in the case of a singleton missing value);
-    - The column name in the case of missing values, "all" if duplicate or missing samples;
-    - Whether or not it involves missing data ("no" for duplicates, otherwise "yes");
-    - A description of the cause of the data problem (always "unknown", since we cannot guess from the data itself, with, in case of duplicate
-      or missing samples, an indication that rows were dropped/inserted).
+        The report is a DataFrame ("notes") with zero or more rows and the following columns:
+        - The timestamps of any duplicates;
+        - The first and last timestamps of the run of missing data (equal in the case of a singleton missing value);
 
-    Limitations:
-        In Append mode, it is theoretically possible (but probably rare) that a run of missing variable values, missing samples, or
-        duplicates extends from the end of previously saved data through the beginning of the current set. This function would report on
-        each part separately and make no attempt to consolidate the two parts into a single run.
+        Parameters:
 
     Parameters:
-        df_data     Input/Output DataFrame: any restoration (inserted rows) is applied in place
-        df_site     Site metadata, used to get the sampling interval
-        df_notes    If not None, the notes previously generated from the new data set (in Append mode)
+        frames      The four DataFrames (data, station, meta, notes) for one file:
+                        data and notes may be modified, station is input only, meta is not used.
         qa_range    If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
 
     Returns:
         Duplicate samples found?
         Missing values found?
         Missing samples found?
-        A DataFrame (possibly empty) with the rows representing the report
-        The original data DataFrame, possibly with duplicates dropped or gaps filled
     """
 
     logger.debug('Enter')
 
-    sampling_interval: str = get_sampling_interval(df_site)
+    sampling_interval: str = get_sampling_interval(frames['station'])
+    df_data = frames['data']
+    df_notes = frames['notes']
 
     try:
         duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)
         duplicates_found: bool = bool(len(duplicates_report))
-        df_fixed: pd.DataFrame = (
+        original_size: int = len(df_data)
+        df_data = (
             df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True)
             if duplicates_found
             else df_data
         )
         if duplicates_found:
             logger.info(
-                f'Duplicates found. Original size: {len(df_data)}. Deduplicated size: {len(df_fixed)}.'
+                f'Duplicates found. Original size: {original_size}. Deduplicated size: {len(df_data)}.'
             )
     except DuplicateTimestampError as err:
         # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
         logger.info(err)
         raise
 
-    variable_columns: pd.Index[str] = df_fixed.columns.drop([timestamp_column, seqno_column])
+    variable_columns: pd.Index[str] = df_data.columns.drop([timestamp_column, seqno_column])
     s_qa_range: pd.Series[bool] | slice = (
-        df_fixed[timestamp_column].between(qa_range[0], qa_range[1]) if qa_range else slice(None)
+        df_data[timestamp_column].between(qa_range[0], qa_range[1]) if qa_range else slice(None)
     )
-    missing_value_columns: pd.Series = df_fixed.loc[s_qa_range, variable_columns].isna().sum()
+    missing_value_columns: pd.Series = df_data.loc[s_qa_range, variable_columns].isna().sum()
     missing_values_found: bool = bool(missing_value_columns.sum())
 
     missing_values_report: pd.DataFrame
@@ -661,7 +684,7 @@ def run_qa(
         # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
         missing_values_report = pd.concat(
             [
-                report_missing_column_values(df_fixed, col, s_qa_range)
+                report_missing_column_values(df_data, col, s_qa_range)
                 for col in variable_columns[missing_value_columns.astype(bool)]
             ]
         )
@@ -669,17 +692,17 @@ def run_qa(
         logger.info('No missing values found. Moving on to look for missing samples.')
         missing_values_report = pd.DataFrame([], columns=qa_report_columns)
 
-    original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
-    df_fixed = fill_missing_rows(df_fixed, sampling_interval)
-    new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
+    original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_data[timestamp_column])
+    df_data = fill_missing_rows(df_data, sampling_interval)
+    new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_data[timestamp_column])
     missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index, sampling_interval)
     missing_samples_found: bool = bool(len(missing_samples_report))
 
-    report = pd.concat(
+    df_notes = pd.concat(
         [df_notes, duplicates_report, missing_values_report, missing_samples_report]
     ).sort_values(['Start of issue', 'End of issue'])
 
-    return duplicates_found, missing_values_found, missing_samples_found, report, df_fixed
+    return duplicates_found, missing_values_found, missing_samples_found
 
 
 @log_func

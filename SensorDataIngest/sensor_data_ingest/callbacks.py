@@ -505,7 +505,7 @@ def show_file_info(files_status: dict[str, str | bool], last_modified: list[int]
 
 
 @log_func
-def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[list[dmc.Text], Any, Any]:
+def run_sanity_checks(frames: dict[str, Any], qa_range: list[str] | None = None) -> list[dmc.Text]:
     """Callback helper function: run the sanity/QA checks.
 
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.
@@ -513,9 +513,10 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
     filename in a batch. In practice, if the list grows too long, a page layout redesign may be needed.
 
     Parameters:
+        frames (In/Out pandas.DataFrame)  The three or four DataFrames (data, meta, site, possibly notes) for one file
         data  (In/Out pandas.DataFrame) The DataFrame containing the sensor data time series; may be updated to fix dropouts
         notes (In/Out pandas.DataFrame) If not None, the notes previously generated from the new data set (in Append mode)
-        qa_range                        If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
+        qa_range                          If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
 
     Returns:
         A list of Text objects, each element representing a simple sanity check result
@@ -527,10 +528,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
     missing_values: bool
     missing_samples: bool
 
-    try:
-        duplicate_samples, missing_values, missing_samples, notes, fixed = helpers.run_qa(data, notes, qa_range)
-    except helpers.DuplicateTimestampError:
-        raise
+    duplicate_samples, missing_values, missing_samples = helpers.run_qa(frames, qa_range)
 
     if duplicate_samples:
         report.append(
@@ -552,7 +550,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
             )
         )
 
-    return report, notes, fixed
+    return report
 
 
 @blueprint.callback(
@@ -567,7 +565,7 @@ def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[l
 )
 @log_func
 def report_sanity_checks(
-    current_report: list[dmc.Text] | None, status: dict, frames: dict
+    current_report: list[dmc.Text] | None, status: dict, frames: dict[str, Any]
 ) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     """Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -578,7 +576,9 @@ def report_sanity_checks(
     This is triggered simply by the availability of new sensor data.
 
     Parameters:
-        frames  The three or four DataFrames (data, meta, site, possibly notes) for one file
+        current_report  Previously shown sanity check results, if any
+        status          Filename(s) and (un)saved status
+        frames          The three or four DataFrames (data, meta, site, possibly notes) for one file
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
@@ -590,11 +590,11 @@ def report_sanity_checks(
         return [], no_update, no_update
 
     if 'notes' in frames and 'qa_status' not in status:
-        logger.debug('Notes worksheet already populated . Do nothing.')
+        logger.debug('Notes worksheet already populated. Do nothing.')
         raise PreventUpdate
 
+    # At callback level, we don't know about pandas, but we can still apply python functions like len() to DataFrames.
     data = frames['data']
-    notes = frames['notes'] if 'notes' in frames else None
 
     report: list[dmc.Text]
     qa_range: list[str] | None
@@ -627,7 +627,7 @@ def report_sanity_checks(
     qa_report: list[dmc.Text]
 
     try:
-        qa_report, frames['notes'], frames['data'] = run_sanity_checks(data, notes, qa_range)
+        qa_report = run_sanity_checks(frames, qa_range)
     except helpers.DuplicateTimestampError as err:  # Duplicate timestamp with distinct variable values found
         qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
         status['no_save'] = True  # Do not save; requires manual intervention
@@ -839,7 +839,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         qa_report: list[dmc.Text]
 
         try:
-            qa_report, frames['notes'], frames['data'] = run_sanity_checks(frames['data'], None)
+            qa_report = run_sanity_checks(frames, None)
         except helpers.DuplicateTimestampError as err:
             no_save = True
             qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
