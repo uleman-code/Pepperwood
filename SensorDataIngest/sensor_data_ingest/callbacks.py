@@ -505,9 +505,7 @@ def show_file_info(files_status: dict[str, str | bool], last_modified: list[int]
 
 
 @log_func
-def run_sanity_checks(
-    data, notes, qa_range: list[str] | None = None
-) -> tuple[list[dmc.Text], Any, Any]:
+def run_sanity_checks(data, notes, qa_range: list[str] | None = None) -> tuple[list[dmc.Text], Any, Any]:
     """Callback helper function: run the sanity/QA checks.
 
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.

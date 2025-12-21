@@ -7,6 +7,7 @@ import logging
 import decorator
 
 from pathlib import Path
+from functools import cache
 from typing import Any, Callable
 
 import pandas as pd
@@ -62,7 +63,7 @@ worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
 data_na_repr: str = cfg.config['output']['data_na_representation']
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
-sampling_interval: str = cfg.config['metadata']['sampling_interval']
+default_sampling_interval: str = cfg.config['metadata']['sampling_interval']        # To be overridden by the site metadata
 qa_report_columns: list[str] = cfg.config['output']['notes_columns']
 meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
 station_columns: list[str] = cfg.config['metadata']['station_columns']
@@ -194,6 +195,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
         logger.info(f'Site ID {site_id} not found in static site metadata. Output will only have metadata from the file.')
         raise SiteIdNotFoundError(f'Site ID {site_id} not found in static site metadata.')
     
+    # Show the original site ID from the .DAT file, not the normalized one. 
     frames['station'] = df_site.drop(columns=[site_key_column, site_id_dat]).assign(**{site_id_meta: site_id})
     logger.info(f'Site ID {site_id} found in static site metadata. Site metadata merged.')
 
@@ -226,6 +228,21 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     frames['meta'] = df_columns
     frames['data'].columns = df_columns[meta_columns[0]].to_list()  # Rename data columns to standard names
     return
+
+@log_func
+def get_sampling_interval(df_site: pd.DataFrame) -> str:
+    """Determine the sampling interval for the site, either from the static metadata or from the data itself.
+
+    Args:
+        df_site     The combined site metadata (from .DAT file and static metadata)
+    """
+
+    # Find the sampling interval in the site metadata. If it's not there, use the default value from the
+    # configuration settings. Be flexible about the column name, but it must contain the word "interval".
+    interval_column = next((col for col in df_site.columns if 'interval' in col.lower()), None)
+    sampling_minutes = df_site.at[0, interval_column] if interval_column else None
+    return f'{sampling_minutes}min' if sampling_minutes else default_sampling_interval
+
 
 @log_func
 def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
@@ -328,7 +345,7 @@ def render_graphs(
 
 
 @log_func
-def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+def report_duplicates(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
     """Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
     There are three distinct cases:
@@ -347,6 +364,7 @@ def report_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
     Parameters:
         df                  Input DataFrame
+        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -462,7 +480,7 @@ def report_missing_column_values(
 
 
 @log_func
-def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
+def fill_missing_rows(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
     """Complete a regular time series by inserting NaN-valued records wherever there are gaps.
 
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
@@ -479,6 +497,7 @@ def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
 
     Parameters:
         df                  Input DataFrame
+        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
 
     Returns:
         The input DataFrame, with zero or more new rows inserted
@@ -497,9 +516,8 @@ def fill_missing_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 
 @log_func
-def report_missing_samples(
-    old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex
-) -> pd.DataFrame:
+def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
+                           sampling_interval:str) -> pd.DataFrame:
     """Given the datetime index before and after insertion of missing rows, report what was found and changed.
 
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -515,8 +533,9 @@ def report_missing_samples(
     - A description of the cause of the data problem (always "unknown", since we cannot guess from the data itself).
 
     Parameters:
-        old_dt_index    The datetime index of the time series before restoration (with gaps)
-        new_dt_index    The datetime index of the time series after restoration (gaps filled in)
+        old_dt_index        The datetime index of the time series before restoration (with gaps)
+        new_dt_index        The datetime index of the time series after restoration (gaps filled in)
+        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -561,7 +580,7 @@ def report_missing_samples(
 
 @log_func
 def run_qa(
-    df_data: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None
+    df_data: pd.DataFrame, df_site: pd.DataFrame, df_notes: pd.DataFrame | None, qa_range: list[str] | None
 ) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
     """Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
@@ -597,6 +616,7 @@ def run_qa(
 
     Parameters:
         df_data     Input/Output DataFrame: any restoration (inserted rows) is applied in place
+        df_site     Site metadata, used to get the sampling interval
         df_notes    If not None, the notes previously generated from the new data set (in Append mode)
         qa_range    If not None, the range of timestamps [start, end] to be sanity-checked (in Append mode)
 
@@ -610,8 +630,10 @@ def run_qa(
 
     logger.debug('Enter')
 
+    sampling_interval: str = get_sampling_interval(df_site)
+
     try:
-        duplicates_report: pd.DataFrame = report_duplicates(df_data)
+        duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)
         duplicates_found: bool = bool(len(duplicates_report))
         df_fixed: pd.DataFrame = (
             df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True)
@@ -648,9 +670,9 @@ def run_qa(
         missing_values_report = pd.DataFrame([], columns=qa_report_columns)
 
     original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
-    df_fixed = fill_missing_rows(df_fixed)
+    df_fixed = fill_missing_rows(df_fixed, sampling_interval)
     new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_fixed[timestamp_column])
-    missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index)
+    missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index, sampling_interval)
     missing_samples_found: bool = bool(len(missing_samples_report))
 
     report = pd.concat(
