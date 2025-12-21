@@ -62,7 +62,7 @@ worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
 data_na_repr: str = cfg.config['output']['data_na_representation']
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
-default_sampling_interval: str = cfg.config['metadata']['sampling_interval']        # To be overridden by the site metadata
+default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['sampling_interval'])   # To be overridden by site metadata
 qa_report_columns: list[str] = cfg.config['output']['notes_columns']
 meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
 station_columns: list[str] = cfg.config['metadata']['station_columns']
@@ -233,7 +233,7 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     """Determine the sampling interval for the site, from the static metadata or the configuration default.
 
     Look up the sampling interval in the metadata. This must be an integer (interpreted as the number of
-    minutes) or a string that can be converted to a valid pandas.Timedelta object. If not,
+    minutes) or a string that can be converted to a valid pandas Timedelta object. If invalid or missing,
     use the default value from the configuration settings.
 
     Args:
@@ -372,7 +372,7 @@ def render_graphs(
 
 
 @log_func
-def report_duplicates(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
+def report_duplicates(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
     """Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
     There are three distinct cases:
@@ -391,7 +391,7 @@ def report_duplicates(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
 
     Parameters:
         df                  Input DataFrame
-        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
+        sampling_interval   The sampling interval for the current site/file
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -507,7 +507,7 @@ def report_missing_column_values(
 
 
 @log_func
-def fill_missing_rows(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
+def fill_missing_rows(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
     """Complete a regular time series by inserting NaN-valued records wherever there are gaps.
 
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
@@ -524,7 +524,7 @@ def fill_missing_rows(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
 
     Parameters:
         df                  Input DataFrame
-        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
+        sampling_interval   The sampling interval for the current site/file
 
     Returns:
         The input DataFrame, with zero or more new rows inserted
@@ -544,7 +544,7 @@ def fill_missing_rows(df: pd.DataFrame, sampling_interval: str) -> pd.DataFrame:
 
 @log_func
 def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
-                           sampling_interval:str) -> pd.DataFrame:
+                           sampling_interval:pd.Timedelta) -> pd.DataFrame:
     """Given the datetime index before and after insertion of missing rows, report what was found and changed.
 
     The report is intended to be included in the "Data Notes" worksheet of the output Excel file.
@@ -562,7 +562,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
     Parameters:
         old_dt_index        The datetime index of the time series before restoration (with gaps)
         new_dt_index        The datetime index of the time series after restoration (gaps filled in)
-        sampling_interval   The sampling interval for the current site/file (e.g., '15min')
+        sampling_interval   The sampling interval for the current site/file
 
     Returns:
         A DataFrame (possibly empty) with the rows representing the report
@@ -591,9 +591,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
                     last,
                     'All',
                     'Yes',
-                    (((last - first) / pd.Timedelta(sampling_interval)).astype(int) + 1).apply(
-                        make_text
-                    ),
+                    (((last - first) / sampling_interval).astype(int) + 1).apply(make_text),
                 ],
             )
         )
@@ -650,9 +648,9 @@ def run_qa(
 
     logger.debug('Enter')
 
-    sampling_interval: str = get_sampling_interval(frames['station'])
-    df_data = frames['data']
-    df_notes = frames['notes']
+    sampling_interval: pd.Timedelta = get_sampling_interval(frames['station'])
+    df_data: pd.DataFrame = frames['data']
+    df_notes: pd.DataFrame | None = frames.get('notes', None)
 
     try:
         duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)

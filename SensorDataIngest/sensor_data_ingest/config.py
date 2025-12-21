@@ -67,6 +67,15 @@ def prepare_logfile_max_size(input: str | int | float) -> int:
 
     return hf.parse_size(str(input), binary=True)
 
+def prepare_sampling_interval(input: str) -> float:
+    """Convert a human-friendly time interval string into seconds (float).
+
+    Raises:
+        ValueError  if input is not a valid time interval string
+    """
+
+    return hf.parse_timespan(str(input))
+
 
 class ApplicationCfg(BaseSettings):
     """General application-wide settings. Should not be sensor- or datalogger-specific.
@@ -115,7 +124,7 @@ class MetadataCfg(BaseModel):
 
     timestamp_column: str
     sequence_number_column: str
-    sampling_interval: str                      # TODO: Get this from site metadata instead
+    sampling_interval: Annotated[float, BeforeValidator(prepare_sampling_interval)]
     variable_description_columns: list[str]     # From the .dat file; combine with static metadata
     station_columns: list[str]                  # From the .dat file; combine with static metadata
     site_key_column: str
