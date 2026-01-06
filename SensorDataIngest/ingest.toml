@@ -36,22 +36,26 @@ station = "Meta"
 notes   = "Notes"
 
 [metadata]
+# Keep the first two in sync with column metadata, meaning that they must be found
+# there in the Name column for all values of the SiteKey.
 timestamp_column = "Timestamp"
 sequence_number_column = "SeqNum"
-sampling_interval = "15min"
+sampling_interval = "15min"          # Used as default if not found in site metadata
+# Arbitrary: Names of columns for variable metadata found in the first few rows of a data logger file.
 variable_description_columns = [
     "Name",
     "Units",
-    "DataProcess",
+    "Data Process",
 ]
+# Arbitrary: Names of columns for metadata found in the first few rows of a data logger file.
 station_columns = [
-    "DataFileFormat",
-    "StationName",
-    "DataLoggerModel",
-    "DataLoggerSerialNumber",
-    "DataLoggerOsVersion",
-    "DataLoggerProgramName",
-    "DataLoggerProgramSignature",
-    "TableName",
+    "Data File Format",
+    "Station Name",              # Must be different from the first column in site metadata (usually, Site ID)
+    "Data Logger Model",
+    "Data Logger Serial Number",
+    "Data Logger OS Version",
+    "Data Logger Program Name",
+    "Data Logger Program Signature",
+    "Table Name",
 ]
 site_key_column = "SiteKey"

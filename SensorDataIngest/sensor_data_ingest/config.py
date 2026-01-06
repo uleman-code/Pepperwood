@@ -16,6 +16,7 @@ import tomllib
 import tomli_w
 import humanfriendly as hf
 import pandas as pd
+import helpers
 
 
 # Configuration settings and validation
@@ -268,6 +269,10 @@ def metadata_init() -> None:
     
     Metadata files can be specified using either absolute or relative paths in the configuration settings.
     Relative paths are interpreted as relative to the configuration file location.
+
+    The in-memory representations are extended with columns that serve lookup and join purposes. Note that
+    their names, "normalized_site_id" and "merge_key", are hardcoded; they are only used internally,
+    so there is no need to make them configurable.
     """
 
     assert config_is_set, 'Initialize configuration settings before metadata.'
@@ -280,8 +285,8 @@ def metadata_init() -> None:
     site_file = site_file if site_file.is_absolute() else config_file.parent / site_file
     metadata['sites'] = pd.read_csv(site_file)
 
-    # Site ID is the first column; normalize it.
-    metadata['sites'].iloc[:, 0] = metadata['sites'].iloc[:, 0].str.replace(' ', '_').str.lower()
+    # Site ID is the first column; normalize it into a separate column, for join purposes.
+    metadata['sites']['normalized_site_id'] = metadata['sites'].iloc[:, 0].apply(helpers.normalize_name)
 
     column_file = column_file if column_file.is_absolute() else config_file.parent / column_file
     df_columns: pd.DataFrame = pd.read_csv(column_file)

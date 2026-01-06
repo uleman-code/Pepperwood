@@ -134,6 +134,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     try:
         helpers.merge_metadata(frames)
     except helpers.SiteIdNotFoundError as e:
+        # TODO: Identify and update the timestamp and sequence number columns.
         logger.info('Continuing with incomplete metadata: %s', e)
 
     # Keep the DataFrames store on the server. This avoids potentially large transfers between

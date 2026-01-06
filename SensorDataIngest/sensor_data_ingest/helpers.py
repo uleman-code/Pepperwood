@@ -3,6 +3,8 @@
 import base64
 import io
 import logging
+import time
+from tkinter import NO
 
 import decorator
 
@@ -69,6 +71,11 @@ station_columns: list[str] = cfg.config['metadata']['station_columns']
 df_meta_sites: pd.DataFrame = cfg.metadata['sites']
 df_meta_columns: pd.DataFrame = cfg.metadata['columns']
 site_key_column: str = cfg.config['metadata']['site_key_column']
+
+# Get the site ID column names in both input and static Site DataFrames by position; in other words, from the configuration
+# and static metadata instead of hard-coding them.
+site_id_col_dat: str = station_columns[1]                    # Just the way Campbell Scientific .DAT files are
+site_id_col_meta: str = df_meta_sites.columns[0]             # And we control the metadata format
 
 # Child logger inherits root logger settings
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
@@ -168,6 +175,18 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     logger.debug('DataFrames for data, metadata, and station data populated.')
     return frames
 
+def normalize_name(name: Any) -> str:
+    """Normalize a name (e.g., site ID or column name) by replacing spaces with underscores and converting to lowercase.
+
+    Parameters:
+        name    The site name to be normalized. Usually a string, but may be a number if the original name happens to consist of numeric digits.
+
+    Returns:
+        The normalized name
+    """
+
+    return str(name).replace(' ', '_').lower()
+
 
 @log_func
 def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
@@ -175,6 +194,11 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
 
     This also provides an opportunity for a few simple consistency checks. Any errors should not be
     treated as fatal: we can still ingest the data but metadata in the output will be limited.
+
+    If the input is an Excel file, it may already have merged metadata. We can tell by counting columns:
+    .DAT column metadata has only three, site metadata has seven, while any merge product has many more. 
+    In the latter case, discard all the extra columns and perform the merge all over again.
+    In that way, any output file will get the latest version of the metadata and column names.
 
     Args:
         frames      The four DataFrames (data, meta, station, notes) for one file
@@ -184,49 +208,112 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
                              Output metadata will be limited to what the .DAT file provides.
     """
 
-    site_id_dat = station_columns[1]                     # Just the way Campbell Scientific .DAT files are
-    site_id_meta = df_meta_sites.columns[0]
-    site_id = frames['station'].at[0, site_id_dat]                      # For logging purposes, the original site ID
-    frames['station'][site_id_dat] = frames['station'][site_id_dat].str.replace(' ', '_').str.lower()    # Normalize the site ID
-    # df_site = frames['station'].merge(df_meta_sites, left_on=site_id_dat, right_on=site_id_meta, how='inner')
-    df_site = df_meta_sites.merge(frames['station'], left_on=site_id_meta, right_on=site_id_dat, how='inner')
-    if df_site.empty:
-        logger.info(f'Site ID {site_id} not found in static site metadata. Output will only have metadata from the file.')
-        raise SiteIdNotFoundError(f'Site ID {site_id} not found in static site metadata.')
-    
-    # Show the original site ID from the .DAT file, not the normalized one. 
-    frames['station'] = df_site.drop(columns=[site_key_column, site_id_dat]).assign(**{site_id_meta: site_id})
-    logger.info(f'Site ID {site_id} found in static site metadata. Site metadata merged.')
+    # Basic operation:
+    # 1. Join the site metadata from the input file with the static site metadata, using the site ID as join key.
+    #    - Normalize the site ID (lowercase, "_" instead of space) from the .DAT file; the one in the static metadata
+    #      is normalized at initialization.
+    #    - The two site ID columns shouldn't, but may, have different names; make the one from static metadata the
+    #      authoritative one, because we're more likely to regularly edit the site metadata file than the
+    #      configuration settings file, and keep it up to date.
+    #    - There may be multiple matching records in the static site metadata, with a different Start Date. This
+    #      can happen if a site is modified or relocated. Take all matching records (note that they will all share
+    #      the same Site ID).
+    #    - In the output, use the original (unnormalized) Site ID value from the .DAT file. The one from the static
+    #      metadata is only available in normalized form. TODO: Is this undesirable?
+    # 2. Using the site key from the merged site metadata, extract the associated column metadata from the static
+    #    column metadata.
+    #    - In case of multiple matching site records, they must all have the same site key; only one set of column
+    #      metadata applies.
+    # 3. If the input is from an Excel file, drop the columns, if any, that came from the static metadata at the
+    #    time the file was saved, and perform the merge again. Do this for both site and column metadata.
+    #    - This allows for convenient migration of existing files to the latest metadata.
+    # 4. If the Site ID is not found in the static metadata or there is no associated column metadata, raise
+    #    an exception. This is not fatal, but will be logged and reported to the user. The output file will
+    #    simply have limited metadata, which is also the case if static column metadata is incomplete.
 
+    # TODO: Change site metadata merge to a simple lookup with strings normalized on the fly,
+    #       and move normalization to a separate function.
+    df_site: pd.DataFrame = frames['station']
+
+    # If there are more site columns than what's in a .DAT file, the input must be an Excel file that
+    # already has merged metadata. If so, drop the extra columns (and, potentially, any additional rows)
+    # and perform the merge again.
+    # NOTE: This assumes that site metadata records don't change; instead, any edits are applied
+    #       by creating a new row, with a different Start Date.
+    if len(df_site.columns) > len(station_columns):
+        df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
+
+    site_id_dat = df_site.at[0, site_id_col_dat]
+    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(normalize_name)
+    df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
+    
+    if not df_site.at[0, site_id_col_meta]:
+        logger.warning(f'Site ID {site_id_dat} not found in static site metadata. Output will only have metadata from the input file.')
+        raise SiteIdNotFoundError(f'Site ID {site_id_dat} not found in static site metadata.')
+    
     site_key = df_site.at[0, site_key_column]
+
+    df_site = (df_site.drop(columns=['normalized_site_id', site_key_column]))
+    logger.info(f'Site ID {site_id_dat} found in static site metadata. Site metadata merged.')
+
     column_metadata = df_meta_columns[df_meta_columns[site_key_column] == site_key]
     if column_metadata.empty:
-        logger.info(f'No static column metadata found for site ID {site_id}. Output will have limited column metadata.')
+        logger.warning(f'No static column metadata found for site ID {site_id_dat} with site key {site_key}. Output will have limited column metadata.')
         raise SiteIdNotFoundError(f'No column metadata found for site key {site_key}.')
     
-    # The "Units" column will come from the static metadata; get rid of the one from the .DAT file before merging,
-    # to avoid name collision.
-    df_columns = frames['meta'].drop(columns=meta_columns[1])
+    # If the input file is a .DAT file, drop the second ("Units") column: the Units column from the static metadata supersedes it.
+    # If it's an Excel file, drop all columns that came from the static metadata at the time the file was saved.
+    # NOTE: Static metadata already includes a column called Units, but include the input "Units" column name just in case the names get out of sync.
+    df_columns = frames['meta'].drop(columns=[meta_columns[1]] + list(column_metadata.columns), errors='ignore')
     df_columns = df_columns.merge(column_metadata, left_on=meta_columns[0], right_on='merge_key', how='left')
 
-    # Replace the Name from the .DAT file with the standardized Field name from the static metadata, wherever available.
+    # Replace the Name from the input file with the standardized Field name from the static metadata, wherever available.
     df_columns[meta_columns[0]] = df_columns[meta_columns[0]].where(df_columns['Field'].isna(), df_columns['Field'])
 
     # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
     # But first replace NaNs with empty lists.
-    isna = df_columns['Aliases'].isna()
-    df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
-    df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
-    df_columns.drop(columns=['merge_key', 'Field'], inplace=True)
+    # isna = df_columns['Aliases'].isna()
+    # df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
+    # df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
 
-    logger.info(f'Column metadata merged for site ID {site_id}.')
-    num_missing_columns = isna.sum()
-    if num_missing_columns:
+    logger.info(f'Column metadata merged for site ID {site_id_dat}.')
+    if num_missing_columns := df_columns['Field'].isna().sum():
         logger.info(f'Incomplete metadata: No static column metadata found for {num_missing_columns} column{"s" if num_missing_columns > 1 else ""}.')
     
-    frames['meta'] = df_columns
-    frames['data'].columns = df_columns[meta_columns[0]].to_list()  # Rename data columns to standard names
+    # Rename data columns to standard names. They're in the right order if the input is a .DAT file because
+    # of the way they're read, but if the input is an Excel file someone could have messed with the data column order.
+    frames['data'].columns = frames['data'].columns.to_series().replace(df_columns.set_index('merge_key')['Field'])
+    frames['meta'] = df_columns.drop(columns=['merge_key', 'Field'])
     return
+
+@log_func
+def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
+    """Make sure that the configured timestamp and sequence number columns are actually in the data and column metadata.
+    
+    If not, it means that no metadata was found for the site or the columns. Use a heuristic approach to identify these
+    two columns and, if found, rename them to the configured names (in both data and column metadata).
+
+    Args:
+        frames      The four DataFrames (data, meta, station, notes) for one file
+    """
+
+    names = frames['meta']['Name']
+    # Timestamp column: probably the only column containing timestamps. If multiple such columns, look among all known
+    # aliases for the timestamp column for a match.
+    if timestamp_column not in names:
+        ts_candidates = frames['data'].select_dtypes('datetime').columns
+        match len(ts_candidates):
+            case 0:
+                logging.warning('No identifiable timestamp column found. Do not save.')
+                # TODO: raise error, block saving
+            case 1:
+                logging.info('Timestamp column found and renamed to standard.')
+            case _:
+                # Look in aliases for a name match
+
+    # Sequence number column: Possibly the only integer column. If multiple (in case a sensor produced nothing but whole numbers),
+    # look among all know aliases for a match. If that doesn't work, check if it contains a regular monotonic sequence.
+    
 
 @log_func
 def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
@@ -248,7 +335,7 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     interval_column: str | None = next((col for col in df_site.columns if 'interval' in col.lower()), None)
     interval_value: str | int = df_site.at[0, interval_column] if interval_column else None
 
-    site_id_column = df_meta_sites.columns[0]
+    site_id_column = station_columns[1]
     site_id: str = df_site.at[0, site_id_column]        # For logging purposes
 
     sampling_interval: pd.Timedelta | None
