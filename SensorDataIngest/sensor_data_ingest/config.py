@@ -16,7 +16,6 @@ import tomllib
 import tomli_w
 import humanfriendly as hf
 import pandas as pd
-import helpers
 
 
 # Configuration settings and validation
@@ -262,6 +261,19 @@ def logging_init() -> None:
     logger.info('Configuration file %s read. Configuration is:\n%s',
                 app_config['config_file'].resolve(), config_print())
 
+def normalize_name(name: Any) -> str:
+    """Normalize a name (e.g., site ID or column name) by replacing spaces with underscores and converting to lowercase.
+
+    Parameters:
+        name    The name to be normalized. Usually a string, but may be a number if the original name happens to
+                consist solely of numeric digits and separators and was read by pandas without dtype coercion.
+
+    Returns:
+        The normalized name
+    """
+
+    return str(name).replace(' ', '_').lower()
+
 def metadata_init() -> None:
     """Load the site and column metadata from the CSV files indicated in the configuration settings.
     
@@ -286,7 +298,7 @@ def metadata_init() -> None:
     metadata['sites'] = pd.read_csv(site_file)
 
     # Site ID is the first column; normalize it into a separate column, for join purposes.
-    metadata['sites']['normalized_site_id'] = metadata['sites'].iloc[:, 0].apply(helpers.normalize_name)
+    metadata['sites']['normalized_site_id'] = metadata['sites'].iloc[:, 0].apply(normalize_name)
 
     column_file = column_file if column_file.is_absolute() else config_file.parent / column_file
     df_columns: pd.DataFrame = pd.read_csv(column_file)

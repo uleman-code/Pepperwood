@@ -12,7 +12,9 @@ from typing import Any, Callable
 import pandas as pd
 import plotly.graph_objects as go
 
-from pandas.core.groupby.generic import SeriesGroupBy  # Just for type hinting
+from pandas.core.groupby.generic import SeriesGroupBy
+
+import config  # Just for type hinting
 
 from . import config as cfg
 
@@ -128,9 +130,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             decoded = io.StringIO(b64decoded.decode('utf-8'))
 
             # First pass to read the real data
-            frames['data'] = pd.read_csv(
-                decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN'
-            )
+            frames['data'] = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
 
             # Second pass to read the column metadata
             decoded.seek(0)
@@ -141,9 +141,9 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             # NOTE: Limit the columns to avoid problems in case the raw-data file was edited in Excel
             decoded.seek(0)
             frames['station'] = pd.read_csv(
-                decoded, header=None, nrows=1, usecols=list(range(len(station_columns)))
+                decoded, header=None, nrows=1, names=station_columns, usecols=station_columns 
             )
-            frames['station'].columns = station_columns
+            # frames['station'].columns = station_columns
 
         elif Path(filename).suffix in ['.xlsx', '.xls']:
             # Assume that the user uploaded an Excel file
@@ -178,20 +178,6 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
     logger.debug('DataFrames for data, metadata, and station data populated.')
     return frames
-
-def normalize_name(name: Any) -> str:
-    """Normalize a name (e.g., site ID or column name) by replacing spaces with underscores and converting to lowercase.
-
-    Parameters:
-        name    The site name to be normalized. Usually a string, but may be a number if the original name happens to
-                consist solely of numeric digits and separators.
-
-    Returns:
-        The normalized name
-    """
-
-    return str(name).replace(' ', '_').lower()
-
 
 @log_func
 def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
@@ -249,7 +235,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
         df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
 
     site_id_dat: str = df_site.at[0, site_id_col_dat]
-    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(normalize_name)
+    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(config.normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
     if not df_site.at[0, site_id_col_meta]:
@@ -323,12 +309,12 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
             aliases = (df_meta_columns
                         .loc[df_meta_columns['Field'] == standard_column, 'merge_key']
                         .drop_duplicates()               # Lots of duplicates among the aliases
-                        .apply(normalize_name)
+                        .apply(config.normalize_name)
                         .drop_duplicates()               # Still more duplicates after normalization
                         )
 
             matches = [k for k, v in 
-                        {c: aliases[aliases == normalize_name(c)].get(0) for c in candidates}.items()
+                        {c: aliases[aliases == config.normalize_name(c)].get(0) for c in candidates}.items()
                         if v is not None]
             if len(matches) == 1:
                 renamer: dict[str, str] = {matches[0]: standard_column}
