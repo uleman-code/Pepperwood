@@ -267,7 +267,7 @@ def clear_load(all_contents: list[str], filenames: list[str], show_data: list[An
             fn = filenames
             fntext = ', '.join(filenames)
 
-        logger.debug(f'File(s) loaded: {fntext}.')
+        logger.debug('File(s) loaded: %s.', fntext)
         status = dict(filename=fn, unsaved=True)
         contents = no_update  # This was triggered by a new file, so don't mess with the contents
     else:
@@ -604,39 +604,29 @@ def report_sanity_checks(
         # Append mode: an existing Excel file was loaded and concatenated with the new data.
         # Sanity-test only the part of the time series indicated by qa_range, and append the results
         # to whatever is already reported (but remove duplicates).
-        logger.debug(
-            'New data appended to an existing file. Run and report sanity check on what is new.'
-        )
+        logger.debug('New data appended to an existing file. Run and report sanity check on what is new.')
         assert current_report is not None
 
         # For some reason (JSON, I presume), the children of a Stack are returned as dicts, not Text objects. Turn them back into objects.
         current_report = [dmc.Text(**c['props']) for c in current_report]
-        report = current_report + [
-            dmc.Text(f'{len(data):,} total samples after appending.', h='sm', ta='right')
-        ]
+        report = current_report + [dmc.Text(f'{len(data):,} total samples after appending.', h='sm', ta='right')]
         qa_range = status['qa_range']
         status['qa_status'] = 'Complete'
     else:
         logger.debug('New data found. Running and reporting sanity checks.')
-        report = [
-            dmc.Text(
-                f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right'
-            )
-        ]
+        report = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')]
         qa_range = None
 
     qa_report: list[dmc.Text]
 
     try:
         qa_report = run_sanity_checks(frames, qa_range)
-    except helpers.DuplicateTimestampError as err:  # Duplicate timestamp with distinct variable values found
+    except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
         qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
         status['no_save'] = True  # Do not save; requires manual intervention
 
     report += qa_report
-    report = list(
-        {t.children: t for t in report}.values()
-    )  # Remove duplicates while maintaining order (only needed in Append mode)
+    report = list({t.children: t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
     return report, status, Serverside(frames, key='Frames')
 
@@ -681,7 +671,7 @@ def setup_batch(files_status: dict) -> tuple:
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
 
-    logger.debug(f'Files loaded: {", ".join(filenames)}.')
+    logger.debug('Files loaded: %s.', ", ".join(filenames))
     start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     next_file: int = 0  # This triggers the start of the loop over file_counter
     return 'Batch mode operation', [f'Started at {start_time}'], next_file
@@ -711,7 +701,7 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]
         file-counter/data  (int)    The file counter value for the current batch item
     """
 
-    logger.debug(f'Next file index is {next_file}.')
+    logger.debug('Next file index is %s.', next_file)
 
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection = layout.make_file_info(next_file)
@@ -749,7 +739,7 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
         filenames       The selected filenames (here only used to get the length of the batch)
     """
 
-    logger.debug(f'File counter is {file_counter}.')
+    logger.debug('File counter is %s.', file_counter)
     next_file: int = file_counter + 1
 
     if next_file >= len(filenames):
@@ -792,7 +782,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
     """
 
-    logger.debug(f'({file_counter}) Enter.')
+    logger.debug('(%s) Enter.', file_counter)
 
     if (
         len(filenames) <= file_counter
@@ -800,15 +790,14 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         logger.error(
             f'({file_counter}) Something is wrong. Processing file {file_counter} but there are only {len(filenames)} files in the batch.'
         )
-        logger.debug(f'({file_counter}) Exit.')
+        logger.debug('(%s) Exit.', file_counter)
         return (
             True,
             'System Error:',
             f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.',
         )
 
-    logger.debug(f'({file_counter}) Processing {filenames[file_counter]}.')
-    # time.sleep(3 + random.uniform(-2, 2))
+    logger.debug('(%s) Processing %s.', file_counter, filenames[file_counter])
 
     contents: str = all_contents[file_counter]
     filename: str = filenames[file_counter]
@@ -817,10 +806,10 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     # Read the file contents into DataFrames.
     try:
         frames = helpers.load_data(contents, filename)
-        logger.debug(f'({file_counter}) Data initialized.')
+        logger.debug('(%s) Data initialized.', file_counter)
     except Exception as e:
-        logger.error(f'({file_counter}) File Read Error:\n{e}')
-        logger.debug(f'({file_counter}) Exit.')
+        logger.error('(%s) File Read Error:\n{e}', file_counter)
+        logger.debug('(%s) Exit.', file_counter)
         return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
 
     try:
@@ -837,11 +826,9 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file.
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
     if 'notes' not in frames:
-        qa_report: list[dmc.Text]
-
         try:
-            qa_report = run_sanity_checks(frames, None)
-        except helpers.DuplicateTimestampError as err:
+            qa_report: list[dmc.Text] = run_sanity_checks(frames, None)
+        except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
             no_save = True
             qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
 
@@ -860,7 +847,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
             {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'},
         )
 
-        logger.debug(f'({file_counter}) Exit.')
+        logger.debug('() Exit.', file_counter)
         return False, '', ''
 
     # Save the file.
@@ -870,14 +857,14 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     data_for_download: dict[str, Any | None] = dcc.send_bytes(
         helpers.multi_df_to_excel(frames), outfile
     )
-    logger.debug(f'({file_counter}) Got byte string for Download.')
+    logger.debug('(%s) Got byte string for Download.', file_counter)
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
-    logger.debug(f'({file_counter}) Download complete. Clean up.')
+    logger.debug('(%s) Download complete. Clean up.', file_counter)
 
     set_props(f'wait-please-{file_counter}', {'display': 'none'})
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
 
-    logger.debug(f'({file_counter}) Exit.')
+    logger.debug('(%s) Exit.', file_counter)
     return False, '', ''
 
 
@@ -909,7 +896,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
     """
 
     if displays:  # This also gets triggered when all batch-related badges disappear
-        logger.debug(f'There are {len(displays)} files in progress: {displays}')
+        logger.debug('There are %s files in progress: %s', len(displays), displays)
 
         if all(d == 'inline' for d in displays):
             logger.debug('Batch complete.')

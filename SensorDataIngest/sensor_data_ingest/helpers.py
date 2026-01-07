@@ -3,8 +3,6 @@
 import base64
 import io
 import logging
-import time
-from tkinter import NO
 
 import decorator
 
@@ -22,13 +20,19 @@ from . import config as cfg
 class UnmatchedColumnsError(ValueError):
     pass
 
-class UnsupportedFileType(ValueError):
+class UnsupportedFileTypeError(ValueError):
     pass
 
 class DuplicateTimestampError(ValueError):
     pass
 
 class SiteIdNotFoundError(ValueError):
+    pass
+
+class StandardColumnNotFoundError(ValueError):
+    pass
+
+class TimestampColumnNotFoundError(StandardColumnNotFoundError):
     pass
 
 @decorator.decorator
@@ -52,7 +56,7 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
     try:
         out = fn(*args, **kwargs)
     except Exception as ex:
-        ee_logger.debug(f'<<< Exception: {ex}', exc_info=True, extra={'fname': fn.__name__})
+        ee_logger.debug('<<< Exception: %s', ex, exc_info=True, extra={'fname': fn.__name__})
         raise
 
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
@@ -108,7 +112,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
         Four or three DataFrames: data, metadata, station data, and (unless from an early version) QA notes
     """
 
-    logger.debug(f'Uploaded contents: {contents[:80]}')
+    logger.debug('Uploaded contents: %s', contents[:80])
 
     content_string: str
     _, content_string = contents.split(',')  # File contents are preceded by a file type string
@@ -167,7 +171,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
         else:
             # This should not happen: the Upload element limits the supported filename extensions.
             logger.error(f'Unsupported file type: {Path(filename).suffix}.')
-            raise UnsupportedFileType(f'We do not support the **{Path(filename).suffix}** file type.')
+            raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
     except (UnicodeDecodeError, ValueError) as e:
         logger.error(f'Error reading file {filename}. {e}')
         raise
@@ -179,7 +183,8 @@ def normalize_name(name: Any) -> str:
     """Normalize a name (e.g., site ID or column name) by replacing spaces with underscores and converting to lowercase.
 
     Parameters:
-        name    The site name to be normalized. Usually a string, but may be a number if the original name happens to consist of numeric digits.
+        name    The site name to be normalized. Usually a string, but may be a number if the original name happens to
+                consist solely of numeric digits and separators.
 
     Returns:
         The normalized name
@@ -243,28 +248,28 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     if len(df_site.columns) > len(station_columns):
         df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
 
-    site_id_dat = df_site.at[0, site_id_col_dat]
+    site_id_dat: str = df_site.at[0, site_id_col_dat]
     df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
     if not df_site.at[0, site_id_col_meta]:
-        logger.warning(f'Site ID {site_id_dat} not found in static site metadata. Output will only have metadata from the input file.')
+        logger.warning('Site ID %s not found in static site metadata. Output will only have metadata from the input file.', site_id_dat)
         raise SiteIdNotFoundError(f'Site ID {site_id_dat} not found in static site metadata.')
     
-    site_key = df_site.at[0, site_key_column]
+    site_key: str = df_site.at[0, site_key_column]
 
-    df_site = (df_site.drop(columns=['normalized_site_id', site_key_column]))
-    logger.info(f'Site ID {site_id_dat} found in static site metadata. Site metadata merged.')
+    df_site = df_site.drop(columns=['normalized_site_id', site_key_column])
+    logger.info('Site ID %s found in static site metadata. Site metadata merged.', site_id_dat)
 
-    column_metadata = df_meta_columns[df_meta_columns[site_key_column] == site_key]
+    column_metadata: pd.DataFrame = df_meta_columns[df_meta_columns[site_key_column] == site_key]
     if column_metadata.empty:
-        logger.warning(f'No static column metadata found for site ID {site_id_dat} with site key {site_key}. Output will have limited column metadata.')
+        logger.warning('No static column metadata found for site ID %s with site key %s. Output will have limited column metadata.', site_id_dat, site_key)
         raise SiteIdNotFoundError(f'No column metadata found for site key {site_key}.')
     
     # If the input file is a .DAT file, drop the second ("Units") column: the Units column from the static metadata supersedes it.
     # If it's an Excel file, drop all columns that came from the static metadata at the time the file was saved.
     # NOTE: Static metadata already includes a column called Units, but include the input "Units" column name just in case the names get out of sync.
-    df_columns = frames['meta'].drop(columns=[meta_columns[1]] + list(column_metadata.columns), errors='ignore')
+    df_columns: pd.DataFrame = frames['meta'].drop(columns=[meta_columns[1]] + list(column_metadata.columns), errors='ignore')
     df_columns = df_columns.merge(column_metadata, left_on=meta_columns[0], right_on='merge_key', how='left')
 
     # Replace the Name from the input file with the standardized Field name from the static metadata, wherever available.
@@ -276,15 +281,63 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     # df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
     # df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
 
-    logger.info(f'Column metadata merged for site ID {site_id_dat}.')
+    logger.info('Column metadata merged for site ID %s.', site_id_dat)
     if num_missing_columns := df_columns['Field'].isna().sum():
-        logger.info(f'Incomplete metadata: No static column metadata found for {num_missing_columns} column{"s" if num_missing_columns > 1 else ""}.')
+        logger.warning('Incomplete metadata: No static column metadata found for %s column%s.', num_missing_columns, "s" if num_missing_columns > 1 else "")
     
     # Rename data columns to standard names. They're in the right order if the input is a .DAT file because
     # of the way they're read, but if the input is an Excel file someone could have messed with the data column order.
     frames['data'].columns = frames['data'].columns.to_series().replace(df_columns.set_index('merge_key')['Field'])
     frames['meta'] = df_columns.drop(columns=['merge_key', 'Field'])
     return
+
+def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str, dtype: str) -> dict[str, str]:
+    """Identify the timestamp or sequence number column in the input data.
+
+    Args:
+        frames              The four DataFrames (data, meta, station, notes) for one file
+        standard_column     The currently configured name of the standard column (e.g., "Timestamp" or "SeqNum")
+        dtype               The expected column data type of the standard column (usually "datetime" or "int")
+    
+    Returns:
+        A mapping from original column name to standard name; a single item.
+
+    Raises:
+        StandardColumnNotFoundError     No column has the right data type, or multiple columns do and the names
+                                        do not help pick the right one.
+    """
+
+    candidates: pd.Index = frames['data'].select_dtypes(dtype).columns
+    match len(candidates):
+        case 0:
+            message: str = f'No column of the right data type for "{standard_column}" found.'
+            logger.warning(message)
+            raise StandardColumnNotFoundError(message)
+        case 1:
+            renamer: dict[str, str] = {candidates[0]: standard_column}
+        case _:
+            # More than one column with the right dtype. Try using the column name to pick the right one.
+            # Look in column metadata aliases for a name match. Use case and separator normalization.
+            # NOTE that, apart from normalization, it must be an identical match: partial matches could lead to a lot
+            #      of ambiguity. For example, if there were an additional column called "OldTimestamp" or something like that.
+            aliases = (df_meta_columns
+                        .loc[df_meta_columns['Field'] == standard_column, 'merge_key']
+                        .drop_duplicates()               # Lots of duplicates among the aliases
+                        .apply(normalize_name)
+                        .drop_duplicates()               # Still more duplicates after normalization
+                        )
+
+            matches = [k for k, v in 
+                        {c: aliases[aliases == normalize_name(c)].get(0) for c in candidates}.items()
+                        if v is not None]
+            if len(matches) == 1:
+                renamer: dict[str, str] = {matches[0]: standard_column}
+            else:
+                message: str = f'Multiple columns of the right data type for {standard_column} found.'
+                logger.warning(message)
+                raise StandardColumnNotFoundError(message)
+
+    return renamer
 
 @log_func
 def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
@@ -295,25 +348,37 @@ def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
 
     Args:
         frames      The four DataFrames (data, meta, station, notes) for one file
+
+    Raises:
+        TimestampColumnNotFound     No column could be unambiguously identified as the timestamp column. Do not save this file.
     """
 
-    names = frames['meta']['Name']
+    names: pd.Series = frames['meta'][meta_columns[0]]
+    renamer: dict[str, str] = {}
+
     # Timestamp column: probably the only column containing timestamps. If multiple such columns, look among all known
     # aliases for the timestamp column for a match.
     if timestamp_column not in names:
-        ts_candidates = frames['data'].select_dtypes('datetime').columns
-        match len(ts_candidates):
-            case 0:
-                logging.warning('No identifiable timestamp column found. Do not save.')
-                # TODO: raise error, block saving
-            case 1:
-                logging.info('Timestamp column found and renamed to standard.')
-            case _:
-                # Look in aliases for a name match
+        try:
+            renamer.update(find_standard_column_match(frames, timestamp_column, 'datetime'))
+            logger.info('Timestamp column found and renamed to "%s".', timestamp_column)
+        except StandardColumnNotFoundError as err:
+            raise TimestampColumnNotFoundError(str(err) + ' Do not save.')
 
     # Sequence number column: Possibly the only integer column. If multiple (in case a sensor produced nothing but whole numbers),
-    # look among all know aliases for a match. If that doesn't work, check if it contains a regular monotonic sequence.
+    # look among all known aliases for a match. If that doesn't work, let it go. This column is not essential,
+    # and the worst that will happen is that a new sequence number column is generated with the old one still present.
+    if seqno_column not in names:
+        try:
+            renamer.update(find_standard_column_match(frames, seqno_column, 'int'))
+            logger.info('Sequence number column found and renamed to "%s".', seqno_column)
+        except StandardColumnNotFoundError:
+            pass
     
+    # These are no-ops if no renamer was ever constructed.
+    names.replace(renamer, inplace=True)
+    frames['data'].rename(columns=renamer, inplace=True)
+
 
 @log_func
 def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
@@ -380,7 +445,7 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
     buffer: io.BytesIO = io.BytesIO()
     with pd.ExcelWriter(buffer) as xl:
         for sheet, df in sheets.items():
-            logger.debug(f'Writing {type(df).__name__} to sheet {sheet}.')
+            logger.debug('Writing %s to sheet {sheet}.', type(df).__name__)
 
             # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
             if (sheet == worksheet_names['notes']):
@@ -503,7 +568,7 @@ def report_duplicates(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.D
     )
 
     if (len(nunique) and max(nunique) > 1):
-        logger.info('Duplicate timestamps found.')
+        logger.warning('Duplicate timestamps found. Do not save.')
         raise DuplicateTimestampError(
             f'Repeated timestamp found at {", ".join(list((ts_repeat.astype(str))))}. Do not save to Excel.'
         )
@@ -588,7 +653,7 @@ def report_missing_column_values(
     )
 
     if not report.empty:
-        logger.info(f'Missing values found in column {column}.')
+        logger.info('Missing values found in column %s.', column)
 
     return report
 
@@ -691,9 +756,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
 
 
 @log_func
-def run_qa(
-    frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None
-) -> tuple[bool, bool, bool, pd.DataFrame, pd.DataFrame]:
+def run_qa(frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None) -> tuple[bool, bool, bool]:
     """Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
     1. Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
@@ -731,31 +794,30 @@ def run_qa(
         Duplicate samples found?
         Missing values found?
         Missing samples found?
+    
+    Raises:
+        TimestampColumnNotFoundError     Passed through 
     """
 
-    logger.debug('Enter')
-
+    # NOTE: verify_standard_columns() raises an exception if it cannot unambiguously identify the timestamp column.
+    #       Let caller deal with it.
+    verify_standard_columns(frames)
     sampling_interval: pd.Timedelta = get_sampling_interval(frames['station'])
     df_data: pd.DataFrame = frames['data']
     df_notes: pd.DataFrame | None = frames.get('notes', None)
 
-    try:
-        duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)
-        duplicates_found: bool = bool(len(duplicates_report))
-        original_size: int = len(df_data)
-        df_data = (
-            df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True)
-            if duplicates_found
-            else df_data
-        )
-        if duplicates_found:
-            logger.info(
-                f'Duplicates found. Original size: {original_size}. Deduplicated size: {len(df_data)}.'
-            )
-    except DuplicateTimestampError as err:
-        # Duplicate timestamps with distinct variable values. Just pass the exception on to the caller.
-        logger.info(err)
-        raise
+    # NOTE: report_duplicates() raises an exception if it finds duplicate timestamps with
+    #       distinct variable values. Let caller deal with it.
+    duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)
+    duplicates_found: bool = bool(len(duplicates_report))
+    original_size: int = len(df_data)
+    df_data = (
+        df_data.drop_duplicates(subset=df_data.columns.drop(seqno_column), ignore_index=True)
+        if duplicates_found
+        else df_data
+    )
+    if duplicates_found:
+        logger.info('Duplicates found. Original size: %s. Deduplicated size: %s.', original_size, len(df_data))
 
     variable_columns: pd.Index[str] = df_data.columns.drop([timestamp_column, seqno_column])
     s_qa_range: pd.Series[bool] | slice = (
