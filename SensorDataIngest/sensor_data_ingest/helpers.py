@@ -37,6 +37,8 @@ class StandardColumnNotFoundError(ValueError):
 class TimestampColumnNotFoundError(StandardColumnNotFoundError):
     pass
 
+ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
+
 @decorator.decorator
 def log_func(fn: Callable, *args, **kwargs) -> Any:
     """Function entry and exit logger, capturing exceptions as well.
@@ -52,7 +54,6 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
         The wrapped function's result
     """
 
-    ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:
@@ -70,7 +71,8 @@ worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
 data_na_repr: str = cfg.config['output']['data_na_representation']
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
-default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['sampling_interval'])   # To be overridden by site metadata
+default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['sampling_interval'],
+                                                       unit='seconds')   # To be overridden by site metadata
 qa_report_columns: list[str] = cfg.config['output']['notes_columns']
 meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
 station_columns: list[str] = cfg.config['metadata']['station_columns']
@@ -238,7 +240,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(config.normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
-    if not df_site.at[0, site_id_col_meta]:
+    if pd.isna(df_site.at[0, site_id_col_meta]):
         logger.warning('Site ID %s not found in static site metadata. Output will only have metadata from the input file.', site_id_dat)
         raise SiteIdNotFoundError(f'Site ID {site_id_dat} not found in static site metadata.')
     

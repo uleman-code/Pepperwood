@@ -38,6 +38,7 @@ from . import helpers
 from . import layout
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
+ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
 frame_store: dict = {}
 
 
@@ -48,7 +49,6 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     Very simplistic; no argument logging or execution timing.
     """
 
-    ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
 
     try:

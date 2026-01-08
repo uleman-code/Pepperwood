@@ -70,6 +70,8 @@ def prepare_logfile_max_size(input: str | int | float) -> int:
 def prepare_sampling_interval(input: str) -> float:
     """Convert a human-friendly time interval string into seconds (float).
 
+    Use float to avoid having to add support in pydantic for pandas types.
+
     Raises:
         ValueError  if input is not a valid time interval string
     """
@@ -227,7 +229,7 @@ def logging_init() -> None:
                                                     maxBytes=app_config['logfile_max_size'],
                                                     backupCount=app_config['logfile_backup_count'])
     stream_handler   = logging.StreamHandler()
-    file_formatter   = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{funcName:28s}: ' +
+    file_formatter   = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{funcName:28s}: ' +
                                          '{message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
     stream_formatter = logging.Formatter('{levelname}|{name}: {message}', style='{')
 
