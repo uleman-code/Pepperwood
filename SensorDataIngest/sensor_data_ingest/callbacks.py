@@ -10,6 +10,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from dataclasses import asdict
 
 import dash_mantine_components as dmc
 import decorator
@@ -39,7 +40,6 @@ from . import layout
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
-frame_store: dict = {}
 
 
 @decorator.decorator
@@ -120,7 +120,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     contents: str = all_contents[0]  # We got here, so there is exactly one file
 
     try:
-        frames: dict[str, Any] = helpers.load_data(contents, filename)
+        frames: helpers.Frames = helpers.load_data(contents, filename)
         logger.debug('Data initialized.')
     except Exception as e:          # TODO: More specific exception types
         logger.exception('File Read Error.')
@@ -134,7 +134,6 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     try:
         helpers.merge_metadata(frames)
     except helpers.SiteIdNotFoundError as e:
-        # TODO: Identify and update the timestamp and sequence number columns.
         logger.info('Continuing with incomplete metadata: %s', e)
 
     # Keep the DataFrames store on the server. This avoids potentially large transfers between
@@ -143,7 +142,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     # performance in plot rendering and file saving, sometimes dramatically.
     # Providing a key to the Serverside constructor makes the serverside cache use and reuse a
     # single file, preventing unlimited storage growth.
-    return Serverside(frames, key='Frames'), False, '', ''
+    return Serverside(asdict(frames), key='Frames'), False, '', ''
 
 
 @blueprint.callback(
@@ -158,7 +157,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     ],  # Show busy indicator while saving
 )
 @log_func
-def save_file(files_status: dict[str, str | bool], frames: dict[str, Any]) -> tuple:
+def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] | None) -> tuple:
     """Save the data currently in memory in an Excel (.XLSX) file.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -187,9 +186,10 @@ def save_file(files_status: dict[str, str | bool], frames: dict[str, Any]) -> tu
         logger.debug('Data is not ready to be saved.')
         raise PreventUpdate
 
-    if (
-        frames and 'data' in frames
-    ):  # If not initialized, it's not a dict; so check first if there's anything there
+    frames: helpers.Frames = helpers.Frames(**frame_store) if frame_store else None
+
+    if (frames and not frames.data.empty):
+        frames: helpers.Frames = helpers.Frames(**frame_store)
         outfile: str = str(Path(files_status['filename']).with_suffix('.xlsx'))
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
@@ -312,7 +312,7 @@ def toggle_loaddata(status: dict[str, str | bool]) -> tuple:
     State('files-status', 'data'),
 )
 @log_func
-def show_columns(frames: dict, status: dict) -> tuple:
+def show_columns(frame_store: dict[str, Any] | None, status: dict) -> tuple:
     """When data is loaded, populate the column selection element with checkboxes for all data columns (variables).
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
@@ -335,12 +335,12 @@ def show_columns(frames: dict, status: dict) -> tuple:
         select-columns/value  (list) Reset the current selection (uncheck all boxes)
     """
 
-    if (
-        frames and 'data' in frames
-    ):  # Make sure frames is a dict before checking for presence of data
+    frames: helpers.Frames = helpers.Frames(**frame_store) if frame_store else None
+
+    if (frames and not frames.data.empty):
         if status['unsaved']:
             logger.debug('DataFrame found. Populating variable selection list.')
-            data = frames['data']
+            data = frames.data
 
             # Skip the timestamp and sequence number columns; these are not data columns.
             checkboxes: list[dmc.Checkbox] = [
@@ -368,7 +368,7 @@ def show_columns(frames: dict, status: dict) -> tuple:
     State('frame-store', 'data'),
 )
 @log_func
-def draw_plots(showcols: list[str], single_plot: bool, frames: dict) -> tuple:
+def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, Any]) -> tuple:
     """Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
@@ -384,9 +384,11 @@ def draw_plots(showcols: list[str], single_plot: bool, frames: dict) -> tuple:
                                        (otherwise you see an empty set of axes)
     """
 
+    frames = helpers.Frames(**frame_store)
+
     if showcols:
         logger.debug('Columns selected; generating graphs.')
-        data = frames['data']
+        data = frames.data
         fig = helpers.render_graphs(data, showcols, single_plot)
 
         return fig, 'contents'
@@ -506,7 +508,7 @@ def show_file_info(files_status: dict[str, str | bool], last_modified: list[int]
 
 
 @log_func
-def run_sanity_checks(frames: dict[str, Any], qa_range: list[str] | None = None) -> list[dmc.Text]:
+def run_sanity_checks(frames: helpers.Frames, qa_range: list[str] | None = None) -> list[dmc.Text]:
     """Callback helper function: run the sanity/QA checks.
 
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.
@@ -566,7 +568,7 @@ def run_sanity_checks(frames: dict[str, Any], qa_range: list[str] | None = None)
 )
 @log_func
 def report_sanity_checks(
-    current_report: list[dmc.Text] | None, status: dict, frames: dict[str, Any]
+    current_report: list[dmc.Text] | None, status: dict, frame_store: helpers.Frames | None
 ) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     """Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -586,16 +588,18 @@ def report_sanity_checks(
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     """
 
-    if not frames or 'data' not in frames:
+    frames: helpers.Frames = helpers.Frames(**frame_store) if frame_store else None
+
+    if not frames or frames.data.empty:
         logger.debug('No data loaded. Clear the sanity check reports.')
         return [], no_update, no_update
 
-    if 'notes' in frames and 'qa_status' not in status:
+    if not frames.notes.empty and 'qa_status' not in status:
         logger.debug('Notes worksheet already populated. Do nothing.')
         raise PreventUpdate
 
     # At callback level, we don't know about pandas, but we can still apply python functions like len() to DataFrames.
-    data = frames['data']
+    data = frames.data
 
     report: list[dmc.Text]
     qa_range: list[str] | None
@@ -628,7 +632,7 @@ def report_sanity_checks(
     report += qa_report
     report = list({t.children: t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
-    return report, status, Serverside(frames, key='Frames')
+    return report, status, Serverside(asdict(frames), key='Frames')
 
 
 @blueprint.callback(
@@ -817,7 +821,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     except helpers.SiteIdNotFoundError as e:
         logger.info('Continuing with incomplete metadata: %s', e)
 
-    data = frames['data']
+    data = frames.data
     report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')]
 
     no_save = False
@@ -825,7 +829,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     # Perform sanity/QA checks and report the results, except:
     #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file.
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
-    if 'notes' not in frames:
+    if frames.notes.empty:
         try:
             qa_report: list[dmc.Text] = run_sanity_checks(frames, None)
         except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
@@ -928,7 +932,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
 )
 @log_func
 def append_file(
-    new_frames: dict[str, Any], status: dict[str, str | bool], filename: str, contents: str
+    frame_store: helpers.Frames, status: dict[str, str | bool], filename: str, contents: str
 ) -> tuple:
     """An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
 
@@ -955,17 +959,19 @@ def append_file(
 
     """
 
+    new_frames: helpers.Frames = helpers.Frames(**frame_store)
+
     try:
-        base_frames: dict[str, Any] = helpers.load_data(contents, filename)
+        base_frames: helpers.Frames = helpers.load_data(contents, filename)
         logger.debug('Existing file data initialized.')
-        combined_frames: dict[str, Any]
+        combined_frames: helpers.Frames
         combined_frames, status['qa_range'] = helpers.append(base_frames, new_frames)
         status['qa_status'] = 'Ready'
         logger.info(
-            f'Base {len(base_frames["data"])}; New {len(new_frames["data"])}; Combined {len(combined_frames["data"])}'
+            f'Base {len(base_frames.data)}; New {len(new_frames.data)}; Combined {len(combined_frames.data)}'
         )
 
-        return Serverside(combined_frames, key='Frames'), status, [], False, '', ''
+        return Serverside(asdict(combined_frames), key='Frames'), status, [], False, '', ''
     except helpers.UnmatchedColumnsError as e:
         logger.error(e)
         return no_update, no_update, no_update, True, 'Unmatched files', str(e)

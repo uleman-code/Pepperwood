@@ -246,7 +246,7 @@ def logging_init() -> None:
     # instead of the wrapper itself) for funcName.
     ee_logger    = logging.getLogger(program_name + '_ee')
     ee_handler   = logging.FileHandler(logging_dir / (program_name + '.log'))
-    ee_formatter = logging.Formatter('{asctime}|{levelname:5s}|{module:9s}|{fname:28s}: {message}',
+    ee_formatter = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{fname:28s}: {message}',
                                      style='{', datefmt='%Y-%m-%d %H:%M:%S')
 
     ee_handler.setLevel(app_config['file_logging_level'])
@@ -324,4 +324,4 @@ def metadata_init() -> None:
     df_columns['Aliases'] = df_columns['Aliases'].apply(lambda alias_list: list(set(alias_list)))
     metadata['columns'] = df_columns.assign(merge_key=df_columns['Aliases']).explode('merge_key')
 
-    logger.info('Site and column metadata files %s and %s read.', site_file.resolve(), column_file.resolve())
+    logger.info('Site and column metadata files read:\n%s%s and\n%s%s', ' '*15, site_file.resolve(), ' '*15, column_file.resolve())

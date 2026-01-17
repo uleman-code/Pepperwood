@@ -3,21 +3,26 @@
 import base64
 import io
 import logging
-
 import decorator
 
 from pathlib import Path
 from typing import Any, Callable
+from dataclasses import dataclass, field
 
 import pandas as pd
 import plotly.graph_objects as go
 
-from pandas.core.groupby.generic import SeriesGroupBy
-
-import config  # Just for type hinting
+from pandas.core.groupby.generic import SeriesGroupBy  # Just for type hinting
 
 from . import config as cfg
 
+
+@dataclass(slots=True)
+class Frames:
+    data: pd.DataFrame = field(default_factory=pd.DataFrame)
+    meta: pd.DataFrame = field(default_factory=pd.DataFrame)
+    station: pd.DataFrame = field(default_factory=pd.DataFrame)
+    notes: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 class UnmatchedColumnsError(ValueError):
     pass
@@ -124,7 +129,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     b64decoded: bytes = base64.b64decode(content_string)
     logger.debug('Got decoded file contents.')
 
-    frames: dict[str, pd.DataFrame] = {}
+    frames: Frames = Frames()
     try:
         if Path(filename).suffix in ['.dat', '.csv']:
             # Assume that the user uploaded a raw-data CSV file
@@ -132,40 +137,40 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             decoded = io.StringIO(b64decoded.decode('utf-8'))
 
             # First pass to read the real data
-            frames['data'] = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
+            frames.data = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
 
             # Second pass to read the column metadata
             decoded.seek(0)
-            frames['meta'] = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T
-            frames['meta'].columns = meta_columns
+            frames.meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T
+            frames.meta.columns = meta_columns
 
             # Third pass to read the station data
             # NOTE: Limit the columns to avoid problems in case the raw-data file was edited in Excel
             decoded.seek(0)
-            frames['station'] = pd.read_csv(
+            frames.station = pd.read_csv(
                 decoded, header=None, nrows=1, names=station_columns, usecols=station_columns 
             )
-            # frames['station'].columns = station_columns
+            # frames.station.columns = station_columns
 
         elif Path(filename).suffix in ['.xlsx', '.xls']:
             # Assume that the user uploaded an Excel file
             logger.info('Reading Excel workbook. Expect three or four worksheets.')
             buffer = io.BytesIO(b64decoded)
 
-            frames['data'] = pd.read_excel(buffer, sheet_name=worksheet_names['data'], na_values='NAN')
-            frames['meta'] = pd.read_excel(buffer, sheet_name=worksheet_names['meta'])
-            frames['station'] = pd.read_excel(buffer, sheet_name=worksheet_names['station'])
+            frames.data = pd.read_excel(buffer, sheet_name=worksheet_names['data'], na_values='NAN')
+            frames.meta = pd.read_excel(buffer, sheet_name=worksheet_names['meta'])
+            frames.station = pd.read_excel(buffer, sheet_name=worksheet_names['station'])
 
             try:
-                frames['notes'] = pd.read_excel(buffer, sheet_name=worksheet_names['notes'])
+                frames.notes = pd.read_excel(buffer, sheet_name=worksheet_names['notes'])
                 logger.info(
                     'Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.'
                 )
 
                 # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
                 # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
-                if 'Link' in frames['notes'].columns:
-                    frames['notes'].drop(columns='Link')
+                if 'Link' in frames.notes.columns:
+                    frames.notes.drop(columns='Link')
             except ValueError:
                 logger.info(
                     'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
@@ -182,7 +187,7 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
     return frames
 
 @log_func
-def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
+def merge_metadata(frames: Frames) -> None:
     """Merge the limited metadata from the .DAT file with the static metadata read at startup; standardize field names.
 
     This also provides an opportunity for a few simple consistency checks. Any errors should not be
@@ -211,8 +216,8 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     #    - There may be multiple matching records in the static site metadata, with a different Start Date. This
     #      can happen if a site is modified or relocated. Take all matching records (note that they will all share
     #      the same Site ID).
-    #    - In the output, use the original (unnormalized) Site ID value from the .DAT file. The one from the static
-    #      metadata is only available in normalized form. TODO: Is this undesirable?
+    #    - In the output, maintain the Site ID values (original, not normalized) from both the .DAT file and the
+    #      static metadata; they may differ before normalization, which may be useful to show.
     # 2. Using the site key from the merged site metadata, extract the associated column metadata from the static
     #    column metadata.
     #    - In case of multiple matching site records, they must all have the same site key; only one set of column
@@ -224,9 +229,7 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
     #    an exception. This is not fatal, but will be logged and reported to the user. The output file will
     #    simply have limited metadata, which is also the case if static column metadata is incomplete.
 
-    # TODO: Change site metadata merge to a simple lookup with strings normalized on the fly,
-    #       and move normalization to a separate function.
-    df_site: pd.DataFrame = frames['station']
+    df_site: pd.DataFrame = frames.station
 
     # If there are more site columns than what's in a .DAT file, the input must be an Excel file that
     # already has merged metadata. If so, drop the extra columns (and, potentially, any additional rows)
@@ -237,27 +240,27 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
         df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
 
     site_id_dat: str = df_site.at[0, site_id_col_dat]
-    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(config.normalize_name)
+    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(cfg.normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
     if pd.isna(df_site.at[0, site_id_col_meta]):
-        logger.warning('Site ID %s not found in static site metadata. Output will only have metadata from the input file.', site_id_dat)
+        logger.warning('Site ID "%s" not found in static site metadata. Output will only have metadata from the input file.', site_id_dat)
         raise SiteIdNotFoundError(f'Site ID {site_id_dat} not found in static site metadata.')
     
     site_key: str = df_site.at[0, site_key_column]
 
-    df_site = df_site.drop(columns=['normalized_site_id', site_key_column])
-    logger.info('Site ID %s found in static site metadata. Site metadata merged.', site_id_dat)
+    frames.station = df_site.drop(columns=['normalized_site_id', site_key_column])
+    logger.info('Site ID "%s" found in static site metadata. Site metadata merged.', site_id_dat)
 
     column_metadata: pd.DataFrame = df_meta_columns[df_meta_columns[site_key_column] == site_key]
     if column_metadata.empty:
-        logger.warning('No static column metadata found for site ID %s with site key %s. Output will have limited column metadata.', site_id_dat, site_key)
-        raise SiteIdNotFoundError(f'No column metadata found for site key {site_key}.')
+        logger.warning('No static column metadata found for site ID "%s" with site key "%s". Output will have limited column metadata.', site_id_dat, site_key)
+        raise SiteIdNotFoundError(f'No column metadata found for site key "{site_key}".')
     
     # If the input file is a .DAT file, drop the second ("Units") column: the Units column from the static metadata supersedes it.
     # If it's an Excel file, drop all columns that came from the static metadata at the time the file was saved.
     # NOTE: Static metadata already includes a column called Units, but include the input "Units" column name just in case the names get out of sync.
-    df_columns: pd.DataFrame = frames['meta'].drop(columns=[meta_columns[1]] + list(column_metadata.columns), errors='ignore')
+    df_columns: pd.DataFrame = frames.meta.drop(columns=[meta_columns[1]] + list(column_metadata.columns), errors='ignore')
     df_columns = df_columns.merge(column_metadata, left_on=meta_columns[0], right_on='merge_key', how='left')
 
     # Replace the Name from the input file with the standardized Field name from the static metadata, wherever available.
@@ -265,18 +268,19 @@ def merge_metadata(frames: dict[str, pd.DataFrame]) -> None:
 
     # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
     # But first replace NaNs with empty lists.
-    # isna = df_columns['Aliases'].isna()
-    # df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
-    # df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
+    isna = df_columns['Aliases'].isna()
+    df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
+    df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
 
     logger.info('Column metadata merged for site ID %s.', site_id_dat)
     if num_missing_columns := df_columns['Field'].isna().sum():
-        logger.warning('Incomplete metadata: No static column metadata found for %s column%s.', num_missing_columns, "s" if num_missing_columns > 1 else "")
+        logger.warning('Incomplete metadata: No static column metadata found for %s of %s column%s.',
+                       num_missing_columns, len(df_columns), "s" if num_missing_columns > 1 else "")
     
-    # Rename data columns to standard names. They're in the right order if the input is a .DAT file because
-    # of the way they're read, but if the input is an Excel file someone could have messed with the data column order.
-    frames['data'].columns = frames['data'].columns.to_series().replace(df_columns.set_index('merge_key')['Field'])
-    frames['meta'] = df_columns.drop(columns=['merge_key', 'Field'])
+    # Rename data columns to standard names. Use a lookup rather than relying on order. In contrast to a .DAT file,
+    # if the input is an Excel file someone could have messed with the data column order.
+    frames.data.columns = frames.data.columns.to_series().replace(df_columns.set_index('merge_key')['Field'])
+    frames.meta = df_columns.drop(columns=['merge_key', 'Field', 'SiteKey'])
     return
 
 def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str, dtype: str) -> dict[str, str]:
@@ -295,7 +299,7 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
                                         do not help pick the right one.
     """
 
-    candidates: pd.Index = frames['data'].select_dtypes(dtype).columns
+    candidates: pd.Index = frames.data.select_dtypes(dtype).columns
     match len(candidates):
         case 0:
             message: str = f'No column of the right data type for "{standard_column}" found.'
@@ -311,12 +315,12 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
             aliases = (df_meta_columns
                         .loc[df_meta_columns['Field'] == standard_column, 'merge_key']
                         .drop_duplicates()               # Lots of duplicates among the aliases
-                        .apply(config.normalize_name)
+                        .apply(cfg.normalize_name)
                         .drop_duplicates()               # Still more duplicates after normalization
                         )
 
             matches = [k for k, v in 
-                        {c: aliases[aliases == config.normalize_name(c)].get(0) for c in candidates}.items()
+                        {c: aliases[aliases == cfg.normalize_name(c)].get(0) for c in candidates}.items()
                         if v is not None]
             if len(matches) == 1:
                 renamer: dict[str, str] = {matches[0]: standard_column}
@@ -328,7 +332,7 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
     return renamer
 
 @log_func
-def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
+def verify_standard_columns(frames: Frames) -> None:
     """Make sure that the configured timestamp and sequence number columns are actually in the data and column metadata.
     
     If not, it means that no metadata was found for the site or the columns. Use a heuristic approach to identify these
@@ -341,7 +345,7 @@ def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
         TimestampColumnNotFound     No column could be unambiguously identified as the timestamp column. Do not save this file.
     """
 
-    names: pd.Series = frames['meta'][meta_columns[0]]
+    names: pd.Series = frames.meta[meta_columns[0]]
     renamer: dict[str, str] = {}
 
     # Timestamp column: probably the only column containing timestamps. If multiple such columns, look among all known
@@ -365,7 +369,7 @@ def verify_standard_columns(frames: dict[str, pd.DataFrame]) -> None:
     
     # These are no-ops if no renamer was ever constructed.
     names.replace(renamer, inplace=True)
-    frames['data'].rename(columns=renamer, inplace=True)
+    frames.data.rename(columns=renamer, inplace=True)
 
 
 @log_func
@@ -412,7 +416,7 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
 
 
 @log_func
-def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
+def multi_df_to_excel(frames: Frames) -> bytes:
     """Save three DataFrames to a single Excel file buffer: data, (column) metadata, and station data.
 
     Each of the DataFrames becomes a separate worksheet in the file, named Data, Columns, and station.
@@ -424,21 +428,21 @@ def multi_df_to_excel(frames: dict[str, pd.DataFrame]) -> bytes:
         The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
     """
 
-    # The worksheet names in the Excel file are not necessarily the same as the keys in frames.
+    # The worksheet names in the Excel file are not necessarily the same as the DataFrame attribute names in frames.
     # So match each sheet name to the right frame. And keep them in the same order.
-    sheets: dict[str, pd.DataFrame] = {worksheet_names[k]: frames[k] for k in frames}
+    sheets: dict[str, pd.DataFrame] = {worksheet_names[k]: getattr(frames, k) for k in frames.__dataclass_fields__.keys()}
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
     buffer: io.BytesIO = io.BytesIO()
     with pd.ExcelWriter(buffer) as xl:
         for sheet, df in sheets.items():
-            logger.debug('Writing %s to sheet {sheet}.', type(df).__name__)
+            logger.debug('Writing %s to sheet %s.', type(df).__name__, sheet)
 
             # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
             if (sheet == worksheet_names['notes']):
                 df.insert(
-                    1,
+                    0,
                     'Link',
                     [
                         f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names["data"]}!$A:$A,MATCH($A{row},{worksheet_names["data"]}!$A:$A,0))),"   🔗")'
@@ -744,7 +748,7 @@ def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.Date
 
 
 @log_func
-def run_qa(frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None) -> tuple[bool, bool, bool]:
+def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool]:
     """Run data integrity checks, make any corrections possible, and report results for both data notes in the output and interactive display.
 
     1. Test for duplicates, both repeated whole samples and samples with repeated timestamps but distinct variable values.
@@ -790,9 +794,9 @@ def run_qa(frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None) -
     # NOTE: verify_standard_columns() raises an exception if it cannot unambiguously identify the timestamp column.
     #       Let caller deal with it.
     verify_standard_columns(frames)
-    sampling_interval: pd.Timedelta = get_sampling_interval(frames['station'])
-    df_data: pd.DataFrame = frames['data']
-    df_notes: pd.DataFrame | None = frames.get('notes', None)
+    sampling_interval: pd.Timedelta = get_sampling_interval(frames.station)
+    df_data: pd.DataFrame = frames.data
+    df_notes: pd.DataFrame = frames.notes
 
     # NOTE: report_duplicates() raises an exception if it finds duplicate timestamps with
     #       distinct variable values. Let caller deal with it.
@@ -836,13 +840,14 @@ def run_qa(frames: dict[str, pd.DataFrame | None], qa_range: list[str] | None) -
     df_notes = pd.concat(
         [df_notes, duplicates_report, missing_values_report, missing_samples_report]
     ).sort_values(['Start of issue', 'End of issue'])
+    frames.notes = df_notes.reset_index(drop=True)
 
     return duplicates_found, missing_values_found, missing_samples_found
 
 
 @log_func
 def append(
-    base_frames: dict[str, pd.DataFrame], new_frames: dict[str, pd.DataFrame]
+    base_frames: Frames, new_frames: Frames
 ) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """Append new sensor data to an existing set.
 
@@ -877,8 +882,8 @@ def append(
     # Sanity check: yes, the schema may evolve, but the two files must have at least some columns in common.
     # This should catch the most egregious mistakes, trying to combine files from completely different sets of sensors,
     # while not causing too many false rejections.
-    df_base: pd.DataFrame = base_frames['data']
-    df_new: pd.DataFrame = new_frames['data']
+    df_base: pd.DataFrame = base_frames.data
+    df_new: pd.DataFrame = new_frames.data
     base_columns: pd.Index = df_base.columns
     new_columns: pd.Index = df_new.columns
     if (
@@ -893,7 +898,7 @@ def append(
 
     # Be sure to keep the ordering of the frames dict constant by assigning the frames in order: data, meta, station, notes.
     # This determines the order in which the corresponding worksheets appear in the Excel file.
-    combined_frames: dict[str, pd.DataFrame] = {
+    combined_frames: Frames = {
         'data': pd.DataFrame([]),
         'meta': pd.DataFrame([]),
         'station': pd.DataFrame([]),
@@ -910,14 +915,14 @@ def append(
     #   - A dropped column (not present in the new file) ends up at the end of the list; this needs to be corrected separately.
     #   - A renamed column looks like a combination of a dropped column and a new column; this can be consolidated later, once
     #     we have a mechanism for loading metadata that includes column aliases.
-    combined_frames['data'] = (
+    combined_frames.data = (
         pd.concat([df_new, df_base]).sort_values(timestamp_column).reset_index(drop=True)
     )
 
     # Fix up the case of dropped column(s). See the fourth item in the previous comment.
     dropped_columns: pd.Index = base_columns.difference(new_columns)
     added_columns: pd.Index = new_columns.difference(base_columns)
-    combined_columns: list = combined_frames['data'].columns.to_list()
+    combined_columns: list = combined_frames.data.columns.to_list()
     for col in dropped_columns:
         idx: int = base_columns.get_loc(col) + 1
 
@@ -935,7 +940,7 @@ def append(
             combined_columns.pop(combined_columns.index(col)),
         )
 
-    combined_frames['data'].columns = combined_columns
+    combined_frames.data.columns = combined_columns
 
     # Use the newest info (from the new file to be appended) for meta- and station data. In case of schema or content
     # evolution, this keeps each output file up to date with the standards at the time of saving.
@@ -943,10 +948,10 @@ def append(
     for frame in ['meta', 'station']:
         combined_frames[frame] = new_frames[frame]
 
-    if not base_frames['meta'].equals(new_frames['meta']):
+    if not base_frames.meta.equals(new_frames.meta):
         logger.warning('The metadata worksheets do not match. Keep the newer one.')
 
-    if not base_frames['station'].equals(new_frames['station']):
+    if not base_frames.station.equals(new_frames.station):
         logger.warning('The station worksheets do not match. Keep the newer one.')
 
     # Normally, we expect the most recently loaded file (the base) to be the older one, to which the data loaded earlier (the new)
@@ -985,18 +990,18 @@ def append(
     # the new file's notes (generated in the current run).
     # If not, just copy over the new notes.
     if 'notes' in base_frames:
-        combined_frames['notes'] = pd.concat([base_frames['notes'], new_frames['notes']])
+        combined_frames.notes = pd.concat([base_frames.notes, new_frames.notes])
         qa_range[0] = str(min(older_last, newer_first))
     else:
-        combined_frames['notes'] = new_frames['notes']
+        combined_frames.notes = new_frames.notes
         qa_range[0] = str(df_base[timestamp_column].min())
 
     # If there are any schema changes, record the transitions.
     # For now, don't worry about newer and older, overlaps and gaps; assume that the "new" file is indeed new
     # and fits perfectly tip to tail.
-    combined_frames['notes'] = pd.concat(
+    combined_frames.notes = pd.concat(
         [
-            combined_frames['notes'],
+            combined_frames.notes,
             pd.DataFrame(
                 [
                     [newer_first, newer_first, col, 'No', 'New variable name introduced.']
