@@ -350,7 +350,7 @@ def verify_standard_columns(frames: Frames) -> None:
 
     # Timestamp column: probably the only column containing timestamps. If multiple such columns, look among all known
     # aliases for the timestamp column for a match.
-    if timestamp_column not in names:
+    if timestamp_column not in names.values:
         try:
             renamer.update(find_standard_column_match(frames, timestamp_column, 'datetime'))
             logger.info('Timestamp column found and renamed to "%s".', timestamp_column)
@@ -360,7 +360,7 @@ def verify_standard_columns(frames: Frames) -> None:
     # Sequence number column: Possibly the only integer column. If multiple (in case a sensor produced nothing but whole numbers),
     # look among all known aliases for a match. If that doesn't work, let it go. This column is not essential,
     # and the worst that will happen is that a new sequence number column is generated with the old one still present.
-    if seqno_column not in names:
+    if seqno_column not in names.values:
         try:
             renamer.update(find_standard_column_match(frames, seqno_column, 'int'))
             logger.info('Sequence number column found and renamed to "%s".', seqno_column)
