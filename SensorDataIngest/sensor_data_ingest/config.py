@@ -117,6 +117,7 @@ class OutputCfg(BaseModel):
     worksheet_names: dict[str, str] = {}
     data_na_representation: str = '#N/A'
     notes_columns: list[str]
+    notes_hyperlink_column: str
 
 
 class MetadataCfg(BaseModel):
@@ -126,10 +127,29 @@ class MetadataCfg(BaseModel):
 
     timestamp_column: str
     sequence_number_column: str
-    sampling_interval: Annotated[float, BeforeValidator(prepare_sampling_interval)]
-    variable_description_columns: list[str]     # From the .dat file; combine with static metadata
-    station_columns: list[str]                  # From the .dat file; combine with static metadata
-    site_key_column: str
+    default_sampling_interval: Annotated[float, BeforeValidator(prepare_sampling_interval)]
+    input_variable_meta_columns: list[str]     # From the input file; combine with static metadata
+    input_site_meta_columns: list[str]         # From the input file; combine with static metadata
+    input_site_id_column: str
+    meta_site_id_column: str
+    input_units_column: str
+    input_column_name_column: str
+    meta_field_column: str
+    meta_aliases_column: str
+    meta_interval_column: str
+    meta_site_key_column: str
+
+    @model_validator(mode='after')
+    def validate_site_id_columns(self) -> Self:
+        """Ensure that the specified site ID column names are unique."""
+
+        if self.input_site_id_column == self.meta_site_id_column:
+            raise ValueError('Input and metadata site ID column names must be different.')
+        
+        if self.input_column_name_column == self.meta_field_column:
+            raise ValueError('Input and metadata column name and field column names must be different.')
+
+        return self
 
 
 class Config(BaseModel):
@@ -307,21 +327,22 @@ def metadata_init() -> None:
 
     # Aliases should be lists of comma-separated strings (ignoring spaces), but are read in as strings. 
     # Convert them to lists. Also, turn NaNs into empty lists.
-    no_aliases = df_columns['Aliases'].isna()
-    df_columns['Aliases'] = (df_columns['Aliases']
+    alias_column: str = config['metadata']['meta_aliases_column']
+    no_aliases = df_columns[alias_column].isna()
+    df_columns[alias_column] = (df_columns[alias_column]
                              .str.replace(', +', ',', regex=True)
                              .str.split(',')
                             )
-    df_columns.loc[no_aliases, 'Aliases'] = pd.Series([[]] * no_aliases.sum()).values
+    df_columns.loc[no_aliases, alias_column] = pd.Series([[]] * no_aliases.sum()).values
 
     # For lookup purposes, add the current field name to the list of aliases. Then, after exploding the aliases,
     # each name in Aliases has its own row mapping to the same metadata, including the same current field name.
     # (Applying split() to the Field column is just a trick to turn a single string into a list, which will always
     # have just one element.)
-    df_columns['Aliases'] += df_columns['Field'].str.split(',')
+    df_columns[alias_column] += df_columns[config['metadata']['meta_field_column']].str.split(',')
 
     # Remove duplicates, if any, before exploding.
-    df_columns['Aliases'] = df_columns['Aliases'].apply(lambda alias_list: list(set(alias_list)))
-    metadata['columns'] = df_columns.assign(merge_key=df_columns['Aliases']).explode('merge_key')
+    df_columns[alias_column] = df_columns[alias_column].apply(lambda alias_list: list(set(alias_list)))
+    metadata['columns'] = df_columns.assign(merge_key=df_columns[alias_column]).explode('merge_key')
 
     logger.info('Site and column metadata files read:\n%s%s and\n%s%s', ' '*15, site_file.resolve(), ' '*15, column_file.resolve())

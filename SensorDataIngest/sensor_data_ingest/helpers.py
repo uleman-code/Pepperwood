@@ -1,5 +1,6 @@
 """Functions that implement logic independent of the environment: Dash (interactive) or command-line (batch)."""
 
+from ast import alias
 import base64
 import io
 import logging
@@ -7,7 +8,7 @@ import decorator
 
 from pathlib import Path
 from typing import Any, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -19,10 +20,17 @@ from . import config as cfg
 
 @dataclass(slots=True)
 class Frames:
-    data: pd.DataFrame = field(default_factory=pd.DataFrame)
-    meta: pd.DataFrame = field(default_factory=pd.DataFrame)
-    station: pd.DataFrame = field(default_factory=pd.DataFrame)
-    notes: pd.DataFrame = field(default_factory=pd.DataFrame)
+    data: pd.DataFrame
+    meta: pd.DataFrame
+    station: pd.DataFrame
+    notes: pd.DataFrame
+
+@dataclass(slots=True)
+class WorksheetNames:
+    data: str
+    meta: str
+    station: str
+    notes: str
 
 class UnmatchedColumnsError(ValueError):
     pass
@@ -72,23 +80,27 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 
 # Configuration-derived variables for brevity
-worksheet_names: dict[str, str] = cfg.config['output']['worksheet_names']
+worksheet_names: WorksheetNames = WorksheetNames(**cfg.config['output']['worksheet_names'])
 data_na_repr: str = cfg.config['output']['data_na_representation']
+hyperlink_column: str = cfg.config['output']['notes_hyperlink_column']
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
-default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['sampling_interval'],
+default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['default_sampling_interval'],
                                                        unit='seconds')   # To be overridden by site metadata
 qa_report_columns: list[str] = cfg.config['output']['notes_columns']
-meta_columns: list[str] = cfg.config['metadata']['variable_description_columns']
-station_columns: list[str] = cfg.config['metadata']['station_columns']
+meta_columns: list[str] = cfg.config['metadata']['input_variable_meta_columns']
+station_columns: list[str] = cfg.config['metadata']['input_site_meta_columns']
+input_site_id_column: str = cfg.config['metadata']['input_site_id_column']
+meta_site_id_column: str = cfg.config['metadata']['meta_site_id_column']
+units_column: str = cfg.config['metadata']['input_units_column']
+column_name_column: str = cfg.config['metadata']['input_column_name_column']
+field_column: str = cfg.config['metadata']['meta_field_column']
+aliases_column: str = cfg.config['metadata']['meta_aliases_column']
+interval_column: str = cfg.config['metadata']['meta_interval_column']
+site_key_column: str = cfg.config['metadata']['meta_site_key_column']
+
 df_meta_sites: pd.DataFrame = cfg.metadata['sites']
 df_meta_columns: pd.DataFrame = cfg.metadata['columns']
-site_key_column: str = cfg.config['metadata']['site_key_column']
-
-# Get the site ID column names in both input and static Site DataFrames by position; in other words, from the configuration
-# and static metadata instead of hard-coding them.
-site_id_col_dat: str = station_columns[1]                    # Just the way Campbell Scientific .DAT files are
-site_id_col_meta: str = df_meta_sites.columns[0]             # And we control the metadata format
 
 # Child logger inherits root logger settings
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
@@ -157,20 +169,25 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             logger.info('Reading Excel workbook. Expect three or four worksheets.')
             buffer = io.BytesIO(b64decoded)
 
-            frames.data = pd.read_excel(buffer, sheet_name=worksheet_names['data'], na_values='NAN')
-            frames.meta = pd.read_excel(buffer, sheet_name=worksheet_names['meta'])
-            frames.station = pd.read_excel(buffer, sheet_name=worksheet_names['station'])
+            # The meta/columns and station/meta worksheets column names may evolve, such that the names of
+            # an older file, saved by an older version of this app, may not match the current names as
+            # specified in the configuration settings. Always use the current names.
+            frames.data = pd.read_excel(buffer, sheet_name=worksheet_names.data, na_values='NAN')
+            frames.meta = pd.read_excel(buffer, sheet_name=worksheet_names.meta)
+            frames.meta.columns = meta_columns
+            frames.station = pd.read_excel(buffer, sheet_name=worksheet_names.station)
+            frames.station.columns = station_columns
 
             try:
-                frames.notes = pd.read_excel(buffer, sheet_name=worksheet_names['notes'])
+                frames.notes = pd.read_excel(buffer, sheet_name=worksheet_names.notes)
                 logger.info(
                     'Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.'
                 )
 
                 # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
                 # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
-                if 'Link' in frames.notes.columns:
-                    frames.notes.drop(columns='Link')
+                if hyperlink_column in frames.notes.columns:
+                    frames.notes.drop(columns=hyperlink_column, inplace=True)
             except ValueError:
                 logger.info(
                     'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
@@ -179,8 +196,8 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             # This should not happen: the Upload element limits the supported filename extensions.
             logger.error(f'Unsupported file type: {Path(filename).suffix}.')
             raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
-    except (UnicodeDecodeError, ValueError) as e:
-        logger.error(f'Error reading file {filename}. {e}')
+    except (UnicodeDecodeError, ValueError) as err:
+        logger.error('Error reading file %s. %s', filename, err)
         raise
 
     logger.debug('DataFrames for data, metadata, and station data populated.')
@@ -208,20 +225,17 @@ def merge_metadata(frames: Frames) -> None:
 
     # Basic operation:
     # 1. Join the site metadata from the input file with the static site metadata, using the site ID as join key.
-    #    - Normalize the site ID (lowercase, "_" instead of space) from the .DAT file; the one in the static metadata
-    #      is normalized at initialization.
-    #    - The two site ID columns shouldn't, but may, have different names; make the one from static metadata the
-    #      authoritative one, because we're more likely to regularly edit the site metadata file than the
-    #      configuration settings file, and keep it up to date.
+    #    - Normalize the site IDs (lowercase, "_" instead of space) before joining.
+    #    - The two site ID columns should have different names; keep both.
     #    - There may be multiple matching records in the static site metadata, with a different Start Date. This
     #      can happen if a site is modified or relocated. Take all matching records (note that they will all share
     #      the same Site ID).
     #    - In the output, maintain the Site ID values (original, not normalized) from both the .DAT file and the
     #      static metadata; they may differ before normalization, which may be useful to show.
-    # 2. Using the site key from the merged site metadata, extract the associated column metadata from the static
-    #    column metadata.
+    # 2. Using the site key (not to be confused with the site ID) from the merged site metadata, extract the
+    #    associated column metadata from the static column metadata.
     #    - In case of multiple matching site records, they must all have the same site key; only one set of column
-    #      metadata applies.
+    #      metadata applies. Deduplication of the join result may be required.
     # 3. If the input is from an Excel file, drop the columns, if any, that came from the static metadata at the
     #    time the file was saved, and perform the merge again. Do this for both site and column metadata.
     #    - This allows for convenient migration of existing files to the latest metadata.
@@ -239,11 +253,11 @@ def merge_metadata(frames: Frames) -> None:
     if len(df_site.columns) > len(station_columns):
         df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
 
-    site_id_dat: str = df_site.at[0, site_id_col_dat]
-    df_site['normalized_site_id'] = df_site[site_id_col_dat].apply(cfg.normalize_name)
+    site_id_dat: str = df_site.at[0, input_site_id_column]
+    df_site['normalized_site_id'] = df_site[input_site_id_column].apply(cfg.normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
-    if pd.isna(df_site.at[0, site_id_col_meta]):
+    if pd.isna(df_site.at[0, meta_site_id_column]):
         logger.warning('Site ID "%s" not found in static site metadata. Output will only have metadata from the input file.', site_id_dat)
         raise SiteIdNotFoundError(f'Site ID {site_id_dat} not found in static site metadata.')
     
@@ -264,23 +278,23 @@ def merge_metadata(frames: Frames) -> None:
     df_columns = df_columns.merge(column_metadata, left_on=meta_columns[0], right_on='merge_key', how='left')
 
     # Replace the Name from the input file with the standardized Field name from the static metadata, wherever available.
-    df_columns[meta_columns[0]] = df_columns[meta_columns[0]].where(df_columns['Field'].isna(), df_columns['Field'])
+    df_columns[column_name_column] = df_columns[column_name_column].where(df_columns[field_column].isna(), df_columns[field_column])
 
     # Remove the Field name from the Aliases, because it is redundant. Turn the list back into a comma-separated string.
     # But first replace NaNs with empty lists.
-    isna = df_columns['Aliases'].isna()
-    df_columns.loc[isna, 'Aliases'] = pd.Series([[]] * isna.sum()).values
-    df_columns['Aliases'] = df_columns.apply(lambda row: ','.join([x for x in row['Aliases'] if x != row['Field']]), axis='columns')
+    isna = df_columns[aliases_column].isna()
+    df_columns.loc[isna, aliases_column] = pd.Series([[]] * isna.sum()).values
+    df_columns[aliases_column] = df_columns.apply(lambda row: ','.join([x for x in row[aliases_column] if x != row[field_column]]), axis='columns')
 
     logger.info('Column metadata merged for site ID %s.', site_id_dat)
-    if num_missing_columns := df_columns['Field'].isna().sum():
+    if num_missing_columns := df_columns[field_column].isna().sum():
         logger.warning('Incomplete metadata: No static column metadata found for %s of %s column%s.',
                        num_missing_columns, len(df_columns), "s" if num_missing_columns > 1 else "")
     
     # Rename data columns to standard names. Use a lookup rather than relying on order. In contrast to a .DAT file,
     # if the input is an Excel file someone could have messed with the data column order.
-    frames.data.columns = frames.data.columns.to_series().replace(df_columns.set_index('merge_key')['Field'])
-    frames.meta = df_columns.drop(columns=['merge_key', 'Field', 'SiteKey'])
+    frames.data.columns = frames.data.columns.to_series().replace(df_columns.set_index('merge_key')[field_column])
+    frames.meta = df_columns.drop(columns=['merge_key', field_column, 'SiteKey'])
     return
 
 def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str, dtype: str) -> dict[str, str]:
@@ -313,7 +327,7 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
             # NOTE that, apart from normalization, it must be an identical match: partial matches could lead to a lot
             #      of ambiguity. For example, if there were an additional column called "OldTimestamp" or something like that.
             aliases = (df_meta_columns
-                        .loc[df_meta_columns['Field'] == standard_column, 'merge_key']
+                        .loc[df_meta_columns[field_column] == standard_column, 'merge_key']
                         .drop_duplicates()               # Lots of duplicates among the aliases
                         .apply(cfg.normalize_name)
                         .drop_duplicates()               # Still more duplicates after normalization
@@ -388,28 +402,27 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     """
 
     # Find the sampling interval in the site metadata. If it's not there, use the default value from the
-    # configuration settings. Be flexible about the column name, but it must contain the word "interval".
-    interval_column: str | None = next((col for col in df_site.columns if 'interval' in col.lower()), None)
-    interval_value: str | int = df_site.at[0, interval_column] if interval_column else None
+    # configuration settings.
+    interval_value: str | int | None = df_site.at[0, interval_column]
 
-    site_id_column = station_columns[1]
-    site_id: str = df_site.at[0, site_id_column]        # For logging purposes
+    site_id: str = df_site.at[0, input_site_id_column]        # For logging purposes
 
     sampling_interval: pd.Timedelta | None
-    if interval_value:
+    if interval_value is not None:      # Try interpreting as integer minutes first
         try:
             sampling_interval = pd.Timedelta(f'{int(interval_value)}min')
         except ValueError:
             sampling_interval = None
 
-    if interval_value and sampling_interval is None:
+    if interval_value is not None and sampling_interval is None:    # Try interpreting as a Timedelta string
         try:
             sampling_interval = pd.Timedelta(interval_value)
         except ValueError:
-            logger.warning(f'Invalid sampling interval {interval_value} for site {site_id} in metadata. Using default value from configuration settings.')
+            logger.warning('Invalid sampling interval %s for site "%s" in metadata.', interval_value, site_id)
             sampling_interval = None
     
-    if not interval_value or not sampling_interval:
+    if interval_value is None or sampling_interval is None:
+        logger.info('No valid sampling interval found for site "%s" in metadata. Using default value from configuration settings.', site_id)
         sampling_interval = pd.Timedelta(default_sampling_interval)
 
     return sampling_interval
@@ -430,7 +443,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
 
     # The worksheet names in the Excel file are not necessarily the same as the DataFrame attribute names in frames.
     # So match each sheet name to the right frame. And keep them in the same order.
-    sheets: dict[str, pd.DataFrame] = {worksheet_names[k]: getattr(frames, k) for k in frames.__dataclass_fields__.keys()}
+    sheets: dict[str, pd.DataFrame] = {getattr(worksheet_names, k): getattr(frames, k) for k in frames.__dataclass_fields__.keys()}
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
@@ -439,13 +452,13 @@ def multi_df_to_excel(frames: Frames) -> bytes:
         for sheet, df in sheets.items():
             logger.debug('Writing %s to sheet %s.', type(df).__name__, sheet)
 
-            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet
-            if (sheet == worksheet_names['notes']):
+            # Worksheet "Notes": Add hyperlinks to the start timestamp in the "Data" worksheet.
+            if (sheet == worksheet_names.notes):
                 df.insert(
                     0,
-                    'Link',
+                    hyperlink_column,
                     [
-                        f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names["data"]}!$A:$A,MATCH($A{row},{worksheet_names["data"]}!$A:$A,0))),"   🔗")'
+                        f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names.data}!$A:$A,MATCH($A{row},{worksheet_names.data}!$A:$A,0))),"   🔗")'
                         for row in range(2, len(df) + 2)
                     ],
                 )
@@ -454,7 +467,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
                 xl,
                 index=False,
                 sheet_name=sheet,
-                na_rep=data_na_repr if sheet == worksheet_names['data'] else '',
+                na_rep=data_na_repr if sheet == worksheet_names.data else '',
             )
 
             # Automatically adjust column widths to fit all text, including the column header
@@ -465,7 +478,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
                 # The Link column contains nothing but single hyperlink characters, so only check the column header to set the width.
                 header: pd.Series = pd.Series([column])
                 to_check: pd.Series = (
-                    header if column == 'Link' else pd.concat([header, df[column]])
+                    header if column == hyperlink_column else pd.concat([header, df[column]])
                 )
                 column_width: int = to_check.astype(str).str.len().max()
                 xl.sheets[sheet].set_column(column_index, column_index, column_width)

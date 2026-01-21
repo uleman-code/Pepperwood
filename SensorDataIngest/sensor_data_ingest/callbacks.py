@@ -368,7 +368,7 @@ def show_columns(frame_store: dict[str, Any] | None, status: dict) -> tuple:
     State('frame-store', 'data'),
 )
 @log_func
-def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, Any]) -> tuple:
+def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, Any] | None) -> tuple:
     """Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
@@ -384,7 +384,7 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
                                        (otherwise you see an empty set of axes)
     """
 
-    frames = helpers.Frames(**frame_store)
+    frames = helpers.Frames(**frame_store) if frame_store else None
 
     if showcols:
         logger.debug('Columns selected; generating graphs.')
@@ -792,13 +792,15 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         len(filenames) <= file_counter
     ):  # We got here because there's a batch, so this should not happen
         logger.error(
-            f'({file_counter}) Something is wrong. Processing file {file_counter} but there are only {len(filenames)} files in the batch.'
+            '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
+            file_counter, file_counter, len(filenames)
         )
         logger.debug('(%s) Exit.', file_counter)
         return (
             True,
             'System Error:',
-            f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.',
+            'Processing file number %s but there are only %s in the batch.',
+            file_counter, len(filenames)
         )
 
     logger.debug('(%s) Processing %s.', file_counter, filenames[file_counter])
@@ -811,10 +813,12 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     try:
         frames = helpers.load_data(contents, filename)
         logger.debug('(%s) Data initialized.', file_counter)
-    except Exception as e:
-        logger.error('(%s) File Read Error:\n{e}', file_counter)
+    except Exception as err:
+        logger.error('(%s) File Read Error:\n%s', file_counter, err)
         logger.debug('(%s) Exit.', file_counter)
-        return True, 'Error Reading File', f'We could not process the file "{filename}": {e}'
+        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {filename}:', c='red', h='sm', ta='right'),
+                                                                 dmc.Text(str(err), c='red', h='sm', ta='right')]})
+        return False, '', ''
 
     try:
         helpers.merge_metadata(frames)

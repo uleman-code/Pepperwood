@@ -29,6 +29,7 @@ notes_columns = [
     "Data Omitted",
     "Nature of problem",
 ]
+notes_hyperlink_column = "Link"
 [output.worksheet_names]
 data    = "Data"
 meta    = "Columns"
@@ -38,19 +39,20 @@ notes   = "Notes"
 [metadata]
 # Keep the first two in sync with column metadata, meaning that they must be found
 # there in the Name column for all values of the SiteKey.
+# Likewise for any settings with the "meta_" prefix; they refer to column names in the site and/or column metadata.
 timestamp_column = "Timestamp"
 sequence_number_column = "SeqNum"
-sampling_interval = "15min"          # Used as default if not found in site metadata
+default_sampling_interval = "15min"
 # Arbitrary: Names of columns for variable metadata found in the first few rows of a data logger file.
-variable_description_columns = [
+input_variable_meta_columns = [
     "Name",
     "Units",
     "Data Process",
 ]
-# Arbitrary: Names of columns for metadata found in the first few rows of a data logger file.
-station_columns = [
+# Arbitrary: Names of columns for site/station metadata found in the first few rows of a data logger file.
+input_site_meta_columns = [
     "Data File Format",
-    "Station Name",              # Must be different from the first column in site metadata (usually, Site ID)
+    "Station Name",              # Identify below as the input site ID column
     "Data Logger Model",
     "Data Logger Serial Number",
     "Data Logger OS Version",
@@ -58,4 +60,13 @@ station_columns = [
     "Data Logger Program Signature",
     "Table Name",
 ]
-site_key_column = "SiteKey"
+# The following two values must not be the same.
+input_site_id_column = "Station Name"
+meta_site_id_column = "Site ID"
+
+input_units_column = "Units"
+input_column_name_column = "Name"
+meta_field_column = "Field"
+meta_aliases_column = "Aliases"
+meta_interval_column = "Logging interval (min)"
+meta_site_key_column = "SiteKey"
