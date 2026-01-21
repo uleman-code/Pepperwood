@@ -8,7 +8,7 @@ import decorator
 
 from pathlib import Path
 from typing import Any, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -20,10 +20,10 @@ from . import config as cfg
 
 @dataclass(slots=True)
 class Frames:
-    data: pd.DataFrame
-    meta: pd.DataFrame
-    station: pd.DataFrame
-    notes: pd.DataFrame
+    data: pd.DataFrame = field(default_factory=pd.DataFrame)
+    meta: pd.DataFrame = field(default_factory=pd.DataFrame)
+    station: pd.DataFrame = field(default_factory=pd.DataFrame)
+    notes: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 @dataclass(slots=True)
 class WorksheetNames:
