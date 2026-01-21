@@ -40,6 +40,7 @@ notes   = "Notes"
 # Keep the first two in sync with column metadata, meaning that they must be found
 # there in the Name column for all values of the SiteKey.
 # Likewise for any settings with the "meta_" prefix; they refer to column names in the site and/or column metadata.
+# Similarly, any settings with the "input_" prefix refer to column names in input_variable_meta_columns or input_site_meta_columns.
 timestamp_column = "Timestamp"
 sequence_number_column = "SeqNum"
 default_sampling_interval = "15min"

@@ -799,8 +799,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         return (
             True,
             'System Error:',
-            'Processing file number %s but there are only %s in the batch.',
-            file_counter, len(filenames)
+            f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.'
         )
 
     logger.debug('(%s) Processing %s.', file_counter, filenames[file_counter])

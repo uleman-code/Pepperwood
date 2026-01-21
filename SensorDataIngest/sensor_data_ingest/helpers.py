@@ -1,6 +1,6 @@
 """Functions that implement logic independent of the environment: Dash (interactive) or command-line (batch)."""
 
-from ast import alias
+
 import base64
 import io
 import logging
@@ -294,7 +294,7 @@ def merge_metadata(frames: Frames) -> None:
     # Rename data columns to standard names. Use a lookup rather than relying on order. In contrast to a .DAT file,
     # if the input is an Excel file someone could have messed with the data column order.
     frames.data.columns = frames.data.columns.to_series().replace(df_columns.set_index('merge_key')[field_column])
-    frames.meta = df_columns.drop(columns=['merge_key', field_column, 'SiteKey'])
+    frames.meta = df_columns.drop(columns=['merge_key', field_column, site_key_column])
     return
 
 def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str, dtype: str) -> dict[str, str]:
@@ -403,25 +403,26 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
 
     # Find the sampling interval in the site metadata. If it's not there, use the default value from the
     # configuration settings.
-    interval_value: str | int | None = df_site.at[0, interval_column]
+    interval_value = df_site.at[0, interval_column]
+    has_interval_value: bool = pd.notna(interval_value)
 
     site_id: str = df_site.at[0, input_site_id_column]        # For logging purposes
 
     sampling_interval: pd.Timedelta | None
-    if interval_value is not None:      # Try interpreting as integer minutes first
+    if has_interval_value:      # Try interpreting as integer minutes first
         try:
             sampling_interval = pd.Timedelta(f'{int(interval_value)}min')
         except ValueError:
             sampling_interval = None
 
-    if interval_value is not None and sampling_interval is None:    # Try interpreting as a Timedelta string
+    if has_interval_value and sampling_interval is None:    # Try interpreting as a Timedelta string
         try:
             sampling_interval = pd.Timedelta(interval_value)
         except ValueError:
             logger.warning('Invalid sampling interval %s for site "%s" in metadata.', interval_value, site_id)
             sampling_interval = None
     
-    if interval_value is None or sampling_interval is None:
+    if not has_interval_value or sampling_interval is None:
         logger.info('No valid sampling interval found for site "%s" in metadata. Using default value from configuration settings.', site_id)
         sampling_interval = pd.Timedelta(default_sampling_interval)
 

@@ -141,13 +141,13 @@ class MetadataCfg(BaseModel):
 
     @model_validator(mode='after')
     def validate_site_id_columns(self) -> Self:
-        """Ensure that the specified site ID column names are unique."""
+        """Ensure that input and metadata column names don't collide."""
 
         if self.input_site_id_column == self.meta_site_id_column:
             raise ValueError('Input and metadata site ID column names must be different.')
         
         if self.input_column_name_column == self.meta_field_column:
-            raise ValueError('Input and metadata column name and field column names must be different.')
+            raise ValueError('Input and metadata column/field column names must be different.')
 
         return self
 
