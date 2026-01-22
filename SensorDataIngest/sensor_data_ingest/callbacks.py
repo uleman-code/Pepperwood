@@ -9,6 +9,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
+from turtle import done
 from typing import Any
 from dataclasses import asdict
 
@@ -650,8 +651,8 @@ def setup_batch(files_status: dict) -> tuple:
         ==> 1) next-file := 0 (setup_batch)
             ==> 2) file-counter := next-file (next_in_batch)
                 ==> 3a) next-file += 1 (increment_file_counter)
-                    --> REPEAT from step 2)
                 ==> 3b) process one file (process_batch)
+                    --> REPEAT from step 2)
     This has the effect of walking quickly through the batch index from 0 to len(batch)-1,
     while queueing the long-running processing step for each file.
 
@@ -691,14 +692,12 @@ def setup_batch(files_status: dict) -> tuple:
 )
 @log_func
 def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]) -> tuple:
-    """Increment the file counter if there are more files. This triggers the next batch item.
-
-    Also, display file information and a busy indicator for the current item in the batch.
+    """Show file information and a busy indicator for the current item in the batch.
 
     Parameters:
-        next_file     (int)       The current file's index in the batch list
-        filenames     (list[str]) The selected filenames, provided by the Upload component
-        last_modified (list[int]) File last-modified timestamps
+        next_file       The current file's index in the batch list
+        filenames       The selected filenames, provided by the Upload component
+        last_modified   File last-modified timestamps
 
     Returns:
         show-data/children (object) Patch object to add another CardSection to the main app area
@@ -739,8 +738,14 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     multithreaded fashion in whatever way Dash has to take advantage of multiple available CPU cores.
 
     Parameters:
-        file_counter    The index of the next file in the list of files (the batch)
+        file_counter    The index of the current file in the list of files (the batch)
         filenames       The selected filenames (here only used to get the length of the batch)
+    
+    Returns:
+        next-file/data  The next value for the file counter.
+        
+    Raises
+        PreventUpdate when the end of the batch is reached.
     """
 
     logger.debug('File counter is %s.', file_counter)
@@ -751,6 +756,21 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
         raise PreventUpdate
 
     return next_file
+
+def done_no_save(file_counter: int) -> None:
+    """If the current file cannot be saved, stop the Loader and display a NOT SAVED badge.
+
+    Parameters:
+        file_counter    The index of the current file in the list of files (the batch)
+    """
+
+    set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    set_props(
+        {'type': 'saved-badge', 'index': file_counter},
+        {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'},
+    )
+
+    logger.debug('(%s) Exit.', file_counter)
 
 
 @blueprint.callback(
@@ -773,26 +793,24 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         sanity-checks-0, saved-badge-3, etc.
 
     Parameters:
-        file_counter    The index of the next file in the list of files (the batch)
+        file_counter    The index of the current file in the list of files (the batch)
         filenames       The selected filenames (here only used to get the length of the batch)
         all_contents    Base64-encoded file contents for all files in the batch
    """
 
     logger.debug('(%s) Enter.', file_counter)
 
-    if (
-        len(filenames) <= file_counter
-    ):  # We got here because there's a batch, so this should not happen
-        logger.error(
-            '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
-            file_counter, file_counter, len(filenames)
-        )
-        logger.debug('(%s) Exit.', file_counter)
-        return (
-            True,
-            'System Error:',
-            f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.'
-        )
+    # if (len(filenames) <= file_counter):  # We got here because there's a batch, so this should not happen
+    #     logger.error(
+    #         '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
+    #         file_counter, file_counter, len(filenames)
+    #     )
+    #     logger.debug('(%s) Exit.', file_counter)
+    #     return (
+    #         True,
+    #         'System Error:',
+    #         f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.'
+    #     )
 
     logger.debug('(%s) Processing %s.', file_counter, filenames[file_counter])
 
@@ -809,6 +827,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         logger.debug('(%s) Exit.', file_counter)
         set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {filename}:', c='red', h='sm', ta='right'),
                                                                  dmc.Text(str(err), c='red', h='sm', ta='right')]})
+        done_no_save(file_counter)
         return
 
     try:
@@ -840,13 +859,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     # for badges to know when it's complete. Instead of the usual "SAVED", though, let the user
     # know that no file was saved.
     if no_save:
-        set_props(f'wait-please-{file_counter}', {'display': 'none'})
-        set_props(
-            {'type': 'saved-badge', 'index': file_counter},
-            {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'},
-        )
-
-        logger.debug('() Exit.', file_counter)
+        done_no_save(file_counter)
         return
 
     # Save the file.
