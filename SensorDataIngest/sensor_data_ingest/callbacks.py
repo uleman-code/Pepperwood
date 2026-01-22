@@ -122,13 +122,13 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     try:
         frames: helpers.Frames = helpers.load_data(contents, filename)
         logger.debug('Data initialized.')
-    except Exception as e:          # TODO: More specific exception types
-        logger.exception('File Read Error.')
+    except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
+        logger.error('File Read Error.')
         return (
             no_update,
             True,
             'Error Reading File',
-            f'We could not process the file "{filename}": {e}',
+            f'We could not process the file "{filename}": {err}',
         )
 
     try:
@@ -754,9 +754,6 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
 
 
 @blueprint.callback(
-    Output('read-error', 'opened', allow_duplicate=True),
-    Output('error-title', 'children', allow_duplicate=True),
-    Output('error-text', 'children', allow_duplicate=True),
     Trigger('file-counter', 'modified_timestamp'),
     State('file-counter', 'data'),
     State('select-file', 'filename'),
@@ -779,12 +776,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         file_counter    The index of the next file in the list of files (the batch)
         filenames       The selected filenames (here only used to get the length of the batch)
         all_contents    Base64-encoded file contents for all files in the batch
-
-    Returns:
-        read-error/opened    (bool) True in case of error (show error modal), otherwise False
-        error-title/children (str)  In case of error, title for error modal; otherwise an empty string
-        error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
-    """
+   """
 
     logger.debug('(%s) Enter.', file_counter)
 
@@ -812,12 +804,12 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     try:
         frames = helpers.load_data(contents, filename)
         logger.debug('(%s) Data initialized.', file_counter)
-    except Exception as err:
+    except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
         logger.debug('(%s) Exit.', file_counter)
         set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {filename}:', c='red', h='sm', ta='right'),
                                                                  dmc.Text(str(err), c='red', h='sm', ta='right')]})
-        return False, '', ''
+        return
 
     try:
         helpers.merge_metadata(frames)
@@ -855,7 +847,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         )
 
         logger.debug('() Exit.', file_counter)
-        return False, '', ''
+        return
 
     # Save the file.
     # Dash provides a convenience function to create the required dictionary. That function in turn
@@ -872,7 +864,7 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
 
     logger.debug('(%s) Exit.', file_counter)
-    return False, '', ''
+    return
 
 
 @blueprint.callback(
@@ -979,7 +971,7 @@ def append_file(
         logger.error(e)
         return no_update, no_update, no_update, True, 'Unmatched files', str(e)
     except Exception as e:
-        logger.exception(e)
+        logger.error(e)
         logger.error(f'File Read Error:\n{e}')
         return (
             no_update,

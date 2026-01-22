@@ -8,7 +8,7 @@ import decorator
 
 from pathlib import Path
 from typing import Any, Callable
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -36,6 +36,9 @@ class UnmatchedColumnsError(ValueError):
     pass
 
 class UnsupportedFileTypeError(ValueError):
+    pass
+
+class BadFileError(ValueError):
     pass
 
 class DuplicateTimestampError(ValueError):
@@ -131,6 +134,10 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
     Returns:
         Four or three DataFrames: data, metadata, station data, and (unless from an early version) QA notes
+    
+    Raises:
+        UnsupportedFileTypeError     The file suffix is not .dat, .csv, .xls, or .xlsx
+        BadFileError                 The file could not be read or parsed, or was missing expected worksheets
     """
 
     logger.debug('Uploaded contents: %s', contents[:80])
@@ -143,64 +150,73 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
     frames: Frames = Frames()
     try:
-        if Path(filename).suffix in ['.dat', '.csv']:
-            # Assume that the user uploaded a raw-data CSV file
-            logger.info('Reading CSV data file. Expect additional info in the first four rows.')
-            decoded = io.StringIO(b64decoded.decode('utf-8'))
+        match Path(filename).suffix:
+            case '.dat' | '.csv':
+                # Assume that the user uploaded a raw-data CSV file
+                logger.info('Reading CSV data file. Expect additional info in the first four rows.')
+                decoded = io.StringIO(b64decoded.decode('utf-8'))
 
-            # First pass to read the real data
-            frames.data = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
+                # First pass to read the real data
+                frames.data = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
 
-            # Second pass to read the column metadata
-            decoded.seek(0)
-            frames.meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T
-            frames.meta.columns = meta_columns
+                # Second pass to read the column metadata
+                decoded.seek(0)
+                frames.meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T
+                frames.meta.columns = meta_columns
 
-            # Third pass to read the station data
-            # NOTE: Limit the columns to avoid problems in case the raw-data file was edited in Excel
-            decoded.seek(0)
-            frames.station = pd.read_csv(
-                decoded, header=None, nrows=1, names=station_columns, usecols=station_columns 
-            )
-            # frames.station.columns = station_columns
-
-        elif Path(filename).suffix in ['.xlsx', '.xls']:
-            # Assume that the user uploaded an Excel file
-            logger.info('Reading Excel workbook. Expect three or four worksheets.')
-            buffer = io.BytesIO(b64decoded)
-
-            # The meta/columns and station/meta worksheets column names may evolve, such that the names of
-            # an older file, saved by an older version of this app, may not match the current names as
-            # specified in the configuration settings. Always use the current names.
-            frames.data = pd.read_excel(buffer, sheet_name=worksheet_names.data, na_values='NAN')
-            frames.meta = pd.read_excel(buffer, sheet_name=worksheet_names.meta)
-            frames.meta.columns = meta_columns
-            frames.station = pd.read_excel(buffer, sheet_name=worksheet_names.station)
-            frames.station.columns = station_columns
-
-            try:
-                frames.notes = pd.read_excel(buffer, sheet_name=worksheet_names.notes)
-                logger.info(
-                    'Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.'
+                # Third pass to read the station data
+                # NOTE: Limit the columns to avoid problems in case the raw-data file was edited in Excel
+                decoded.seek(0)
+                frames.station = pd.read_csv(
+                    decoded, header=None, nrows=1, names=station_columns, usecols=station_columns 
                 )
+            case '.xls' | '.xlsx':
+                # Assume that the user uploaded an Excel file
+                logger.info('Reading Excel workbook. Expect three or four worksheets.')
+                buffer = io.BytesIO(b64decoded)
 
-                # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
-                # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
-                if hyperlink_column in frames.notes.columns:
-                    frames.notes.drop(columns=hyperlink_column, inplace=True)
-            except ValueError:
-                logger.info(
-                    'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
-                )
-        else:
-            # This should not happen: the Upload element limits the supported filename extensions.
-            logger.error(f'Unsupported file type: {Path(filename).suffix}.')
-            raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
+                # The meta/columns and station/meta worksheets column names may evolve, such that the names of
+                # an older file, saved by an older version of this app, may not match the current names as
+                # specified in the configuration settings. Always use the current names.
+                with pd.ExcelFile(buffer) as xl:
+                    sheet_names: list[str] = xl.sheet_names
+                    logger.debug('Excel worksheets found: %s', sheet_names)
+                    if len(sheet_names) < 3 or len(set(sheet_names).intersection)(asdict(worksheet_names).values()[:3]) < 3:
+                        logger.error('Expected at least three worksheets named %s.', ', '.join(asdict(worksheet_names).values()[:3]))
+                        raise BadFileError(
+                            f'Expected at least three worksheets named {worksheet_names.data}, ' +
+                            f'{worksheet_names.meta}, and {worksheet_names.station}. Found: {", ".join(sheet_names)}.'
+                        )
+
+                    frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data, na_values='NAN')
+                    frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta)
+                    frames.meta.columns = meta_columns
+                    frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)
+                    frames.station.columns = station_columns
+
+                    if worksheet_names.notes in sheet_names:
+                        frames.notes = pd.read_excel(xl, sheet_name=worksheet_names.notes)
+                        logger.info(
+                            'Notes worksheet found. Unless in Append mode, will copy worksheet unaltered upon save.'
+                        )
+
+                        # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
+                        # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
+                        if hyperlink_column in frames.notes.columns:
+                            frames.notes.drop(columns=hyperlink_column, inplace=True)
+                    else:
+                        logger.info(
+                            'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
+                        )
+            case _:
+                # This should not happen: the Upload element limits the supported filename extensions.
+                logger.error(f'Unsupported file type: {Path(filename).suffix}.')
+                raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
     except (UnicodeDecodeError, ValueError) as err:
         logger.error('Error reading file %s. %s', filename, err)
-        raise
+        raise BadFileError(str(err)) from err
 
-    logger.debug('DataFrames for data, metadata, and station data populated.')
+    logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)
     return frames
 
 @log_func
