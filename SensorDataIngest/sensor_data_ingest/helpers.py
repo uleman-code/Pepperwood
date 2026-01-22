@@ -181,8 +181,18 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
                 with pd.ExcelFile(buffer) as xl:
                     sheet_names: list[str] = xl.sheet_names
                     logger.debug('Excel worksheets found: %s', sheet_names)
-                    if len(sheet_names) < 3 or len(set(sheet_names).intersection)(asdict(worksheet_names).values()[:3]) < 3:
-                        logger.error('Expected at least three worksheets named %s.', ', '.join(asdict(worksheet_names).values()[:3]))
+                    
+                    if (len(sheet_names) < 3 or
+                        len(set(sheet_names)
+                            .intersection(list(
+                                               asdict(worksheet_names)
+                                               .values()
+                                              )[:3]
+                                         )
+                           ) < 3
+                       ):
+                        logger.error('Expected at least three worksheets named %s.',
+                                     ', '.join(list(asdict(worksheet_names).values())[:3]))
                         raise BadFileError(
                             f'Expected at least three worksheets named {worksheet_names.data}, ' +
                             f'{worksheet_names.meta}, and {worksheet_names.station}. Found: {", ".join(sheet_names)}.'

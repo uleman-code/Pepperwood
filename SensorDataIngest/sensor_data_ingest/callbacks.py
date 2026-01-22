@@ -64,6 +64,28 @@ def log_func(fn: Callable, *args, **kwargs) -> Callable:
     ee_logger.debug('<<< Exit.', extra={'fname': fn.__name__})
     return out
 
+@decorator.decorator
+def log_batch_func(fn: Callable, *args, **kwargs) -> Callable:
+    """Function entry and exit logger for batch processing functions, capturing exceptions as well.
+
+    Very simplistic; no general argument logging or execution timing. Specifically logs the file
+    counter argument, which is always the first parameter and must be of type int.
+    """
+
+    ee_logger.debug('>>> (%s) Enter.', args[0], extra={'fname': fn.__name__})
+
+    try:
+        out = fn(*args, **kwargs)
+    except PreventUpdate:  # Totally normal signal from a callback
+        ee_logger.debug('<<< (%s) Exit.', args[0], extra={'fname': fn.__name__})
+        raise
+    except Exception as ex:
+        ee_logger.debug('<<< (%s) Exception: %s', args[0], ex, exc_info=True, extra={'fname': fn.__name__})
+        raise
+
+    ee_logger.debug('<<< (%s) Exit.', args[0], extra={'fname': fn.__name__})
+    return out
+
 timestamp_column: str = cfg.config['metadata']['timestamp_column']
 seqno_column: str = cfg.config['metadata']['sequence_number_column']
 
@@ -134,8 +156,8 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
 
     try:
         helpers.merge_metadata(frames)
-    except helpers.SiteIdNotFoundError as e:
-        logger.info('Continuing with incomplete metadata: %s', e)
+    except helpers.SiteIdNotFoundError as err:
+        logger.info('Continuing with incomplete metadata: %s', err)
 
     # Keep the DataFrames store on the server. This avoids potentially large transfers between
     # server and browser, along with all the associated conversions (JSON) and encodings
@@ -690,7 +712,7 @@ def setup_batch(files_status: dict) -> tuple:
     State('select-file', 'filename'),
     State('select-file', 'last_modified'),
 )
-@log_func
+@log_batch_func
 def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]) -> tuple:
     """Show file information and a busy indicator for the current item in the batch.
 
@@ -704,14 +726,11 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]
         file-counter/data  (int)    The file counter value for the current batch item
     """
 
-    logger.debug('Next file index is %s.', next_file)
-
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection = layout.make_file_info(next_file)
     this_file_info.children.children[0].children[0].children = filenames[next_file]
-    this_file_info.children.children[0].children[1].children[
-        0
-    ].children = f'Last modified: {datetime.fromtimestamp(last_modified[next_file]).strftime("%Y-%m-%d %H:%M:%S")}'
+    this_file_info.children.children[0].children[1].children[0].children = ('Last modified: ' +
+                    f'{datetime.fromtimestamp(last_modified[next_file]).strftime("%Y-%m-%d %H:%M:%S")}')
     this_file_info.children.children[1].display = 'flex'
     this_file_info.children.children[1].type = 'dots'
 
@@ -727,7 +746,7 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]
     State('file-counter', 'data'),
     State('select-file', 'filename'),
 )
-@log_func
+@log_batch_func
 def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
@@ -748,7 +767,6 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
         PreventUpdate when the end of the batch is reached.
     """
 
-    logger.debug('File counter is %s.', file_counter)
     next_file: int = file_counter + 1
 
     if next_file >= len(filenames):
@@ -769,9 +787,7 @@ def done_no_save(file_counter: int) -> None:
         {'type': 'saved-badge', 'index': file_counter},
         {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'},
     )
-
-    logger.debug('(%s) Exit.', file_counter)
-
+    logger.info('(%s) File not saved.', file_counter)
 
 @blueprint.callback(
     Trigger('file-counter', 'modified_timestamp'),
@@ -780,7 +796,7 @@ def done_no_save(file_counter: int) -> None:
     State('select-file', 'contents'),
     # background=True,
 )
-@log_func
+@log_batch_func
 def process_batch(file_counter: int, filenames: list[str], all_contents: list[str]) -> tuple:
     """Process one file in the batch, without user involvement.
 
@@ -797,8 +813,6 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         filenames       The selected filenames (here only used to get the length of the batch)
         all_contents    Base64-encoded file contents for all files in the batch
    """
-
-    logger.debug('(%s) Enter.', file_counter)
 
     # if (len(filenames) <= file_counter):  # We got here because there's a batch, so this should not happen
     #     logger.error(
@@ -824,7 +838,6 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
         logger.debug('(%s) Data initialized.', file_counter)
     except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
-        logger.debug('(%s) Exit.', file_counter)
         set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {filename}:', c='red', h='sm', ta='right'),
                                                                  dmc.Text(str(err), c='red', h='sm', ta='right')]})
         done_no_save(file_counter)
@@ -876,7 +889,6 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
     set_props(f'wait-please-{file_counter}', {'display': 'none'})
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
 
-    logger.debug('(%s) Exit.', file_counter)
     return
 
 
