@@ -9,6 +9,7 @@ from dash_extensions.enrich import (
     DashProxy,
     ServersideOutputTransform,
     TriggerTransform,
+    DataclassTransform,
 )
 
 FLASK_LOGGER: Final = 'werkzeug'
@@ -32,7 +33,7 @@ app: DashProxy = DashProxy(
             update_title=None,                          # While rebuilding the page, don't
                                                         # change tab title to "Updating..."
             # background_callback_manager='diskcache',  # noqa: ERA001
-            transforms=[ServersideOutputTransform(), TriggerTransform()],
+            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 

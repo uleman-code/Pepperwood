@@ -11,7 +11,6 @@ from datetime import datetime
 from pathlib import Path
 from turtle import done
 from typing import Any
-from dataclasses import asdict
 
 import dash_mantine_components as dmc
 import decorator
@@ -165,7 +164,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
     # performance in plot rendering and file saving, sometimes dramatically.
     # Providing a key to the Serverside constructor makes the serverside cache use and reuse a
     # single file, preventing unlimited storage growth.
-    return Serverside(asdict(frames), key='Frames'), False, '', ''
+    return Serverside(frames, key='Frames'), False, '', ''
 
 
 @blueprint.callback(
@@ -655,7 +654,7 @@ def report_sanity_checks(
     report += qa_report
     report = list({t.children: t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
-    return report, status, Serverside(asdict(frames), key='Frames')
+    return report, status, Serverside(frames, key='Frames')
 
 
 @blueprint.callback(
@@ -991,7 +990,7 @@ def append_file(
             f'Base {len(base_frames.data)}; New {len(new_frames.data)}; Combined {len(combined_frames.data)}'
         )
 
-        return Serverside(asdict(combined_frames), key='Frames'), status, [], False, '', ''
+        return Serverside(combined_frames, key='Frames'), status, [], False, '', ''
     except helpers.UnmatchedColumnsError as e:
         logger.error(e)
         return no_update, no_update, no_update, True, 'Unmatched files', str(e)
