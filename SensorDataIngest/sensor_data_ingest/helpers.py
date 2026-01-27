@@ -83,24 +83,24 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 
 # Configuration-derived variables for brevity
-worksheet_names: WorksheetNames = WorksheetNames(**cfg.config['output']['worksheet_names'])
-data_na_repr: str = cfg.config['output']['data_na_representation']
-hyperlink_column: str = cfg.config['output']['notes_hyperlink_column']
-timestamp_column: str = cfg.config['metadata']['timestamp_column']
-seqno_column: str = cfg.config['metadata']['sequence_number_column']
-default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config['metadata']['default_sampling_interval'],
+worksheet_names: WorksheetNames = WorksheetNames(**cfg.config.output.worksheet_names)
+data_na_repr: str = cfg.config.output.data_na_representation
+hyperlink_column: str = cfg.config.output.notes_hyperlink_column
+timestamp_column: str = cfg.config.metadata.timestamp_column
+seqno_column: str = cfg.config.metadata.sequence_number_column
+default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config.metadata.default_sampling_interval,
                                                        unit='seconds')   # To be overridden by site metadata
-qa_report_columns: list[str] = cfg.config['output']['notes_columns']
-meta_columns: list[str] = cfg.config['metadata']['input_variable_meta_columns']
-station_columns: list[str] = cfg.config['metadata']['input_site_meta_columns']
-input_site_id_column: str = cfg.config['metadata']['input_site_id_column']
-meta_site_id_column: str = cfg.config['metadata']['meta_site_id_column']
-units_column: str = cfg.config['metadata']['input_units_column']
-column_name_column: str = cfg.config['metadata']['input_column_name_column']
-field_column: str = cfg.config['metadata']['meta_field_column']
-aliases_column: str = cfg.config['metadata']['meta_aliases_column']
-interval_column: str = cfg.config['metadata']['meta_interval_column']
-site_key_column: str = cfg.config['metadata']['meta_site_key_column']
+qa_report_columns: list[str] = cfg.config.output.notes_columns
+meta_columns: list[str] = cfg.config.metadata.input_variable_meta_columns
+station_columns: list[str] = cfg.config.metadata.input_site_meta_columns
+input_site_id_column: str = cfg.config.metadata.input_site_id_column
+meta_site_id_column: str = cfg.config.metadata.meta_site_id_column
+units_column: str = cfg.config.metadata.input_units_column
+column_name_column: str = cfg.config.metadata.input_column_name_column
+field_column: str = cfg.config.metadata.meta_field_column
+aliases_column: str = cfg.config.metadata.meta_aliases_column
+interval_column: str = cfg.config.metadata.meta_interval_column
+site_key_column: str = cfg.config.metadata.meta_site_key_column
 
 df_meta_sites: pd.DataFrame = cfg.metadata['sites']
 df_meta_columns: pd.DataFrame = cfg.metadata['columns']

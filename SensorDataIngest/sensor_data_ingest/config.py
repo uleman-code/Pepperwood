@@ -78,6 +78,10 @@ def prepare_sampling_interval(input: str) -> float:
 
     return hf.parse_timespan(str(input))
 
+def prepare_path(input: str) -> Path:
+    """Convert a string into a Path object."""
+
+    return Path(input)
 
 class ApplicationCfg(BaseSettings):
     """General application-wide settings. Should not be sensor- or datalogger-specific.
@@ -97,9 +101,11 @@ class ApplicationCfg(BaseSettings):
     site_metadata_file: Path = Path('./site_metadata.csv')
     column_metadata_file: Path = Path('./column_metadata.csv')
     debug: bool = False
+    file_cache_root: Annotated[Path, BeforeValidator(prepare_path)] = Path('./file_cache')
+    keep_cached_files: bool = False
     console_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.INFO
     file_logging_level: Annotated[int, BeforeValidator(prepare_logging_level)] = logging.DEBUG
-    logging_directory: Path = Path('./logs')
+    logging_directory: Annotated[Path, BeforeValidator(prepare_path)] = Path('./logs')
     logfile_max_size: Annotated[int, BeforeValidator(prepare_logfile_max_size)] = hf.parse_size('10 MiB')
     logfile_backup_count: int = 3
 
@@ -175,8 +181,8 @@ class Config(BaseModel):
             )
 
 
-config_model: Config = Config()         # Actual configuration model instance
-config: dict[str, Any] = {}             # Configuration settings as a standard dictionary
+config: Config = Config()         # Actual configuration model instance
+# config: dict[str, Any] = {}             # Configuration settings as a standard dictionary
 config_is_set: bool = False             # To make sure initializations happen in the right order
 metadata: dict[str, pd.DataFrame] = {}  # Site and column metadata are read from separate CSV files
 program_name: str = ''                  # Name of the main program; used in logger names
@@ -198,8 +204,8 @@ def config_init(app_name: str) -> None:
     Terminates the program (by not catching any exceptions) if there's a validation error or the indicated configuration file cannot be found.
     """
 
-    global config_model
     global config
+    # global config
     global program_name
     global config_is_set
 
@@ -210,15 +216,15 @@ def config_init(app_name: str) -> None:
         config_raw: dict[str, Any] = tomllib.load(f)
 
     config_raw['application']['config_file'] = str(config_file)
-    config_model = Config.model_validate(config_raw)
-    config = config_model.model_dump()  # Expose the configuration settings as a standard dictionary
+    config = Config.model_validate(config_raw)
+    # config = config.model_dump()  # Expose the configuration settings as a standard dictionary
     config_is_set = True
 
 def config_print() -> str:
     """Return a readable representation of the configuration settings with the same format as the configuration file."""
 
     return tomli_w.dumps(
-        config_model.model_dump(mode='json')
+        config.model_dump(mode='json')
     )  # JSON mode to avoid non-serializable values
 
 def logging_init() -> None:
@@ -234,8 +240,8 @@ def logging_init() -> None:
     assert config_is_set, 'Initialize configuration settings before logging.'
 
     global logger
-    app_config: dict[str, Any] = config['application']   # Just a clutter reducing convenience
-    logging_dir: Path          = app_config['logging_directory']
+    app_config: ApplicationCfg = config.application   # Just a clutter reducing convenience
+    logging_dir: Path          = app_config.logging_directory
 
     if logging_dir.exists():
         warn_logging_dir_created = False
@@ -246,19 +252,19 @@ def logging_init() -> None:
     # General-purpose logger
     logger           = logging.getLogger(program_name)
     file_handler     = handlers.RotatingFileHandler(logging_dir / (program_name + '.log'),
-                                                    maxBytes=app_config['logfile_max_size'],
-                                                    backupCount=app_config['logfile_backup_count'])
+                                                    maxBytes=app_config.logfile_max_size,
+                                                    backupCount=app_config.logfile_backup_count)
     stream_handler   = logging.StreamHandler()
     file_formatter   = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{funcName:28s}: ' +
                                          '{message}', style='{', datefmt='%Y-%m-%d %H:%M:%S')
     stream_formatter = logging.Formatter('{levelname}|{name}: {message}', style='{')
 
-    file_handler.setLevel(app_config['file_logging_level'])
+    file_handler.setLevel(app_config.file_logging_level)
     file_handler.setFormatter(file_formatter)
-    stream_handler.setLevel(app_config['console_logging_level'])
+    stream_handler.setLevel(app_config.console_logging_level)
     stream_handler.setFormatter(stream_formatter)
 
-    logger.setLevel(app_config['file_logging_level'])
+    logger.setLevel(app_config.file_logging_level)
     logger.addHandler(file_handler)
     logger.addHandler(stream_handler)
 
@@ -269,9 +275,9 @@ def logging_init() -> None:
     ee_formatter = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{fname:28s}: {message}',
                                      style='{', datefmt='%Y-%m-%d %H:%M:%S')
 
-    ee_handler.setLevel(app_config['file_logging_level'])
+    ee_handler.setLevel(app_config.file_logging_level)
     ee_handler.setFormatter(ee_formatter)
-    ee_logger.setLevel(app_config['file_logging_level'])
+    ee_logger.setLevel(app_config.file_logging_level)
     ee_logger.addHandler(ee_handler)
 
     # Announce the start of the application
@@ -281,7 +287,7 @@ def logging_init() -> None:
         logger.warning('Logging directory did not yet exist and had to be created by this app.')
 
     logger.info('Configuration file %s read. Configuration is:\n%s',
-                app_config['config_file'].resolve(), config_print())
+                app_config.config_file.resolve(), config_print())
 
 def normalize_name(name: Any) -> str:
     """Normalize a name (e.g., site ID or column name) by replacing spaces with underscores and converting to lowercase.
@@ -311,9 +317,9 @@ def metadata_init() -> None:
 
     assert config_is_set, 'Initialize configuration settings before metadata.'
     assert logger is not None, 'Initialize logging before metadata.'
-    config_file: Path = config['application']['config_file']
-    site_file: Path = config['application']['site_metadata_file']
-    column_file: Path = config['application']['column_metadata_file']
+    config_file: Path = config.application.config_file
+    site_file: Path = config.application.site_metadata_file
+    column_file: Path = config.application.column_metadata_file
 
     # Allow for relative paths, in which case use the path to the config file.
     site_file = site_file if site_file.is_absolute() else config_file.parent / site_file
@@ -327,7 +333,7 @@ def metadata_init() -> None:
 
     # Aliases should be lists of comma-separated strings (ignoring spaces), but are read in as strings. 
     # Convert them to lists. Also, turn NaNs into empty lists.
-    alias_column: str = config['metadata']['meta_aliases_column']
+    alias_column: str = config.metadata.meta_aliases_column
     no_aliases = df_columns[alias_column].isna()
     df_columns[alias_column] = (df_columns[alias_column]
                              .str.replace(', +', ',', regex=True)
@@ -339,7 +345,7 @@ def metadata_init() -> None:
     # each name in Aliases has its own row mapping to the same metadata, including the same current field name.
     # (Applying split() to the Field column is just a trick to turn a single string into a list, which will always
     # have just one element.)
-    df_columns[alias_column] += df_columns[config['metadata']['meta_field_column']].str.split(',')
+    df_columns[alias_column] += df_columns[config.metadata.meta_field_column].str.split(',')
 
     # Remove duplicates, if any, before exploding.
     df_columns[alias_column] = df_columns[alias_column].apply(lambda alias_list: list(set(alias_list)))

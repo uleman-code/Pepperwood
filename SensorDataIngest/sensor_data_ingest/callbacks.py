@@ -10,9 +10,10 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import decorator
 
 import dash_mantine_components as dmc
-import decorator
+import dash_uploader as du
 from dash import (  # A few definitions are not yet surfaced by dash-extensions
     Patch,
     set_props,
@@ -84,13 +85,13 @@ def log_batch_func(fn: Callable, *args, **kwargs) -> Callable:
     ee_logger.debug('<<< (%s) Exit.', args[0], extra={'fname': fn.__name__})
     return out
 
-timestamp_column: str = cfg.config['metadata']['timestamp_column']
-seqno_column: str = cfg.config['metadata']['sequence_number_column']
+timestamp_column: str = cfg.config.metadata.timestamp_column
+seqno_column: str = cfg.config.metadata.sequence_number_column
 
 blueprint: DashBlueprint = DashBlueprint(
     transforms=[ServersideOutputTransform(), TriggerTransform()]
 )
-blueprint.layout = dmc.MantineProvider(layout.layout)
+blueprint.layout = dmc.MantineProvider(layout.get_layout())
 
 
 @blueprint.callback(
@@ -230,6 +231,58 @@ def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] |
         logger.debug('Nothing to save.')
         raise PreventUpdate
 
+@blueprint.callback(
+    Output('files-status', 'data', allow_duplicate=True),
+    Output('frame-store', 'clear_data'),
+    Output('show-data', 'children', allow_duplicate=True),
+    Output('file-name', 'children', allow_duplicate=True),
+    Output('last-modified', 'children', allow_duplicate=True),
+    Trigger('clear-button', 'n_clicks'),
+    State('show-data', 'children'),
+)
+@log_func
+def clear(show_data: list[Any]) -> tuple:
+    """Clear all data in memory and on the screen, triggered by the Clear button.
+
+    Set the filename and unsaved flag in files-status to blank and False, respectively, which in turn
+    triggers all the follow-on chain of callbacks (clear the UI, clear the DataFrame store, etc.).
+
+    Parameters:
+        show_data       The layout of the main app area, consisting of a list of CardSections
+    """
+
+    logger.debug('Responding to Clear button click. Reset files-status.')
+
+    status: dict[str, str | bool] = dict(filename='', unsaved=False)
+
+    # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
+    return status, True, show_data[:3], None, None
+
+@du.callback(
+    output=[Output('files-status', 'data'    , allow_duplicate=True),
+            Output('select-file' , 'disabled', allow_duplicate=True),
+            Output('select-file' , 'text'    )],
+    id='select-file',
+)
+def files_uploaded(upload_status: du.UploadStatus) -> tuple:
+    """One or more files were selected and uploaded to the server.
+    
+    Parameters:
+        upload_status      Full paths (absolute or relative) of the uploaded files
+        
+    Returns:
+        files-status/data      (dict) File path(s) and unsaved status
+        select-file/disabled   (bool) Disable the Uploader component after files are uploaded
+        select-file/text       (str)  Text to show in the Uploader component after upload
+    """
+
+    files: list[str] = upload_status.uploaded_files
+    filenames: str = ', '.join([Path(f).name for f in files])
+    logger.debug('%s file(s) uploaded: %s', len(files), filenames)
+
+    status: dict[str, str | bool] = dict(filename=files if len(files) > 1 else files[0], unsaved=True)
+
+    return status, True, layout.UPLOADER_TEXT
 
 @blueprint.callback(
     Output('files-status', 'data', allow_duplicate=True),

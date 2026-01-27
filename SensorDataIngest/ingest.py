@@ -11,6 +11,7 @@ from dash_extensions.enrich import (
     TriggerTransform,
     DataclassTransform,
 )
+import dash_uploader as du
 
 FLASK_LOGGER: Final = 'werkzeug'
 
@@ -36,6 +37,7 @@ app: DashProxy = DashProxy(
             transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
+du.configure_upload(app, cfg.config.application.file_cache_root, use_upload_id=True)
 
 if __name__ == '__main__':
     # NOTE: If the Dash app is run with debug=True, this main module is executed twice, resulting
@@ -44,6 +46,6 @@ if __name__ == '__main__':
     #       It can be suppressed, at the cost of losing that very convenient reloading behavior.
     #       The duplicate messages do not appear when debug=False.
     try:
-        app.run(debug=cfg.config['application']['debug'])
+        app.run(debug=cfg.config.application.debug)
     except KeyboardInterrupt:
         logging.shutdown()
