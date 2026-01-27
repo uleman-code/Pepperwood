@@ -25,14 +25,13 @@ from dash_extensions.enrich import (
     Input,
     Output,
     Serverside,
-    ServersideOutputTransform,
     State,
     Trigger,
-    TriggerTransform,
     callback_context,
     dcc,
     no_update,
 )
+from flask import Blueprint
 
 from . import config as cfg
 from . import helpers
@@ -88,10 +87,7 @@ def log_batch_func(fn: Callable, *args, **kwargs) -> Callable:
 timestamp_column: str = cfg.config.metadata.timestamp_column
 seqno_column: str = cfg.config.metadata.sequence_number_column
 
-blueprint: DashBlueprint = DashBlueprint(
-    transforms=[ServersideOutputTransform(), TriggerTransform()]
-)
-blueprint.layout = dmc.MantineProvider(layout.get_layout())
+blueprint: DashBlueprint = layout.blueprint
 
 
 @blueprint.callback(
@@ -231,6 +227,7 @@ def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] |
         logger.debug('Nothing to save.')
         raise PreventUpdate
 
+
 @blueprint.callback(
     Output('files-status', 'data', allow_duplicate=True),
     Output('frame-store', 'clear_data'),
@@ -249,6 +246,14 @@ def clear(show_data: list[Any]) -> tuple:
 
     Parameters:
         show_data       The layout of the main app area, consisting of a list of CardSections
+
+    Returns:
+        files-status/data      (str)  JSON representation of a cleared data store: filename blank, unsaved flag False
+        frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
+        show-data/children     (list[objects]) Truncated contents of the main app area: remove batch processing output, if any
+        file-name/children     (str)  Empty string to clear
+        last-modified/children (str)  Empty string to clear
+
     """
 
     logger.debug('Responding to Clear button click. Reset files-status.')
@@ -258,12 +263,14 @@ def clear(show_data: list[Any]) -> tuple:
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
     return status, True, show_data[:3], None, None
 
+
 @du.callback(
     output=[Output('files-status', 'data'    , allow_duplicate=True),
             Output('select-file' , 'disabled', allow_duplicate=True),
             Output('select-file' , 'text'    )],
     id='select-file',
 )
+@log_func
 def files_uploaded(upload_status: du.UploadStatus) -> tuple:
     """One or more files were selected and uploaded to the server.
     
@@ -277,78 +284,16 @@ def files_uploaded(upload_status: du.UploadStatus) -> tuple:
     """
 
     files: list[str] = upload_status.uploaded_files
+    if not files:
+        logger.debug('Files were selected but none were uploaded.')
+        raise PreventUpdate
+    
     filenames: str = ', '.join([Path(f).name for f in files])
     logger.debug('%s file(s) uploaded: %s', len(files), filenames)
 
     status: dict[str, str | bool] = dict(filename=files if len(files) > 1 else files[0], unsaved=True)
 
     return status, True, layout.UPLOADER_TEXT
-
-@blueprint.callback(
-    Output('files-status', 'data', allow_duplicate=True),
-    Output('select-file', 'contents', allow_duplicate=True),
-    Output('frame-store', 'clear_data'),
-    Output('show-data', 'children', allow_duplicate=True),
-    Output('file-name', 'children', allow_duplicate=True),
-    Output('last-modified', 'children', allow_duplicate=True),
-    Trigger('clear-button', 'n_clicks'),
-    Input('select-file', 'contents'),
-    State('select-file', 'filename'),
-    State('show-data', 'children'),
-)
-@log_func
-def clear_load(all_contents: list[str], filenames: list[str], show_data: list[Any]) -> tuple:
-    """Clear all data in memory and on the screen, triggered by the Clear button or the loading of (a) new file(s) in the Upload component.
-
-    If new file(s), set the filename and unsaved flag in files-status, which in turn triggers all the follow-on chain
-    of callbacks (load the file or process the batch, along with the UI expressions of the process); and clear all UI
-    elements that may be populated by the current file, in preparation for the new information.
-
-    NOTE: The clearing of some UI components (file-name, last-modified) must happen here, because relying on another callback
-        to do it makes it difficult to guarantee that the clearing happens before the new information is shown. There is no
-        way to guarantee the execution order of callbacks triggered by the same trigger.
-        The exception is the Saved badge: since it is not reused for other purposes, showing or hiding it can be handled
-        by its own callback.
-
-    Parameters:
-        all_contents    Base64-encoded file contents for all files in the batch
-        filenames       The selected filename(s), provided by the Upload component
-        show_data       The layout of the main app area, consisting of a list of CardSections
-
-    Returns:
-        files-status/data      (str)  JSON representation of a cleared data store: filename blank, unsaved flag False
-        select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
-                                    it's the same file(s) as previously loaded
-        frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
-        show-data/children     (list[objects]) Truncated contents of the main app area: remove batch processing output, if any
-        file-name/children     (str)  Empty string to clear
-        last-modified/children (str)  Empty string to clear
-    """
-
-    status: dict[str, str | bool]
-    if callback_context.triggered_id == 'clear-button':
-        logger.debug(
-            'Responding to Clear button click. Reset files-status and select-file contents.'
-        )
-        status = dict(filename='', unsaved=False)
-        contents = []
-    elif all_contents:
-        fn: str | list[str]
-        fntext: str
-        if len(filenames) == 1:
-            fntext = fn = filenames[0]  # Make life easier for callbacks processing a single file
-        else:
-            fn = filenames
-            fntext = ', '.join(filenames)
-
-        logger.debug('File(s) loaded: %s.', fntext)
-        status = dict(filename=fn, unsaved=True)
-        contents = no_update  # This was triggered by a new file, so don't mess with the contents
-    else:
-        raise PreventUpdate  # Contents cleared by another callback; nothing to do
-
-    # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
-    return status, contents, True, show_data[:3], None, None
 
 
 @blueprint.callback(

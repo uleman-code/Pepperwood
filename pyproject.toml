@@ -9,7 +9,7 @@ dependencies = [
     "dash-bootstrap-components==2.0.4",
     "dash-extensions==2.0.4",
     "dash-mantine-components==2.3.0",
-    "dash-uploader>=0.7.0a2",
+    "dash-uploader==0.7.0a2",
     "decorator==5.2.1",
     "humanfriendly>=10.0",
     "openpyxl==3.1.5",

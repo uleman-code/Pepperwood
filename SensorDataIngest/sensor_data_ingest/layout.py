@@ -1,10 +1,15 @@
-"""Static Dash layout: app shell with header, navigation bar, and main area."""
+"""Dynamic Dash layout: app shell with header, navigation bar, and main area."""
 
 import json
 import uuid
 
 import dash_mantine_components as dmc
-from dash_extensions.enrich import dcc
+from dash_extensions.enrich import (dcc,
+                                    DashBlueprint,
+                                    ServersideOutputTransform,
+                                    TriggerTransform,
+                                    DataclassTransform
+                                   )
 import dash_uploader as du
 
 UPLOADER_TEXT = 'Drop file(s) here or click to select'
@@ -17,7 +22,7 @@ header = dmc.Group(
     justify='center',
 )
 
-def make_uploader(id: str) -> du.Upload:
+def _make_uploader(id: str) -> du.Upload:
     """Create a Dash Uploader component from dash_uploader.
 
     NOTE: The dash_uploader project is no longer actively maintained, so there is a risk
@@ -50,7 +55,7 @@ def make_uploader(id: str) -> du.Upload:
         max_files=100,                  # TODO: make configurable?
         chunk_size=1,                   # 1 MB (default), a reasonable guess?
         filetypes=['dat', 'csv', 'xlsx', 'xls'],   # TODO: make configurable? Other synonyms for CSV?
-        upload_id=uuid.uuid1(),
+        upload_id=uuid.uuid4(),
         pause_button=False,
         cancel_button=False,
         disabled=False,
@@ -63,58 +68,53 @@ def make_uploader(id: str) -> du.Upload:
         },
     )
 
-load_save = [
-    dmc.CardSection(
-        children=
-        [
-            dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
-            make_uploader(id='select-file'),
-            # dcc.Upload(
-            #     dmc.Stack(                          # The entire Stack is the drag-and-drop area
-            #         children=[
-            #             dmc.Text('Drag and drop, or', h='xs'),
-            #             dmc.Button('Select File(s)'),
-            #         ],
-            #         align='center',
-            #     ),
-            #     id='select-file',
-            #     multiple=True,
-            #     accept='.dat,.csv,.xlsx,.xls',      # NOTE: a string, not a list of strings
-            # ),
-        ],
-        withBorder=True,
-        ta = 'center',
-        h='80px',
-    ),
-    dmc.CardSection(
-        dmc.Group(
-            children=[
-                dmc.Tooltip(
-                    dmc.Button('Save', id='save-button', disabled=True),
-                    label='Save current data as an Excel file',
-                ),
-                dcc.Upload(
-                    dmc.Tooltip(
-                        dmc.Button('Append', id='append-button', disabled=True),
-                        label='Select file(s) to append current data to',
-                    ),
-                    id='append-file',
-                    multiple=False,
-                    accept='.xlsx',
-                ),
-                dmc.Tooltip(
-                    dmc.Button('Clear', id='clear-button', disabled=True, color='red'),
-                    label='Clear all data from memory',
-                ),
+def _make_load_save() -> list[dmc.CardSection]:
+    """Create the load/save section of the navigation bar.
+
+    Returns:
+        List of CardSections for loading and saving data.
+    """
+    
+    return [
+        dmc.CardSection(
+            children=
+            [
+                dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
+                _make_uploader(id='select-file'),
             ],
-            justify='center',
-            gap='xs',
+            withBorder=True,
+            ta = 'center',
+            h='80px',
         ),
-        withBorder=True,
-        inheritPadding=True,
-        py='xs',
-    ),
-]
+        dmc.CardSection(
+            dmc.Group(
+                children=[
+                    dmc.Tooltip(
+                        dmc.Button('Save', id='save-button', disabled=True),
+                        label='Save current data as an Excel file',
+                    ),
+                    dcc.Upload(
+                        dmc.Tooltip(
+                            dmc.Button('Append', id='append-button', disabled=True),
+                            label='Select file(s) to append current data to',
+                        ),
+                        id='append-file',
+                        multiple=False,
+                        accept='.xlsx',
+                    ),
+                    dmc.Tooltip(
+                        dmc.Button('Clear', id='clear-button', disabled=True, color='red'),
+                        label='Clear all data from memory',
+                    ),
+                ],
+                justify='center',
+                gap='xs',
+            ),
+            withBorder=True,
+            inheritPadding=True,
+            py='xs',
+        ),
+    ]
 
 columns = [
     dmc.ScrollArea(
@@ -142,7 +142,14 @@ columns = [
     ),
 ]
 
-navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
+def _make_navbar() -> dmc.Card:
+    """Create the navigation bar for the app.
+
+    Returns:
+        The navigation bar component.
+    """
+
+    return dmc.Card(_make_load_save() + columns, withBorder=True, h='100dvh')
 
 def make_file_info(n: int | None = None) -> dmc.CardSection:
     """Create a card section for one file's file info, progress, and QA results.
@@ -235,7 +242,7 @@ def get_layout() -> dmc.AppShell:
     return dmc.AppShell(
                 children=[
                     dmc.AppShellHeader(header, px=25),
-                    dmc.AppShellNavbar(navbar),
+                    dmc.AppShellNavbar(_make_navbar()),
                     dmc.AppShellMain(page_main,
                                         pt=17,
                                         ml=10,
@@ -255,3 +262,8 @@ def get_layout() -> dmc.AppShell:
                     'collapsed': {'mobile': True},
                 },
            )
+
+blueprint: DashBlueprint = DashBlueprint(
+    transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
+)
+blueprint.layout = dmc.MantineProvider(get_layout())

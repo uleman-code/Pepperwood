@@ -238,6 +238,7 @@ def logging_init() -> None:
     """
 
     assert config_is_set, 'Initialize configuration settings before logging.'
+    assert config.application is not None, 'Application configuration is not set.'
 
     global logger
     app_config: ApplicationCfg = config.application   # Just a clutter reducing convenience

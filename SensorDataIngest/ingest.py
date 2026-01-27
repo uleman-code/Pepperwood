@@ -7,9 +7,9 @@ from typing import Final
 from sensor_data_ingest import config as cfg
 from dash_extensions.enrich import (
     DashProxy,
-    ServersideOutputTransform,
-    TriggerTransform,
-    DataclassTransform,
+    # ServersideOutputTransform,
+    # TriggerTransform,
+    # DataclassTransform,
 )
 import dash_uploader as du
 
@@ -23,7 +23,7 @@ logging.getLogger(FLASK_LOGGER).setLevel(logging.WARNING)  # Suppress endless GE
 
 # Now that the config is initialized, we can import other modules.
 # This import has as a side-effect that it registers all the Dash callbacks.
-from sensor_data_ingest.callbacks import blueprint  # noqa: E402
+from sensor_data_ingest.layout import blueprint  # noqa: E402
 
 # The following two statements must be at the module level, not inside a function.
 # Otherwise, the Dash app won't be properly discovered by deployment tools.
@@ -34,10 +34,14 @@ app: DashProxy = DashProxy(
             update_title=None,                          # While rebuilding the page, don't
                                                         # change tab title to "Updating..."
             # background_callback_manager='diskcache',  # noqa: ERA001
-            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
+            # transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
+
 du.configure_upload(app, cfg.config.application.file_cache_root, use_upload_id=True)
+
+# Create the callbacks after configuring the Uploader, which in turn must happen after creating the app.
+from sensor_data_ingest import callbacks  # noqa: E402, F401
 
 if __name__ == '__main__':
     # NOTE: If the Dash app is run with debug=True, this main module is executed twice, resulting
