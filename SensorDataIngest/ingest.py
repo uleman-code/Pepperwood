@@ -7,11 +7,11 @@ from typing import Final
 from sensor_data_ingest import config as cfg
 from dash_extensions.enrich import (
     DashProxy,
-    # ServersideOutputTransform,
-    # TriggerTransform,
-    # DataclassTransform,
+    ServersideOutputTransform,
+    TriggerTransform,
+    DataclassTransform,
 )
-import dash_uploader as du
+import dash_uploader_uppy5 as du
 
 FLASK_LOGGER: Final = 'werkzeug'
 
@@ -34,11 +34,11 @@ app: DashProxy = DashProxy(
             update_title=None,                          # While rebuilding the page, don't
                                                         # change tab title to "Updating..."
             # background_callback_manager='diskcache',  # noqa: ERA001
-            # transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
+            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 
-du.configure_upload(app, cfg.config.application.file_cache_root, use_upload_id=True)
+du.configurator(app, cfg.config.application.file_cache_root, use_upload_id=False)
 
 # Create the callbacks after configuring the Uploader, which in turn must happen after creating the app.
 from sensor_data_ingest import callbacks  # noqa: E402, F401

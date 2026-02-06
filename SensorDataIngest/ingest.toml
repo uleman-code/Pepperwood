@@ -3,7 +3,7 @@ config_version = "0.6"
 [application]
 site_metadata_file = "site_metadata.csv"
 column_metadata_file = "column_metadata.csv"
-debug = false
+debug = true
 file_cache_root = "./file_cache"
 keep_cached_files = false
 console_logging_level = "INFO"

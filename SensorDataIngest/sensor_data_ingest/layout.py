@@ -1,18 +1,20 @@
 """Dynamic Dash layout: app shell with header, navigation bar, and main area."""
 
 import json
-import uuid
 
 import dash_mantine_components as dmc
-from dash_extensions.enrich import (dcc,
-                                    DashBlueprint,
-                                    ServersideOutputTransform,
-                                    TriggerTransform,
-                                    DataclassTransform
-                                   )
-import dash_uploader as du
+from dash_extensions.enrich import (
+    DashBlueprint,
+    DataclassTransform,
+    ServersideOutputTransform,
+    TriggerTransform,
+    dcc,
+)
+import dash_uploader_uppy5 as du
 
-UPLOADER_TEXT = 'Drop file(s) here or click to select'
+from . import config as cfg
+
+file_types = cfg.config.input.datalogger_file_extensions + cfg.config.input.excel_file_extensions
 
 header = dmc.Group(
     [
@@ -22,69 +24,23 @@ header = dmc.Group(
     justify='center',
 )
 
-def _make_uploader(id: str) -> du.Upload:
-    """Create a Dash Uploader component from dash_uploader.
-
-    NOTE: The dash_uploader project is no longer actively maintained, so there is a risk
-    that future versions of Dash may break its functionality. The same thing applies to
-    Flow.js, which dash_uploader uses internally, and which is also not being maintained.
-
-    There are several limitations to dash_uploader / Flow.js:
-    - It does not support folder uploads when uploads are limited to certain file types
-      (filetypes argument).
-    - It does not pass the selected filetypes to the file selection dialog; it only uses them
-      to filter files after the fact.
-    - It does not behave the same as dcc.Upload in that it does not have a "children" property;
-      this means that it is inflexible in terms of customizing its appearance (text only, no buttons).
-    - It requires a wrapper around the Dash app and a special callback decorator, so seems to live
-      outside the normal Dash paradigm.
-    - Some text properties (text_disabled) do not work; others (text_completed) are awkward in that
-      you cannot control the entire string.
-
-    Parameters:
-        id  The component ID.
-
-    Returns:
-        The Upload component.
-    """
-
-    return du.Upload(
-        id=id,
-        text=UPLOADER_TEXT,
-        max_file_size=1024,             # 1 GB (default)  TODO: make configurable?
-        max_files=100,                  # TODO: make configurable?
-        chunk_size=1,                   # 1 MB (default), a reasonable guess?
-        filetypes=['dat', 'csv', 'xlsx', 'xls'],   # TODO: make configurable? Other synonyms for CSV?
-        upload_id=uuid.uuid4(),
-        pause_button=False,
-        cancel_button=False,
-        disabled=False,
-        default_style={
-            'width': '100%',
-            'height': '25px',
-            'lineHeight': '10px',
-            'borderStyle': 'none',
-            'textAlign': 'center',
-        },
-    )
-
-def _make_load_save() -> list[dmc.CardSection]:
-    """Create the load/save section of the navigation bar.
-
-    Returns:
-        List of CardSections for loading and saving data.
-    """
-    
-    return [
+load_save = [
         dmc.CardSection(
             children=
             [
                 dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
-                _make_uploader(id='select-file'),
+                du.Upload(
+                    id='select-file',
+                    allowed_file_types=file_types,
+                    auto_proceed=True,
+                    max_number_of_files=1000,
+                    file_manager_selection_type='files',
+                    hide_progress_details=True,
+                    theme='light',
+                    size={'width': '100%', 'height': '130px'},
+                ),
             ],
-            withBorder=True,
-            ta = 'center',
-            h='80px',
+            ta='center',
         ),
         dmc.CardSection(
             dmc.Group(
@@ -100,7 +56,7 @@ def _make_load_save() -> list[dmc.CardSection]:
                         ),
                         id='append-file',
                         multiple=False,
-                        accept='.xlsx',
+                        accept=','.join(cfg.config.input.excel_file_extensions),
                     ),
                     dmc.Tooltip(
                         dmc.Button('Clear', id='clear-button', disabled=True, color='red'),
@@ -142,14 +98,7 @@ columns = [
     ),
 ]
 
-def _make_navbar() -> dmc.Card:
-    """Create the navigation bar for the app.
-
-    Returns:
-        The navigation bar component.
-    """
-
-    return dmc.Card(_make_load_save() + columns, withBorder=True, h='100dvh')
+navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
 def make_file_info(n: int | None = None) -> dmc.CardSection:
     """Create a card section for one file's file info, progress, and QA results.
@@ -163,6 +112,7 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
     Returns:
         dmc.CardSection: This file's info/progress/QA area
     """
+
     suffix   = '' if n is None else '-' + str(n)
     badge_id = 'saved-badge' if n is None else {'type': 'saved-badge', 'index': n}
     return  dmc.CardSection(
@@ -229,20 +179,10 @@ page_main = dmc.Card(
     ],
 )
 
-def get_layout() -> dmc.AppShell:
-    """Get the Dash layout for the app.
-
-    By making this a function, we ensure that a new layout is created
-    each time the app is reloaded, with a unique component ID for the uploader.
-
-    Returns:
-        The app layout
-    """
-
-    return dmc.AppShell(
+layout = dmc.AppShell(
                 children=[
                     dmc.AppShellHeader(header, px=25),
-                    dmc.AppShellNavbar(_make_navbar()),
+                    dmc.AppShellNavbar(navbar),
                     dmc.AppShellMain(page_main,
                                         pt=17,
                                         ml=10,
@@ -261,9 +201,9 @@ def get_layout() -> dmc.AppShell:
                     'breakpoint': 'md',
                     'collapsed': {'mobile': True},
                 },
-           )
+            )
 
 blueprint: DashBlueprint = DashBlueprint(
     transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
 )
-blueprint.layout = dmc.MantineProvider(get_layout())
+blueprint.layout = dmc.MantineProvider(layout)

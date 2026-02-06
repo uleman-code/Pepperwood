@@ -83,14 +83,18 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 
 # Configuration-derived variables for brevity
+csv_extensions: list[str] = cfg.config.input.datalogger_file_extensions
+excel_extensions: list[str] = cfg.config.input.excel_file_extensions
+
 worksheet_names: WorksheetNames = WorksheetNames(**cfg.config.output.worksheet_names)
 data_na_repr: str = cfg.config.output.data_na_representation
 hyperlink_column: str = cfg.config.output.notes_hyperlink_column
+qa_report_columns: list[str] = cfg.config.output.notes_columns
+
 timestamp_column: str = cfg.config.metadata.timestamp_column
 seqno_column: str = cfg.config.metadata.sequence_number_column
 default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config.metadata.default_sampling_interval,
                                                        unit='seconds')   # To be overridden by site metadata
-qa_report_columns: list[str] = cfg.config.output.notes_columns
 meta_columns: list[str] = cfg.config.metadata.input_variable_meta_columns
 station_columns: list[str] = cfg.config.metadata.input_site_meta_columns
 input_site_id_column: str = cfg.config.metadata.input_site_id_column
@@ -101,7 +105,6 @@ field_column: str = cfg.config.metadata.meta_field_column
 aliases_column: str = cfg.config.metadata.meta_aliases_column
 interval_column: str = cfg.config.metadata.meta_interval_column
 site_key_column: str = cfg.config.metadata.meta_site_key_column
-
 df_meta_sites: pd.DataFrame = cfg.metadata['sites']
 df_meta_columns: pd.DataFrame = cfg.metadata['columns']
 
@@ -111,8 +114,8 @@ pd.set_option('plotting.backend', 'plotly')
 
 
 @log_func
-def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
-    """Load a data file (CSV, .dat or .csv suffix; or Excel) and return three DataFrames: data, metadata, and station data.
+def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFrame]:
+    """Load a data file (CSV with .dat or .csv suffix; or Excel) and return three DataFrames: data, metadata, and station data.
 
     Files from data loggers have additional information in the first few lines, including column names and descriptions and
     station information. Turn these into separate DataFrames for metadata and station data, respectively; skip them when loading
@@ -120,6 +123,12 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
 
     Excel files are expected to have been saved by this same app, in which case they have four worksheets, named
     Data, Columns, station, and Notes. Or, if saved by an earlier version, only three because there would be no Notes.
+
+    There are two distinct cases:
+    1. The file was uploaded by the Dash Uploader, and persisted on the server. filename contains the (absolute or relative) path,
+       contents is ignored, and the file is read from disk.
+    2. The file was loaded into the browser by dcc.Upload and kept in memory as a base64-encoded string. filename contains the
+       original filename without the path, used only to get the suffix.
 
     Limitations:
         File type derived from filename suffix, not contents; this is fragile. In case the contents are not as expected,
@@ -129,51 +138,58 @@ def load_data(contents: str, filename: str) -> dict[str, pd.DataFrame]:
             (In both cases, the result is a file reading exception.)
 
     Parameters:
+        filename    The name or path of the file
         contents    Base64-encoded string of the file contents
-        filename    The name of the file; only needed to get the extension
 
     Returns:
-        Four or three DataFrames: data, metadata, station data, and (unless from an early version) QA notes
+        Four or three DataFrames: data, metadata, station data, and (Escel case, unless from an early version) QA notes
     
     Raises:
         UnsupportedFileTypeError     The file suffix is not .dat, .csv, .xls, or .xlsx
         BadFileError                 The file could not be read or parsed, or was missing expected worksheets
     """
 
-    logger.debug('Uploaded contents: %s', contents[:80])
+    if contents is not None:        # dcc.Upload loaded a single file to append the current file to
+        logger.debug('Uploaded contents: %s', contents[:80])
 
-    content_string: str
-    _, content_string = contents.split(',')  # File contents are preceded by a file type string
+        content_string: str
+        _, content_string = contents.split(',')  # File contents are preceded by a file type string
 
-    b64decoded: bytes = base64.b64decode(content_string)
-    logger.debug('Got decoded file contents.')
+        b64decoded: bytes = base64.b64decode(content_string)
+        logger.debug('Got decoded file contents.')
 
     frames: Frames = Frames()
     try:
-        match Path(filename).suffix:
-            case '.dat' | '.csv':
+        match Path(filename).suffix.lower():
+            case ext if ext in csv_extensions:
                 # Assume that the user uploaded a raw-data CSV file
                 logger.info('Reading CSV data file. Expect additional info in the first four rows.')
-                decoded = io.StringIO(b64decoded.decode('utf-8'))
+                if contents is None:
+                    with open(filename, 'rt', encoding='utf-8') as file:
+                        buffer: io.StringIO = io.StringIO(file.read())
+                else:
+                    buffer: io.StringIO = io.StringIO(b64decoded.decode('utf-8'))
 
                 # First pass to read the real data
-                frames.data = pd.read_csv(decoded, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
+                frames.data = pd.read_csv(buffer, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
 
                 # Second pass to read the column metadata
-                decoded.seek(0)
-                frames.meta = pd.read_csv(decoded, header=None, skiprows=[0], nrows=3).T
+                buffer.seek(0)
+                frames.meta = pd.read_csv(buffer, header=None, skiprows=[0], nrows=3).T
                 frames.meta.columns = meta_columns
 
                 # Third pass to read the station data
                 # NOTE: Limit the columns to avoid problems in case the raw-data file was edited in Excel
-                decoded.seek(0)
-                frames.station = pd.read_csv(
-                    decoded, header=None, nrows=1, names=station_columns, usecols=station_columns 
-                )
-            case '.xls' | '.xlsx':
+                buffer.seek(0)
+                frames.station = pd.read_csv(buffer, header=None, nrows=1, names=station_columns, usecols=station_columns)
+            case ext if ext in excel_extensions:
                 # Assume that the user uploaded an Excel file
                 logger.info('Reading Excel workbook. Expect three or four worksheets.')
-                buffer = io.BytesIO(b64decoded)
+                if contents is None:
+                    with open(filename, 'rb') as file:
+                        buffer = io.BytesIO(file.read())
+                else:
+                    buffer = io.BytesIO(b64decoded)
 
                 # The meta/columns and station/meta worksheets column names may evolve, such that the names of
                 # an older file, saved by an older version of this app, may not match the current names as
@@ -886,9 +902,7 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
 
 
 @log_func
-def append(
-    base_frames: Frames, new_frames: Frames
-) -> tuple[dict[str, pd.DataFrame], list[str]]:
+def append(base_frames: Frames, new_frames: Frames) -> tuple[dict[str, pd.DataFrame], list[str]]:
     """Append new sensor data to an existing set.
 
     The data already in memory is considered the new file, with the newly loaded data the base file to which the new file is

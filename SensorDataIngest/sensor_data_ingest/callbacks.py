@@ -6,14 +6,14 @@ do not depend on or affect Dash elements.
 """
 
 import logging
-from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import decorator
 
+import humanfriendly as hf
+
 import dash_mantine_components as dmc
-import dash_uploader as du
 from dash import (  # A few definitions are not yet surfaced by dash-extensions
     Patch,
     set_props,
@@ -31,7 +31,6 @@ from dash_extensions.enrich import (
     dcc,
     no_update,
 )
-from flask import Blueprint
 
 from . import config as cfg
 from . import helpers
@@ -86,6 +85,7 @@ def log_batch_func(fn: Callable, *args, **kwargs) -> Callable:
 
 timestamp_column: str = cfg.config.metadata.timestamp_column
 seqno_column: str = cfg.config.metadata.sequence_number_column
+file_cache: Path = Path(cfg.config.application.file_cache_root)
 
 blueprint: DashBlueprint = layout.blueprint
 
@@ -96,19 +96,18 @@ blueprint: DashBlueprint = layout.blueprint
     Output('error-title', 'children'),
     Output('error-text', 'children'),
     Input('files-status', 'data'),
-    State('select-file', 'contents'),
 )
 @log_func
-def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> tuple:
+def load_file(files_status: dict[str, list[str] | bool]) -> tuple:
     """If one file was opened, load it.
 
-    Triggered by a change in files-status after the user selects a single file, read the base64-encoded file contents
-    provided by the Upload component into a DataFrame, along with separate DataFrames for metadata (column descriptions)
-    and site data. Persist the three DataFrames in the server-side frame-store.
+    Triggered by a change in files-status after the user selects a single file, read the uploaded file 
+    into a DataFrame, along with separate DataFrames for metadata (column descriptions) and site data,
+    and possibly a notes table (if reading an Excel file).
+    Persist the three DataFrames in the server-side frame-store.
 
     Parameters:
-        files_status     Filename(s) and (un)saved status
-        all_contents     Base64-encoded file contents
+        files_status     File path(s) and (un)saved status
 
     Returns:
         frame-store/data     (dict[DataFrame]) The three DataFrames (data, meta, site) for one file
@@ -117,28 +116,26 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
         error-text/children  (str)  In case of error, error text for the modal dialog; otherwise an empty string
 
     """
-    filename: str = files_status['filename']
-    unsaved: str = files_status['unsaved']
 
     # This callback is triggered by any change to files-status. But action is only needed if there is one
-    # new file to be loaded, in which case filename is a single non-empty string, and the unsaved flag is True.
+    # new file to be loaded, in which case file is a single non-empty string, and the unsaved flag is True.
     # This only happens when a single new file is selected by the user:
     # - Another callback populates the filename and sets the unsaved flag to True.
-    # - If the user selects multiple files, filename is a list of strings, not a single string.
+    # - If the user selects multiple files, file is a list of strings, not a single string.
     # - After a Clear, filename is an empty string.
     # - After a Save, the unsaved flag is False.
-    if isinstance(filename, list) or not filename or 'qa_status' in files_status:
+    # - In Append mode, the unsaved flag is True but a qa_status element is added.
+    if len(files_status['files']) != 1 or 'qa_status' in files_status:
         logger.debug('Zero or multiple files, or in Append mode; nothing to show interactively.')
         raise PreventUpdate
 
-    if not unsaved:
-        logger.debug('File was just saved; no change to loaded data.')
+    if not files_status['unsaved']:
+        logger.debug('File was just saved; no change to uploaded data.')
         raise PreventUpdate
 
-    contents: str = all_contents[0]  # We got here, so there is exactly one file
-
+    file: str = files_status['files'][0]
     try:
-        frames: helpers.Frames = helpers.load_data(contents, filename)
+        frames: helpers.Frames = helpers.load_data(file)
         logger.debug('Data initialized.')
     except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('File Read Error.')
@@ -146,7 +143,7 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
             no_update,
             True,
             'Error Reading File',
-            f'We could not process the file "{filename}": {err}',
+            f'We could not process the file "{file}": {err}',
         )
 
     try:
@@ -166,7 +163,6 @@ def load_file(files_status: dict[str, str | bool], all_contents: list[str]) -> t
 @blueprint.callback(
     Output('save-xlsx', 'data'),
     Output('files-status', 'data', allow_duplicate=True),
-    Output('select-file', 'contents', allow_duplicate=True),
     Trigger('save-button', 'n_clicks'),
     Input('files-status', 'data'),
     State('frame-store', 'data'),
@@ -184,18 +180,19 @@ def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] |
     or opens the OS-native Save File dialog, allowing the user to choose any folder (and change the filename, too).
 
     NOTE: If the Save File dialog is opened, it's possible that the user clicks Cancel, in which case the file is not
-        saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
-        is always saved.
+          saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
+          is always saved.
+
+    This callback is also triggered by completion of the QA/sanity checks in Append mode. We do not require the user
+    to click Save again after an Append operation.
 
     Parameters:
-        files_status    Filename(s) and (un)saved status
+        files_status    Server-side file paths and (un)saved status
         frames          The four DataFrames (data, meta, site, notes) for one file
 
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
         files-status/data    (str)  Same as files_status parameter but with the unsaved flag set to False
-        select-file/contents (list) Empty to reset, so a new file upload always results in a contents change, even if
-                                    it's the same file(s) as previously loaded
     """
 
     if callback_context.triggered_id == 'files-status' and not (
@@ -208,7 +205,7 @@ def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] |
 
     if (frames and not frames.data.empty):
         frames: helpers.Frames = helpers.Frames(**frame_store)
-        outfile: str = str(Path(files_status['filename']).with_suffix('.xlsx'))
+        outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
@@ -219,10 +216,10 @@ def save_file(files_status: dict[str, str | bool], frame_store: dict[str, Any] |
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
         # a single file (except for the displayed sanity check results). You could repeat the Append action to chain
         # any number of files together, not just two.
-        files_status = {k: v for k, v in files_status.items() if k in ['filename', 'unsaved']}
+        files_status = {k: v for k, v in files_status.items() if k in ['files', 'unsaved']}
 
         logger.debug('File saved.')
-        return contents, files_status, []
+        return contents, files_status
     else:
         logger.debug('Nothing to save.')
         raise PreventUpdate
@@ -248,7 +245,7 @@ def clear(show_data: list[Any]) -> tuple:
         show_data       The layout of the main app area, consisting of a list of CardSections
 
     Returns:
-        files-status/data      (str)  JSON representation of a cleared data store: filename blank, unsaved flag False
+        files-status/data      (str)  Empty list of server-side file paths, unsaved flag False
         frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
         show-data/children     (list[objects]) Truncated contents of the main app area: remove batch processing output, if any
         file-name/children     (str)  Empty string to clear
@@ -258,42 +255,38 @@ def clear(show_data: list[Any]) -> tuple:
 
     logger.debug('Responding to Clear button click. Reset files-status.')
 
-    status: dict[str, str | bool] = dict(filename='', unsaved=False)
+    status: dict[str, str | bool] = dict(files=[], unsaved=False)
 
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
     return status, True, show_data[:3], None, None
 
 
-@du.callback(
-    output=[Output('files-status', 'data'    , allow_duplicate=True),
-            Output('select-file' , 'disabled', allow_duplicate=True),
-            Output('select-file' , 'text'    )],
-    id='select-file',
+@blueprint.callback(
+    Output('files-status', 'data', allow_duplicate=True),
+    Input('select-file' , 'uploadedFiles'),
+    # TODO: Use failedFiles for error processing.
 )
-@log_func
-def files_uploaded(upload_status: du.UploadStatus) -> tuple:
+# @log_func
+def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> dict[str, list[str] | bool]:
     """One or more files were selected and uploaded to the server.
     
     Parameters:
-        upload_status      Full paths (absolute or relative) of the uploaded files
+        uploaded_files      Filenames and other info of the uploaded files
         
     Returns:
-        files-status/data      (dict) File path(s) and unsaved status
-        select-file/disabled   (bool) Disable the Uploader component after files are uploaded
-        select-file/text       (str)  Text to show in the Uploader component after upload
+        files-status/data   (dict) Server-side file paths and unsaved status
     """
 
-    files: list[str] = upload_status.uploaded_files
+    files: list[Path] = [str(file_cache / file['response']['filename']) for file in uploaded_files]
     if not files:
         logger.debug('Files were selected but none were uploaded.')
         raise PreventUpdate
     
-    filenames: str = ', '.join([Path(f).name for f in files])
-    logger.debug('%s file(s) uploaded: %s', len(files), filenames)
+    logger.debug('%s file(s) uploaded: %s', len(uploaded_files), ', '.join([f['name'] for f in uploaded_files]))
 
-    status: dict[str, str | bool] = dict(filename=files if len(files) > 1 else files[0], unsaved=True)
+    status: dict[str, str | list[str] | bool] = dict(files=files, unsaved=True)
 
-    return status, True, layout.UPLOADER_TEXT
+    return status
 
 
 @blueprint.callback(
@@ -430,7 +423,7 @@ def show_badge(files_status: dict) -> tuple:
     every UI interaction.
 
     Parameters:
-        files_status    Filename(s) and (un)saved status
+        files_status    Server-side file paths and (un)saved status
 
     Returns
         saved-badge/display (str) Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
@@ -439,13 +432,13 @@ def show_badge(files_status: dict) -> tuple:
 
     # To show the badge, there must be a single file loaded and it must be saved.
     # (The unsaved flag is also False if there nothing loaded.)
-    filename: str = files_status['filename']
+    files: list[str] = files_status['files']
     retval: str
-    if filename and isinstance(filename, str):
+
+    if len(files) == 1:
         unsaved: bool = files_status['unsaved']
-        logger.debug(
-            f'Single file loaded, file {"not " if unsaved else ""}saved; {"hide" if unsaved else "show"} Saved badge.'
-        )
+        logger.debug('Single file loaded, file %ssaved; %s Saved badge.',
+                     'not ' if unsaved else '', 'hide' if unsaved else 'show')
         retval = 'none' if unsaved else 'inline'
     else:
         logger.debug('Zero or multiple files loaded; hide Saved badge.')
@@ -499,28 +492,27 @@ def toggle_save_clear(files_status: dict) -> tuple:
     Output('file-name', 'children'),
     Output('last-modified', 'children'),
     Input('files-status', 'data'),
-    State('select-file', 'last_modified'),
+    State('select-file', 'uploadedFiles'),
 )
 @log_func
-def show_file_info(files_status: dict[str, str | bool], last_modified: list[int]):
+def show_file_info(files_status: dict[str, str | bool], uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
     """If there's data in memory, show information (filename, last-modified) about the file that was loaded.
 
     Parameters:
-        files_status    Filename(s) and (un)saved status
-        last_modified   File last-modified timestamps (there should only be one element in the list)
+        files_status    File paths and (un)saved status
+        uploaded_files  File names and other info for the uploaded files
 
     Returns:
         file-name/children      (str) The name of the currently loaded file (no path)
-        last-modified/children  (str) Formatted last-modified timestamp of the currently loaded file
+        last-modified/children  (str) Friendly-formatted size of the currently loaded file
     """
 
-    filename: str = files_status['filename']
-
     # Make sure there's only one file and we're not appending.
-    if isinstance(filename, str) and filename and 'qa_status' not in files_status:
-        modified: str = f'Last modified: {datetime.fromtimestamp(last_modified[0]).strftime("%Y-%m-%d %H:%M:%S")}'
+    if len(uploaded_files) == 1 and 'qa_status' not in files_status:
+        name: str = uploaded_files[0]['name']
+        info: str = f'Size: {hf.format_size(uploaded_files[0]["size"])}'
         logger.debug('Data in memory; show file information.')
-        return filename, modified
+        return name, info
     else:
         logger.debug('Zero or multiple files loaded, or in Append process; nothing to do.')
         raise PreventUpdate
@@ -577,8 +569,6 @@ def run_sanity_checks(frames: helpers.Frames, qa_range: list[str] | None = None)
 
 @blueprint.callback(
     Output('sanity-checks', 'children'),
-    # Output( 'save-button'  , 'disabled'          , allow_duplicate=True),
-    # Output( 'append-button', 'disabled'          , allow_duplicate=True),
     Output('files-status', 'data', allow_duplicate=True),
     Output('frame-store', 'data', allow_duplicate=True),
     State('sanity-checks', 'children'),
@@ -655,13 +645,14 @@ def report_sanity_checks(
 
 
 @blueprint.callback(
-    Output('file-name', 'children', allow_duplicate=True),
-    Output('last-modified', 'children', allow_duplicate=True),
-    Output('next-file', 'data', allow_duplicate=True),
-    Input('files-status', 'data'),
+    Output('file-name'    , 'children'     , allow_duplicate=True),
+    Output('last-modified', 'children'     , allow_duplicate=True),
+    Output('next-file'    , 'data'         , allow_duplicate=True),
+    Input('files-status'  , 'data'         ),
+    State('select-file'   , 'uploadedFiles'),
 )
 @log_func
-def setup_batch(files_status: dict) -> tuple:
+def setup_batch(files_status: dict, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -676,6 +667,7 @@ def setup_batch(files_status: dict) -> tuple:
 
     Parameters:
         files_status    Filename(s) and (un)saved status
+        uploaded_files  Filenames and other info of the uploaded files
 
     Returns:
         file-name/children     (str) Reuse for Batch mode operation header
@@ -684,8 +676,10 @@ def setup_batch(files_status: dict) -> tuple:
 
     """
 
-    filenames: str | list[str] = files_status['filename']
-    if isinstance(filenames, str):
+    # files_status has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
+    # Use the client-side filenames provided by the Upload component instead.
+    filenames: list[str] = [f['name'] for f in uploaded_files]
+    if len(filenames) <= 1:
         logger.debug('No file or a single filename: not a batch.')
         raise PreventUpdate
 
@@ -701,32 +695,33 @@ def setup_batch(files_status: dict) -> tuple:
 
 
 @blueprint.callback(
-    Output('show-data', 'children'),
-    Output('file-counter', 'data'),
-    Trigger('next-file', 'modified_timestamp'),
-    State('next-file', 'data'),
-    State('select-file', 'filename'),
-    State('select-file', 'last_modified'),
+    Output( 'show-data'   , 'children'          ),
+    Output( 'file-counter', 'data'              ),
+    Trigger('next-file'   , 'modified_timestamp'),
+    State(  'next-file'   , 'data'              ),
+    State(  'select-file' , 'uploadedFiles'     ),
 )
 @log_batch_func
-def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]) -> tuple:
+def next_in_batch(next_file: int, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
     """Show file information and a busy indicator for the current item in the batch.
 
     Parameters:
         next_file       The current file's index in the batch list
-        filenames       The selected filenames, provided by the Upload component
-        last_modified   File last-modified timestamps
+        uploaded_files  Filenames and other info of the uploaded files
 
     Returns:
         show-data/children (object) Patch object to add another CardSection to the main app area
         file-counter/data  (int)    The file counter value for the current batch item
     """
 
+    # files_status has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
+    # Use the client-side filenames provided by the Upload component instead.
+    this_file = uploaded_files[next_file]
+
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection = layout.make_file_info(next_file)
-    this_file_info.children.children[0].children[0].children = filenames[next_file]
-    this_file_info.children.children[0].children[1].children[0].children = ('Last modified: ' +
-                    f'{datetime.fromtimestamp(last_modified[next_file]).strftime("%Y-%m-%d %H:%M:%S")}')
+    this_file_info.children.children[0].children[0].children = this_file['name']
+    this_file_info.children.children[0].children[1].children[0].children = f'Size: {this_file['size']}'
     this_file_info.children.children[1].display = 'flex'
     this_file_info.children.children[1].type = 'dots'
 
@@ -737,13 +732,13 @@ def next_in_batch(next_file: int, filenames: list[str], last_modified: list[int]
 
 
 @blueprint.callback(
-    Output('next-file', 'data', allow_duplicate=True),
+    Output( 'next-file'   , 'data'              , allow_duplicate=True),
     Trigger('file-counter', 'modified_timestamp'),
-    State('file-counter', 'data'),
-    State('select-file', 'filename'),
+    State(  'file-counter', 'data'              ),
+    State(  'select-file' , 'uploadedFiles'     ),
 )
 @log_batch_func
-def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
+def increment_file_counter(file_counter: int, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
     The reason for incrementing the loop index in a separate callback rather than in process_batch()
@@ -765,7 +760,7 @@ def increment_file_counter(file_counter: int, filenames: list[str]) -> int:
 
     next_file: int = file_counter + 1
 
-    if next_file >= len(filenames):
+    if next_file >= len(uploaded_files):
         logger.debug('Reached the end of the batch; stop operation.')
         raise PreventUpdate
 
@@ -787,13 +782,12 @@ def done_no_save(file_counter: int) -> None:
 
 @blueprint.callback(
     Trigger('file-counter', 'modified_timestamp'),
-    State('file-counter', 'data'),
-    State('select-file', 'filename'),
-    State('select-file', 'contents'),
+    State(  'file-counter', 'data'              ),
+    State(  'files-status', 'data'              ),
     # background=True,
 )
 @log_batch_func
-def process_batch(file_counter: int, filenames: list[str], all_contents: list[str]) -> tuple:
+def process_batch(file_counter: int, status: dict[str, Any]) -> tuple:
     """Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -806,35 +800,34 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
 
     Parameters:
         file_counter    The index of the current file in the list of files (the batch)
-        filenames       The selected filenames (here only used to get the length of the batch)
-        all_contents    Base64-encoded file contents for all files in the batch
+        status          Filename(s) and (un)saved status
    """
 
-    # if (len(filenames) <= file_counter):  # We got here because there's a batch, so this should not happen
-    #     logger.error(
-    #         '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
-    #         file_counter, file_counter, len(filenames)
-    #     )
-    #     logger.debug('(%s) Exit.', file_counter)
-    #     return (
-    #         True,
-    #         'System Error:',
-    #         f'Processing file number {file_counter} but there are only {len(filenames)} in the batch.'
-    #     )
+    files: list[str] = status['files']
+    if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
+        logger.error(
+            '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
+            file_counter, file_counter, len(files)
+        )
+        logger.debug('(%s) Exit.', file_counter)
+        return (
+            True,
+            'System Error:',
+            f'Processing file number {file_counter} but there are only {len(files)} in the batch.'
+        )
 
-    logger.debug('(%s) Processing %s.', file_counter, filenames[file_counter])
+    file: Path = Path(files[file_counter])
+    outfile: str = Path(file).stem + '.xlsx'
 
-    contents: str = all_contents[file_counter]
-    filename: str = filenames[file_counter]
-    outfile: str = str(Path(filename).with_suffix('.xlsx'))
+    logger.debug('(%s) Processing %s.', file_counter, file.name)
 
     # Read the file contents into DataFrames.
     try:
-        frames = helpers.load_data(contents, filename)
+        frames = helpers.load_data(file)
         logger.debug('(%s) Data initialized.', file_counter)
     except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
-        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {filename}:', c='red', h='sm', ta='right'),
+        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {file.name}:', c='red', h='sm', ta='right'),
                                                                  dmc.Text(str(err), c='red', h='sm', ta='right')]})
         done_no_save(file_counter)
         return
@@ -891,7 +884,6 @@ def process_batch(file_counter: int, filenames: list[str], all_contents: list[st
 @blueprint.callback(
     Output('files-status', 'data'),
     Output('last-modified', 'children', allow_duplicate=True),
-    Output('select-file', 'contents', allow_duplicate=True),
     State('files-status', 'data'),
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
 )
@@ -904,15 +896,13 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
     visible, the batch is complete.
 
     Parameters:
-        files_status    Filename(s) and (un)saved status
+        files_status    Server-side file paths and unsaved status
         displays        The display attribute for all batch-related Saved badges
                         NOTE: This takes advantage of pattern-matching callback inputs.
 
     Returns:
         files-status/data      (str)  Same as files_status parameter but with the unsaved flag set to False
         last-modified/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
-        select-file/contents   (list) Empty to reset, so a new file upload always results in a contents change, even if
-                                    it's the same file(s) as previously loaded
     """
 
     if displays:  # This also gets triggered when all batch-related badges disappear
@@ -923,7 +913,7 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
             files_status['unsaved'] = False
             end_time: Patch = Patch()
             end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-            return files_status, end_time, []
+            return files_status, end_time
         else:
             logger.debug(
                 f'Batch not complete; so far only {len([d for d in displays if d == "inline"])} files.'
@@ -935,16 +925,16 @@ def batch_done(files_status: dict, displays: list[str]) -> tuple:
 
 
 @blueprint.callback(
-    Output('frame-store', 'data', allow_duplicate=True),
-    Output('files-status', 'data', allow_duplicate=True),
-    Output('append-file', 'contents'),
-    Output('read-error', 'opened', allow_duplicate=True),
-    Output('error-title', 'children', allow_duplicate=True),
-    Output('error-text', 'children', allow_duplicate=True),
-    State('frame-store', 'data'),
-    State('files-status', 'data'),
-    State('append-file', 'filename'),
-    Input('append-file', 'contents'),
+    Output('frame-store' , 'data'    , allow_duplicate=True),
+    Output('files-status', 'data'    , allow_duplicate=True),
+    Output('append-file' , 'contents'),
+    Output('read-error'  , 'opened'  , allow_duplicate=True),
+    Output('error-title' , 'children', allow_duplicate=True),
+    Output('error-text'  , 'children', allow_duplicate=True),
+    State( 'frame-store' , 'data'    ),
+    State( 'files-status', 'data'    ),
+    State( 'append-file' , 'filename'),
+    Input( 'append-file' , 'contents'),
 )
 @log_func
 def append_file(
@@ -961,9 +951,9 @@ def append_file(
 
     Parameters:
         new_frames       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
-        status           Filename (of the new data) and (un)saved status
+        status           Server-side file path (of the new data) and (un)saved status
         filename         Filename of the newly loaded existing Excel file
-        all_contents     Base64-encoded file contents of the newly loaded existing Excel file
+        contents         Base64-encoded file contents of the newly loaded existing Excel file
 
     Returns:
         frame-store/data     (dict) The three or four DataFrames of the combined set
@@ -978,7 +968,7 @@ def append_file(
     new_frames: helpers.Frames = helpers.Frames(**frame_store)
 
     try:
-        base_frames: helpers.Frames = helpers.load_data(contents, filename)
+        base_frames: helpers.Frames = helpers.load_data(filename, contents)
         logger.debug('Existing file data initialized.')
         combined_frames: helpers.Frames
         combined_frames, status['qa_range'] = helpers.append(base_frames, new_frames)
