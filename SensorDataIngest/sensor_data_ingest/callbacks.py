@@ -816,7 +816,7 @@ def process_batch(file_counter: int, status: dict[str, Any]) -> tuple:
             f'Processing file number {file_counter} but there are only {len(files)} in the batch.'
         )
 
-    file: Path = Path(files[file_counter])
+    file: str = files[file_counter]
     outfile: str = Path(file).stem + '.xlsx'
 
     logger.debug('(%s) Processing %s.', file_counter, file.name)

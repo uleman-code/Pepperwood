@@ -902,7 +902,7 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
 
 
 @log_func
-def append(base_frames: Frames, new_frames: Frames) -> tuple[dict[str, pd.DataFrame], list[str]]:
+def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
     """Append new sensor data to an existing set.
 
     The data already in memory is considered the new file, with the newly loaded data the base file to which the new file is

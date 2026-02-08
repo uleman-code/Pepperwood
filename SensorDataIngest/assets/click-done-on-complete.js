@@ -2,11 +2,16 @@
  * Listens for the uploader becoming "not uploading" and clicks the Done button
  * This is triggered by a Dash callback that sets a data attribute on the uploader
  */
-(function initDoneButtonClickListener() {
+(function initDoneButtonClickListener(retryCount = 0) {
+  const MAX_RETRIES = 20;
   const uploader = document.getElementById('select-file');
   if (!uploader) {
+    if (retryCount >= MAX_RETRIES) {
+      console.warn('[click-done] Uploader not found after max retries');
+      return;
+    }
     // console.log('[click-done] Uploader not found yet, will retry');
-    setTimeout(initDoneButtonClickListener, 500);
+    setTimeout(() => initDoneButtonClickListener(retryCount + 1), 500);
     return;
   }
 
