@@ -203,7 +203,5 @@ layout = dmc.AppShell(
                 },
             )
 
-blueprint: DashBlueprint = DashBlueprint(
-    transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
-)
+blueprint: DashBlueprint = DashBlueprint()
 blueprint.layout = dmc.MantineProvider(layout)

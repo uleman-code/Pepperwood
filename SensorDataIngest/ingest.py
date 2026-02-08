@@ -9,7 +9,6 @@ from dash_extensions.enrich import (
     DashProxy,
     ServersideOutputTransform,
     TriggerTransform,
-    DataclassTransform,
 )
 import dash_uploader_uppy5 as du
 
@@ -31,10 +30,8 @@ app: DashProxy = DashProxy(
             blueprint=blueprint,
             prevent_initial_callbacks=True,
             title='Sensor Data Ingest',
-            update_title=None,                          # While rebuilding the page, don't
-                                                        # change tab title to "Updating..."
-            # background_callback_manager='diskcache',  # noqa: ERA001
-            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
+            update_title=None,
+            transforms=[ServersideOutputTransform(), TriggerTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 
