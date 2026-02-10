@@ -5,6 +5,8 @@ import json
 import dash_mantine_components as dmc
 from dash_extensions.enrich import (
     DashBlueprint,
+    TriggerTransform,
+    ServersideOutputTransform,
     dcc,
 )
 import dash_uploader_uppy5 as du
@@ -200,5 +202,7 @@ layout = dmc.AppShell(
                 },
             )
 
-blueprint: DashBlueprint = DashBlueprint()
+blueprint: DashBlueprint = DashBlueprint(
+            transforms=[ServersideOutputTransform(), TriggerTransform()],
+)
 blueprint.layout = dmc.MantineProvider(layout)

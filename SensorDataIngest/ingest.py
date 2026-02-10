@@ -7,8 +7,6 @@ from typing import Final
 from sensor_data_ingest import config as cfg
 from dash_extensions.enrich import (
     DashProxy,
-    ServersideOutputTransform,
-    TriggerTransform,
 )
 import dash_uploader_uppy5 as du
 
@@ -31,7 +29,7 @@ app: DashProxy = DashProxy(
             prevent_initial_callbacks=True,
             title='Sensor Data Ingest',
             update_title=None,
-            transforms=[ServersideOutputTransform(), TriggerTransform()],
+            # transforms=[ServersideOutputTransform(), TriggerTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 

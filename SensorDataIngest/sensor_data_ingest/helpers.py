@@ -83,6 +83,8 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
 
 
 # Configuration-derived variables for brevity
+file_cache: Path = Path(cfg.config.application.file_cache_root)
+
 csv_extensions: list[str] = cfg.config.input.datalogger_file_extensions
 excel_extensions: list[str] = cfg.config.input.excel_file_extensions
 
@@ -244,6 +246,25 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
 
     logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)
     return frames
+
+@log_func
+def clear_file_cache(session_id: str | None = None) -> None:
+    """Call after processing or clearing all files to empty the upload-file cache.
+
+    Args:
+        session_id  If enabled, the file cache will have a subdirectory for each
+                    individual session (meaning, run of this app), to avoid conflict
+                    in multi-user operation. Only clear the current session's uploads.
+    """
+    target = file_cache if session_id is None else file_cache / session_id
+
+    logger.debug('Removing all uploaded files in %s.', target)
+    for file in target.glob('*'):
+        file.unlink(missing_ok=True)
+
+    if session_id is not None:
+        logger.debug('Removing session-specific upload directory %s.', target)
+        target.rmdir()
 
 @log_func
 def merge_metadata(frames: Frames) -> None:
@@ -445,8 +466,12 @@ def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
 
     # Find the sampling interval in the site metadata. If it's not there, use the default value from the
     # configuration settings.
-    interval_value = df_site.at[0, interval_column]
-    has_interval_value: bool = pd.notna(interval_value)
+    has_interval_value: bool
+    try:
+        interval_value = df_site.at[0, interval_column]
+        has_interval_value = pd.notna(interval_value)
+    except KeyError:        # Metadata does not have the interval column (because no matching static metadata was found)
+        has_interval_value = False
 
     site_id: str = df_site.at[0, input_site_id_column]        # For logging purposes
 
