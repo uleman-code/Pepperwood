@@ -1,6 +1,5 @@
 /* Hide Uppy Dashboard results: Upload complete, plus button, file thumbnails, progress bar. */
 .uppy-DashboardContent-bar,
-.uppy-Dashboard-files,
-.uppy-Dashboard-progressindicators {
+.uppy-Dashboard-files {
   display: none !important;
 }
