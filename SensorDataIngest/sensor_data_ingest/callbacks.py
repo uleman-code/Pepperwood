@@ -187,7 +187,8 @@ def load_file(files_status: Status) -> tuple:
     Input('files-status', 'data'),
     State('frame-store', 'data'),
     running=[
-        (Output('wait-please', 'display'), 'flex', 'none')
+        # (Output('wait-please', 'display'), 'flex', 'none')
+        (Output('wait-please', 'visible'), True, False)
     ],  # Show busy indicator while saving
 )
 @log_func
@@ -250,26 +251,27 @@ def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple
     Output('frame-store', 'clear_data'),
     Output('show-data', 'children', allow_duplicate=True),
     Output('file-name', 'children', allow_duplicate=True),
-    Output('last-modified', 'children', allow_duplicate=True),
+    Output('file-attributes', 'children', allow_duplicate=True),
     Trigger('clear-button', 'n_clicks'),
     State('show-data', 'children'),
 )
 @log_func
-def clear(show_data: list[Any]) -> tuple:
+def clear(show_data: list[dmc.CardSection]) -> tuple:
     """Clear all data in memory and on the screen, triggered by the Clear button.
 
     Set the filename and unsaved flag in files-status to blank and False, respectively, which in turn
     triggers all the follow-on chain of callbacks (clear the UI, clear the DataFrame store, etc.).
 
     Parameters:
-        show_data       The layout of the main app area, consisting of a list of CardSections
+        show_data       The layout of the main app area
 
     Returns:
         files-status/data      (str)  Empty list of server-side file paths, unsaved flag False
         frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
-        show-data/children     (list[objects]) Truncated contents of the main app area: remove batch processing output, if any
+        show-data/children     (list[dmc.CardSection]) Truncated contents of the main app area:
+                               remove batch processing output, if any
         file-name/children     (str)  Empty string to clear
-        last-modified/children (str)  Empty string to clear
+        file-attributes/children (str)  Empty string to clear
 
     """
 
@@ -277,24 +279,30 @@ def clear(show_data: list[Any]) -> tuple:
 
     status: Status = Status(files=[], unsaved=False)
 
-    # Always clear the DataFrame store, truncate the main app area, and clear the filename/last-modified text.
+    # Always clear the DataFrame store, truncate the main app area, and clear the filename/file-attributes text.
     return status, True, show_data[:3], None, None
 
 
 @blueprint.callback(
     Output('files-status', 'data', allow_duplicate=True),
+    Output('show-data', 'children', allow_duplicate=True),
     Input('select-file' , 'uploadedFiles'),
+    State('show-data', 'children'),
     # TODO: Use failedFiles for error processing.
 )
 @log_func
-def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> dict[str, list[str] | bool]:
+def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+                   show_data: list[dmc.CardSection]) -> dict[str, list[str] | bool]:
     """One or more files were selected and uploaded to the server.
     
     Parameters:
         uploaded_files      Filenames and other info of the uploaded files
-        
+        show_data           The layout of the main app area
+
     Returns:
         files-status/data   (dict) Server-side file paths and unsaved status
+        show-data/children  (list[dmc.CardSection]) Truncated contents of the main app area:
+                            remove batch processing output, if any
     """
 
     files: list[Path] = [str(file_cache / file['response']['filename']) for file in uploaded_files]
@@ -306,7 +314,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
 
     status: dict[str, str | list[str] | bool] = dict(files=files, unsaved=True)
 
-    return status
+    return status, show_data[:3]
 
 
 @blueprint.callback(
@@ -515,13 +523,13 @@ def toggle_save_clear(files_status: Status) -> tuple:
 
 @blueprint.callback(
     Output('file-name', 'children'),
-    Output('last-modified', 'children'),
+    Output('file-attributes', 'children'),
     Input('files-status', 'data'),
     State('select-file', 'uploadedFiles'),
 )
 @log_func
 def show_file_info(files_status: Status, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
-    """If there's data in memory, show information (filename, last-modified) about the file that was loaded.
+    """If there's data in memory, show information (filename, file-attributes) about the file that was loaded.
 
     Parameters:
         files_status    File paths and (un)saved status
@@ -529,18 +537,28 @@ def show_file_info(files_status: Status, uploaded_files: list[dict[str, str | in
 
     Returns:
         file-name/children      (str) The name of the currently loaded file (no path)
-        last-modified/children  (str) Friendly-formatted size of the currently loaded file
+        file-attributes/children  (str) Friendly-formatted size of the currently loaded file
     """
 
+    files: list[str] = files_status['files']
+
     # Make sure there's only one file and we're not appending.
-    if len(uploaded_files) == 1 and 'qa_status' not in files_status:
-        name: str = uploaded_files[0]['name']
-        info: str = f'Size: {hf.format_size(uploaded_files[0]["size"])}'
-        logger.debug('Data in memory; show file information.')
-        return name, info
-    else:
-        logger.debug('Zero or multiple files loaded, or in Append process; nothing to do.')
-        raise PreventUpdate
+    match len(files):
+        case 1:
+            if 'qa_status' not in files_status:
+                name: str = uploaded_files[0]['name']
+                info: str = f'Size: {hf.format_size(uploaded_files[0]["size"])}'
+                logger.debug('Data in memory; show file information.')
+                return name, info
+            else:
+                logger.debug('Append in process; nothing to do.')
+                raise PreventUpdate
+        case 0:
+            logger.debug('In-memory data was cleared. Clear file information.')
+            return '', ''
+        case _:
+            logger.debug('Multiple files loaded; nothing to do.')
+            raise PreventUpdate
 
 
 @log_func
@@ -571,12 +589,12 @@ def run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> list
 
     if duplicate_samples:
         report.append(
-            dmc.Text('Duplicate samples were found and dropped.', c='red', h='sm', ta='right')
+            dmc.Text('Duplicate samples were found and dropped.', c='red', ta='right')
         )
 
     if missing_values:
         report.append(
-            dmc.Text('One or more variables have data dropouts.', c='red', h='sm', ta='right')
+            dmc.Text('One or more variables have data dropouts.', c='red', ta='right')
         )
 
     if missing_samples:
@@ -584,7 +602,7 @@ def run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> list
             dmc.Text(
                 'There are gaps in the time series; placeholder samples were inserted.',
                 c='red',
-                h='sm',
+               
                 ta='right',
             )
         )
@@ -647,12 +665,12 @@ def report_sanity_checks(
 
         # For some reason (JSON, I presume), the children of a Stack are returned as dicts, not Text objects. Turn them back into objects.
         current_report = [dmc.Text(**c['props']) for c in current_report]
-        report = current_report + [dmc.Text(f'{len(data):,} total samples after appending.', h='sm', ta='right')]
+        report = current_report + [dmc.Text(f'{len(data):,} total samples after appending.', ta='right')]
         qa_range = status['qa_range']
         status['qa_status'] = QA_Status.COMPLETE
     else:
         logger.debug('New data found. Running and reporting sanity checks.')
-        report = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')]
+        report = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', ta='right')]
         qa_range = None
 
     qa_report: list[dmc.Text]
@@ -660,7 +678,7 @@ def report_sanity_checks(
     try:
         qa_report = run_sanity_checks(frames, qa_range)
     except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
-        qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+        qa_report = [dmc.Text(str(err), c='red', ta='right')]
         status['no_save'] = True  # Do not save; requires manual intervention
 
     report += qa_report
@@ -671,7 +689,7 @@ def report_sanity_checks(
 
 @blueprint.callback(
     Output('file-name'    , 'children'     , allow_duplicate=True),
-    Output('last-modified', 'children'     , allow_duplicate=True),
+    Output('file-attributes', 'children'     , allow_duplicate=True),
     Output('next-file'    , 'data'         , allow_duplicate=True),
     Input('files-status'  , 'data'         ),
     State('select-file'   , 'uploadedFiles'),
@@ -696,7 +714,7 @@ def setup_batch(files_status: Status, uploaded_files: list[dict[str, str | int |
 
     Returns:
         file-name/children     (str) Reuse for Batch mode operation header
-        last-modified/children (str) Reuse for start and completion time of batch operation
+        file-attributes/children (str) Reuse for start and completion time of batch operation
         next-file/data         (int) Set the next value for the loop counter
 
     """
@@ -744,11 +762,9 @@ def next_in_batch(next_file: int, uploaded_files: list[dict[str, str | int | dic
     this_file = uploaded_files[next_file]
 
     # Construct a whole new CardSection element, to be appended to the show-data area
-    this_file_info: dmc.CardSection = layout.make_file_info(next_file)
-    this_file_info.children.children[0].children[0].children = this_file['name']
-    this_file_info.children.children[0].children[1].children[0].children = f'Size: {hf.format_size(this_file["size"])}'
-    this_file_info.children.children[1].display = 'flex'
-    this_file_info.children.children[1].type = 'dots'
+    this_file_info: dmc.CardSection = layout.make_file_info(next_file)              # file-info-n
+    this_file_info.children.children[1].children[0].children = this_file['name']    # file-name-n
+    this_file_info.children.children[1].children[1].children[0].children = f'Size: {hf.format_size(this_file["size"])}' # file-attributes-n
 
     showdata: Patch = Patch()
     showdata.append(this_file_info)
@@ -798,7 +814,8 @@ def done_no_save(file_counter: int) -> None:
         file_counter    The index of the current file in the list of files (the batch)
     """
 
-    set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    # set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    set_props(f'wait-please-{file_counter}', {'visible': False})
     set_props(
         {'type': 'saved-badge', 'index': file_counter},
         {'children': 'NOT SAVED', 'display': 'inline', 'color': 'red'},
@@ -852,13 +869,13 @@ def process_batch(file_counter: int, status: Status) -> tuple:
         logger.debug('(%s) Data initialized.', file_counter)
     except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
-        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {Path(file).name}:', c='red', h='sm', ta='right'),
-                                                                 dmc.Text(str(err), c='red', h='sm', ta='right')]})
+        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {Path(file).name}:', c='red', ta='right'),
+                                                                 dmc.Text(str(err), c='red', ta='right')]})
         done_no_save(file_counter)
         return
 
     data = frames.data
-    report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', h='sm', ta='right')]
+    report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', ta='right')]
 
     no_save = False
 
@@ -866,7 +883,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
         helpers.merge_metadata(frames)
     except helpers.SiteIdNotFoundError as err:
         logger.info('Continuing with incomplete metadata: %s', err)
-        report += [dmc.Text(f'Incomplete metadata: {err}', c='red', h='sm', ta='right')]
+        report += [dmc.Text(f'Incomplete metadata: {err}', c='red', ta='right')]
 
     # Perform sanity/QA checks and report the results, except:
     #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file.
@@ -876,7 +893,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
             qa_report: list[dmc.Text] = run_sanity_checks(frames, None)
         except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
             no_save = True
-            qa_report = [dmc.Text(str(err), c='red', h='sm', ta='right')]
+            qa_report = [dmc.Text(str(err), c='red', ta='right')]
 
         report += qa_report
 
@@ -901,7 +918,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
     set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
     logger.debug('(%s) Download complete. Clean up.', file_counter)
 
-    set_props(f'wait-please-{file_counter}', {'display': 'none'})
+    set_props(f'wait-please-{file_counter}', {'visible': False})
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
 
     return
@@ -909,7 +926,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
 
 @blueprint.callback(
     Output('files-status', 'data'),
-    Output('last-modified', 'children', allow_duplicate=True),
+    Output('file-attributes', 'children', allow_duplicate=True),
     State('files-status', 'data'),
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
 )
@@ -930,7 +947,7 @@ def batch_done(files_status: Status, badges: list[str]) -> tuple:
 
     Returns:
         files-status/data      (str)  Same as files_status parameter but with the unsaved flag set to False
-        last-modified/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
+        file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
     """
 
     if badges:  # This also gets triggered when all batch-related badges disappear
@@ -941,7 +958,7 @@ def batch_done(files_status: Status, badges: list[str]) -> tuple:
             files_status['unsaved'] = False
             clear_file_cache()
             end_time: Patch = Patch()
-            end_time.append(f' -- Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+            end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             return files_status, end_time
         else:
             logger.debug(

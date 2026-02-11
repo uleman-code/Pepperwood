@@ -112,17 +112,23 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
         dmc.CardSection: This file's info/progress/QA area
     """
 
-    suffix   = '' if n is None else '-' + str(n)
+    suffix   = '' if n is None else f'-{n}'
     badge_id = 'saved-badge' if n is None else {'type': 'saved-badge', 'index': n}
     return  dmc.CardSection(
                 dmc.Group(
                     children=[
+                        dmc.LoadingOverlay(id=f'wait-please{suffix}',
+                                           loaderProps={'type': 'dots' if n is not None else 'oval'},
+                                           overlayProps={'backgroundOpacity': 0 if n is not None else 0.2},
+                                           visible=True if n is not None else False,
+                                           mt=25,
+                                          ),
                         dmc.Stack(
                             children=[
-                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold', h='sm'),
+                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold'),
                                 dmc.Group(
                                     children=[
-                                        dmc.Text(id=f'last-modified{suffix}'),
+                                        dmc.Text(id=f'file-attributes{suffix}'),
                                         dmc.Badge(
                                             'Saved',
                                             id=badge_id,
@@ -134,23 +140,23 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                             ],
                             py='xs',
                             mt=25,
-                        ),
-                        dmc.Loader(
-                            id=f'wait-please{suffix}',
-                            display='none',
-                            mt=25,
-                            styles={'justify-content': 'start'},
+                            w='48%',
+                            gap=0,
+                            style={'display': 'flex', 'flexwrap': 'wrap'},
                         ),
                         dmc.Stack(
                             id=f'sanity-checks{suffix}',
                             py='xs',
                             mt=25,
                             mr=20,
-                            gap='xs',
+                            w='48%',
+                            gap=0,
+                            style={'display': 'flex', 'flexwrap': 'wrap'},
                         ),
                         dcc.Download(id=f'save-xlsx{suffix}'),
                     ],
                     justify='space-between',
+                    style={'position': 'relative'},
                 ),
                 id=f'file-info{suffix}',
                 withBorder=True,
