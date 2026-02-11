@@ -260,7 +260,8 @@ def clear_file_cache(session_id: str | None = None) -> None:
 
     logger.debug('Removing all uploaded files in %s.', target)
     for file in target.glob('*'):
-        file.unlink(missing_ok=True)
+        if file.is_file():
+            file.unlink(missing_ok=True)
 
     if session_id is not None:
         logger.debug('Removing session-specific upload directory %s.', target)

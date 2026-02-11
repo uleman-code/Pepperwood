@@ -165,7 +165,7 @@ def load_file(files_status: Status) -> tuple:
     except helpers.SiteIdNotFoundError as err:
         logger.info('Continuing with incomplete metadata: %s', err)
         return (
-            Serverside(asdict(frames)),
+            Serverside(asdict(frames), key='Frames'),
             True,
             'Continuing with incomplete metadata:',
             str(err)
@@ -187,8 +187,9 @@ def load_file(files_status: Status) -> tuple:
     Input('files-status', 'data'),
     State('frame-store', 'data'),
     running=[
-        # (Output('wait-please', 'display'), 'flex', 'none')
-        (Output('wait-please', 'visible'), True, False)
+     running=[
+         (Output('wait-please', 'visible'), True, False)
+     ],  # Show busy indicator while saving
     ],  # Show busy indicator while saving
 )
 @log_func
@@ -224,7 +225,7 @@ def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple
 
     frames: Frames = Frames(**frame_store) if frame_store else None
 
-    if (frames and not frames.data.empty):
+        outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
         # frames: Frames = Frames(**frame_store)
         outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
 
@@ -713,9 +714,10 @@ def setup_batch(files_status: Status, uploaded_files: list[dict[str, str | int |
         uploaded_files  Filenames and other info of the uploaded files
 
     Returns:
-        file-name/children     (str) Reuse for Batch mode operation header
-        file-attributes/children (str) Reuse for start and completion time of batch operation
-        next-file/data         (int) Set the next value for the loop counter
+        file-name/children          (str) Reuse for Batch mode operation header
+        file-attributes/children    (list[str]) Reuse for start and completion time of batch operation
+        next-file/data              (int) Set the next value for the loop counter
+        next-file/data              (int) Set the next value for the loop counter
 
     """
 
@@ -814,7 +816,6 @@ def done_no_save(file_counter: int) -> None:
         file_counter    The index of the current file in the list of files (the batch)
     """
 
-    # set_props(f'wait-please-{file_counter}', {'display': 'none'})
     set_props(f'wait-please-{file_counter}', {'visible': False})
     set_props(
         {'type': 'saved-badge', 'index': file_counter},

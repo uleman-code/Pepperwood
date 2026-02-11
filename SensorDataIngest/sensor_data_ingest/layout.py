@@ -120,7 +120,7 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                         dmc.LoadingOverlay(id=f'wait-please{suffix}',
                                            loaderProps={'type': 'dots' if n is not None else 'oval'},
                                            overlayProps={'backgroundOpacity': 0 if n is not None else 0.2},
-                                           visible=True if n is not None else False,
+                                           visible=n is not None,
                                            mt=25,
                                           ),
                         dmc.Stack(
@@ -142,7 +142,7 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                             mt=25,
                             w='48%',
                             gap=0,
-                            style={'display': 'flex', 'flexwrap': 'wrap'},
+                            style={'display': 'flex', 'flexWrap': 'wrap'},
                         ),
                         dmc.Stack(
                             id=f'sanity-checks{suffix}',
@@ -151,7 +151,7 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                             mr=20,
                             w='48%',
                             gap=0,
-                            style={'display': 'flex', 'flexwrap': 'wrap'},
+                            style={'display': 'flex', 'flexWrap': 'wrap'},
                         ),
                         dcc.Download(id=f'save-xlsx{suffix}'),
                     ],

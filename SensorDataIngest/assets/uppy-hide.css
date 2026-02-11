@@ -1,4 +1,4 @@
-/* Hide Uppy Dashboard results: Upload complete, plus button, file thumbnails, progress bar. */
+/* Hide Uppy Dashboard results: Upload complete, plus button, file thumbnails. */
 .uppy-DashboardContent-bar,
 .uppy-Dashboard-files {
   display: none !important;
