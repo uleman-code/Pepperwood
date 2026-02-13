@@ -186,11 +186,7 @@ def load_file(files_status: Status) -> tuple:
     Trigger('save-button', 'n_clicks'),
     Input('files-status', 'data'),
     State('frame-store', 'data'),
-    running=[
-     running=[
-         (Output('wait-please', 'visible'), True, False)
-     ],  # Show busy indicator while saving
-    ],  # Show busy indicator while saving
+    running=[(Output('wait-please', 'visible'), True, False)],  # Show busy indicator while saving
 )
 @log_func
 def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple:
@@ -225,6 +221,7 @@ def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple
 
     frames: Frames = Frames(**frame_store) if frame_store else None
 
+    if frames and not frames.data.empty:
         outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
         # frames: Frames = Frames(**frame_store)
         outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
