@@ -5,6 +5,7 @@ from PyInstaller.utils.hooks import collect_data_files
 datas = []
 datas += collect_data_files('dash_extensions')
 datas += collect_data_files('dash_mantine_components')
+datas += collect_data_files('dash_upload_uppy5')
 
 
 a = Analysis(
