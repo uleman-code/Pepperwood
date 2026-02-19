@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Ingest"
-#define MyAppVersion "0.6"
+#define MyAppVersion "1.0"
 #define MyAppPublisher "Robert Uleman"
 #define MyAppURL "http://github.com/uleman-code/Pepperwood"
 #define MyAppExeName "ingest.exe"
@@ -46,6 +46,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\ingest.toml"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\assets\click-done-on-complete.js"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\assets\uppy-hide.css"; DestDir: "{app}\assets"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]

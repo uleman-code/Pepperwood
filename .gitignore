@@ -1,5 +1,6 @@
 __pycache__
 testing.ipynb
+uv.lock
 ~*
 # *.spec
 .DS_Store

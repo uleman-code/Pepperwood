@@ -8,5 +8,5 @@ Modules:
                     environment, called by callbacks
 """
 
-__version__: str       = '0.6'        # TODO: Need a proper versioning setup
+__version__: str       = '1.0.0'        # TODO: Need a proper versioning setup
 __all__:     list[str] = ['config', 'layout', 'callbacks', 'helpers']

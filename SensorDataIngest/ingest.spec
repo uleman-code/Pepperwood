@@ -1,3 +1,4 @@
+# type: ignore
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 
