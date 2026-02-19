@@ -6,6 +6,7 @@ datas = []
 datas += collect_data_files('dash_extensions')
 datas += collect_data_files('dash_mantine_components')
 datas += collect_data_files('dash_uploader_uppy5')
+datas += [('assets', 'assets')]
 
 
 a = Analysis(
