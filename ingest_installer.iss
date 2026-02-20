@@ -48,8 +48,6 @@ Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\dist\{#My
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\ingest.toml"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\column_metadata.csv"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\site_metadata.csv"; DestDir: "{app}"; Flags: ignoreversion
-Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\assets\click-done-on-complete.js"; DestDir: "{app}\assets"; Flags: ignoreversion
-Source: "C:\Users\ruleman\Documents\GitHub\Pepperwood\SensorDataIngest\assets\uppy-hide.css"; DestDir: "{app}\assets"; Flags: ignoreversion
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
