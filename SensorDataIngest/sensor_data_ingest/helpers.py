@@ -527,7 +527,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
                     0,
                     hyperlink_column,
                     [
-                        f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names.data}!$A:$A,MATCH($A{row},{worksheet_names.data}!$A:$A,0))),"   🔗")'
+                        f'=HYPERLINK("#"&CELL("address",INDEX({worksheet_names.data}!$A:$A,MATCH($B{row},{worksheet_names.data}!$A:$A,0))),"   🔗")'
                         for row in range(2, len(df) + 2)
                     ],
                 )
@@ -739,7 +739,7 @@ def fill_missing_rows(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.D
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
     missing row/timestamp somewhere, or an entire missing period (sequence of timestamps). Either way, insert as
     many new rows as needed to fill the gap, with all column values (except the sequence-number column and, of course,
-    the timestamp column) set to NaN. These will become empty cells in the output Excel file.
+    the timestamp column) set to NaN. These will become NA-valued cells in the output Excel file.
 
     Renumber the sequence-number column, starting at zero. This eliminates any gaps or NaNs in this column.
 
@@ -923,6 +923,7 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
         [df_notes, duplicates_report, missing_values_report, missing_samples_report]
     ).sort_values(['Start of issue', 'End of issue'])
     frames.notes = df_notes.reset_index(drop=True)
+    frames.data = df_data
 
     return duplicates_found, missing_values_found, missing_samples_found
 
