@@ -584,12 +584,10 @@ def render_graphs(
         (fig.add_traces([make_trace(col) for col in showcols])
             .update_yaxes(title_text='')
             .update_layout(legend_title_text='Variable', 
-                        #    title_text=', '.join(showcols), 
-                           title={'text': ', '.join(showcols), 'x': 0.5, 'xanchor': 'center', 'yref': 'paper', 'yanchor': 'top'},
+                           title=dict(text=', '.join(showcols), x=0.5, xanchor='center', yref='paper', yanchor='top'),
                            margin=dict(t=35),
                            hovermode='x unified',
-                           height=720)
-        )
+                           height=720))
     else:
         # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
         # This is very convenient, but makes it somewhat inflexible with respect to individual plot titles/annotations. For now, good enough.
@@ -599,7 +597,7 @@ def render_graphs(
             .update_yaxes(matches=None, title_text='')  # Don't show the axis title 'value'
             .update_xaxes(showticklabels=True)  # Repeat the time scale under each graph
             .for_each_annotation(lambda a: a.update(text=a.text.split('=')[-1]))  # Just print the variable name
-            .update_layout(legend_title_text='Variable')
+            .update_layout(legend_title_text='Variable', margin=dict(t=25))
         )
 
     logger.debug('Plot generated.')
