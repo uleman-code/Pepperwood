@@ -12,6 +12,7 @@ from dataclasses import asdict, dataclass, field
 
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 
 from pandas.core.groupby.generic import SeriesGroupBy  # Just for type hinting
 
@@ -576,10 +577,16 @@ def render_graphs(
     df_show: pd.DataFrame = df_data.set_index(timestamp_column)[showcols]
 
     if single_plot:
-        fig = (
-            df_show.plot.line(height=720)
+        fig = go.Figure()
+        # fig = (
+            # df_show.plot.line(height=720)
+            # px.line(df_show, height=720)
+        (fig.add_traces([go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col) for col in showcols])
             .update_yaxes(title_text='')
-            .update_layout(legend_title_text='Variable', title_text=', '.join(showcols), hovermode='x unified')
+            .update_layout(legend_title_text='Variable', 
+                           title_text=', '.join(showcols), 
+                           hovermode='x unified',
+                           height=720)
         )
     else:
         # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
