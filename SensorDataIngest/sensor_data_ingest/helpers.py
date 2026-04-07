@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field
 
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
+
 
 from pandas.core.groupby.generic import SeriesGroupBy  # Just for type hinting
 
