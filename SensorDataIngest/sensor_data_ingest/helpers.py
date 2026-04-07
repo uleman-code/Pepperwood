@@ -578,13 +578,15 @@ def render_graphs(
 
     if single_plot:
         fig = go.Figure()
-        # fig = (
-            # df_show.plot.line(height=720)
-            # px.line(df_show, height=720)
-        (fig.add_traces([go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col) for col in showcols])
+        def make_trace(col: str) -> go.Scatter:
+            return go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col, hovertemplate='%{y:.2f}')
+        
+        (fig.add_traces([make_trace(col) for col in showcols])
             .update_yaxes(title_text='')
             .update_layout(legend_title_text='Variable', 
-                           title_text=', '.join(showcols), 
+                        #    title_text=', '.join(showcols), 
+                           title={'text': ', '.join(showcols), 'x': 0.5, 'xanchor': 'center', 'yref': 'paper', 'yanchor': 'top'},
+                           margin=dict(t=35),
                            hovermode='x unified',
                            height=720)
         )
