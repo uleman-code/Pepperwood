@@ -579,7 +579,7 @@ def render_graphs(
         fig = (
             df_show.plot.line(height=720)
             .update_yaxes(title_text='')
-            .update_layout(legend_title_text='Variable', title_text=', '.join(showcols))
+            .update_layout(legend_title_text='Variable', title_text=', '.join(showcols), hovermode='x unified')
         )
     else:
         # Using Plotly facet-plot graphing convenience: multiple graphs in one figure (facet_row='variable' makes it that way).
