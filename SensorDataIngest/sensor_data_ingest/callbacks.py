@@ -317,6 +317,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
 
 @blueprint.callback(
     Output('select-file', 'disabled'),
+    Output('select-file', 'uploadedFiles'),
     Output('load-label', 'c'),
     Input('files-status', 'data'),
 )
@@ -327,14 +328,17 @@ def toggle_loaddata(status: Status) -> tuple:
     This includes graying out the label of the Load Data area; the rest is governed by the Upload component
     and grayed out automatically.
 
-    If data is cleared or saved, empty the upload-file cache, since it means we no longer need those files.
+    If data is cleared or saved, empty the upload-file cache, since it means we no longer need those files. Also
+    clear the uploaded-files list, to ensure that a callback always happens when the user selects a file, even
+    if it's the same file again.
 
     Parameters:
         status (Status) Filename(s) and (un)saved status
 
     Returns:
-        select-file/disabled (bool) True if unsaved data in memory; False otherwise (no data or data was saved)
-        load-label/c         (str)  Color for the Load Data area label: dimmed for disabled, black for enabled
+        select-file/disabled      (bool) True if unsaved data in memory; False otherwise (no data or data was saved)
+        select-file/uploadedFiles (list) If not unsaved, empty list to clear the uploaded-files list
+        load-label/c              (str)  Color for the Load Data area label: dimmed for disabled, black for enabled
     """
 
     unsaved: bool = status['unsaved']
@@ -346,7 +350,7 @@ def toggle_loaddata(status: Status) -> tuple:
     if not unsaved:
         helpers.clear_file_cache()
 
-    return unsaved, 'dimmed' if unsaved else 'black'
+    return unsaved, no_update if unsaved else [], 'dimmed' if unsaved else 'black'
 
 
 @blueprint.callback(
