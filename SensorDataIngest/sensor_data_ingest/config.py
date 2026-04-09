@@ -338,9 +338,9 @@ def metadata_init() -> None:
     alias_column: str = config.metadata.meta_aliases_column
     no_aliases = df_columns[alias_column].isna()
     df_columns[alias_column] = (df_columns[alias_column]
-                             .str.replace(', +', ',', regex=True)
-                             .str.split(',')
-                            )
+                                .str.replace(', +', ',', regex=True)
+                                .str.split(',')
+                               )
     df_columns.loc[no_aliases, alias_column] = pd.Series([[]] * no_aliases.sum()).values
 
     # For lookup purposes, add the current field name to the list of aliases. Then, after exploding the aliases,
