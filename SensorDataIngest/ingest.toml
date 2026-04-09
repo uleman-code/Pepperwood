@@ -68,6 +68,7 @@ input_site_id_column = "Station Name"
 meta_site_id_column = "Site ID"
 
 input_units_column = "Units"
+input_description_column = "Description"
 input_column_name_column = "Name"
 meta_field_column = "Field"
 meta_aliases_column = "Aliases"

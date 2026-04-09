@@ -139,6 +139,7 @@ class MetadataCfg(BaseModel):
     input_site_id_column: str
     meta_site_id_column: str
     input_units_column: str
+    input_description_column: str
     input_column_name_column: str
     meta_field_column: str
     meta_aliases_column: str

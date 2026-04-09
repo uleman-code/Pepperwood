@@ -104,6 +104,7 @@ station_columns: list[str] = cfg.config.metadata.input_site_meta_columns
 input_site_id_column: str = cfg.config.metadata.input_site_id_column
 meta_site_id_column: str = cfg.config.metadata.meta_site_id_column
 units_column: str = cfg.config.metadata.input_units_column
+description_column: str = cfg.config.metadata.input_description_column
 column_name_column: str = cfg.config.metadata.input_column_name_column
 field_column: str = cfg.config.metadata.meta_field_column
 aliases_column: str = cfg.config.metadata.meta_aliases_column
@@ -583,9 +584,9 @@ def render_graphs(
         return go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col, hovertemplate='%{y:.4g}')
     
     df_cols: pd.DataFrame = df_meta.set_index(column_name_column)
-    df_cols = df_cols.loc[df_cols.index.intersection(showcols), [units_column, 'Description']]
+    df_cols = df_cols.loc[df_cols.index.intersection(showcols), [units_column, description_column]]
     df_cols[units_column] = df_cols[units_column].fillna('')
-    df_cols['Description'] = df_cols['Description'].fillna(df_cols.index.to_series())
+    df_cols[description_column] = df_cols[description_column].fillna(df_cols.index.to_series())
 
     if single_plot:
         logger.debug('Generating single-plot graph.')
@@ -612,7 +613,7 @@ def render_graphs(
         fig = (make_subplots(rows=nrows, cols=1, 
                              shared_xaxes=True, 
                              vertical_spacing=0.17/nrows, row_heights=[1/nrows]*nrows, 
-                             subplot_titles=[df_cols['Description'].get(col, col) for col in showcols])
+                             subplot_titles=[df_cols[description_column].get(col, col) for col in showcols])
                .add_traces([make_trace(col) for col in showcols], rows=[i+1 for i in range(len(showcols))], cols=1)
                .update_traces(xaxis='x')
                .update_xaxes(showticklabels=True)
