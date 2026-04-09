@@ -4,6 +4,7 @@
 import base64
 import io
 import logging
+from turtle import title
 import decorator
 
 from pathlib import Path
@@ -583,6 +584,8 @@ def render_graphs(
     
     df_cols: pd.DataFrame = df_meta.set_index(column_name_column)
     df_cols = df_cols.loc[df_cols.index.intersection(showcols), [units_column, 'Description']]
+    df_cols[units_column] = df_cols[units_column].fillna('')
+    df_cols['Description'] = df_cols['Description'].fillna(df_cols.index.to_series())
 
     if single_plot:
         logger.debug('Generating single-plot graph.')
@@ -621,7 +624,9 @@ def render_graphs(
         )
 
         for i, col in enumerate(showcols):
-            fig.update_yaxes(title_text=df_cols[units_column].get(col, ''), row=i+1)
+            units = df_cols[units_column].get(col, '')
+            units = '' if pd.isna(units) else units
+            fig.update_yaxes(title_text=units, row=i+1)
 
     logger.debug('Plot generated.')
     return fig
