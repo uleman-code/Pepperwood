@@ -559,7 +559,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
 
 @log_func
 def render_graphs(
-    df_data: pd.DataFrame, showcols: list[str], single_plot: bool = False
+    df_data: pd.DataFrame, df_meta: pd.DataFrame, showcols: list[str], single_plot: bool = False
 ) -> go.Figure:
     """For each of the selected columns, generate a trace in a Plotly graph.
 
@@ -568,6 +568,7 @@ def render_graphs(
 
     Parameters:
         df_data        The multicolumn time sequence of sensor data
+        df_meta        The column metadata, used to get the column descriptions and units for labeling the graphs
         showcols       Names of the selected columns
         single_plot    If true, create a single multivariable plot; otherwise, multiple single-variable plots
 
@@ -580,26 +581,35 @@ def render_graphs(
     def make_trace(col: str) -> go.Scatter:
         return go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col, hovertemplate='%{y:.4g}')
     
+    df_cols: pd.DataFrame = df_meta.set_index(column_name_column)
+    df_cols = df_cols.loc[df_cols.index.intersection(showcols), [units_column, 'Description']]
+
     if single_plot:
+        logger.debug('Generating single-plot graph.')
+        units = df_cols[units_column].iloc[0] if df_cols[units_column].nunique(dropna=False) == 1 else ''
+        if not units:
+            logger.info('Multiple units found among the selected columns. Units will not be shown along the Y-axis.')
+
         fig = (go.Figure()
                .add_traces([make_trace(col) for col in showcols])
-               .update_yaxes(title_text='')
+               .update_yaxes(title_text=units)
                .update_layout(legend_title_text='Variable', 
                               title=dict(text=', '.join(showcols), x=0.5, xanchor='center', yref='paper', yanchor='top'),
                               margin=dict(t=35),
                               hovermode='x unified',
                               height=720))      # TODO: Make configurable
     else:
-        nrows = len(showcols)
+        logger.debug('Generating stacked multi-plot graph.')
+        nrows: int = len(showcols)
 
         # NOTE: make_subplots with shared_xaxes has a quirk that prevents the hover from working across all graphs unless you
         #       explicitly set the xaxis for each trace to the same name. See update_traces() below.
-        #       update_traces(), in turn, hides the x-axis tick labels, requiring update_xaxes() with showticklabels=True 
-        #       to force them back on for at least one of the axes (for some reason, they only show for the top subplot).
+        #       This trick, however, hides the x-axis tick labels, requiring an override with update_xaxes() 
+        #       to force them back on for at least one of the axes (currently, they only show for the top subplot).
         fig = (make_subplots(rows=nrows, cols=1, 
                              shared_xaxes=True, 
-                             vertical_spacing=0.15/nrows, row_heights=[1/nrows]*nrows, 
-                             subplot_titles=showcols)
+                             vertical_spacing=0.17/nrows, row_heights=[1/nrows]*nrows, 
+                             subplot_titles=[df_cols['Description'].get(col, col) for col in showcols])
                .add_traces([make_trace(col) for col in showcols], rows=[i+1 for i in range(len(showcols))], cols=1)
                .update_traces(xaxis='x')
                .update_xaxes(showticklabels=True)
@@ -609,6 +619,9 @@ def render_graphs(
                               hovermode='x unified',
                               height=80 + 220 * nrows)
         )
+
+        for i, col in enumerate(showcols):
+            fig.update_yaxes(title_text=df_cols[units_column].get(col, ''), row=i+1)
 
     logger.debug('Plot generated.')
     return fig

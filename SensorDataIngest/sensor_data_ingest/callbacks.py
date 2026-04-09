@@ -437,9 +437,7 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
 
     if showcols:
         logger.debug('Columns selected; generating graphs.')
-        data = frames.data
-        fig = helpers.render_graphs(data, showcols, single_plot)
-
+        fig = helpers.render_graphs(frames.data, frames.meta, showcols, single_plot)
         return fig, 'contents'
     else:
         logger.debug('No columns selected; clear the graphs.')
