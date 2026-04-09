@@ -4,7 +4,6 @@
 import base64
 import io
 import logging
-from turtle import title
 import decorator
 
 from pathlib import Path
@@ -584,7 +583,15 @@ def render_graphs(
         return go.Scatter(x=df_show.index, y=df_show[col], mode='lines', name=col, hovertemplate='%{y:.4g}')
     
     df_cols: pd.DataFrame = df_meta.set_index(column_name_column)
+
+    # If no static metadata was found, the units column will come from the input, but there will be no
+    # description column. In that case, add the description column and populate it with the column names.
+    if description_column not in df_cols.columns:
+        df_cols[description_column] = pd.Series(df_cols.index, index=df_cols.index)
+
     df_cols = df_cols.loc[df_cols.index.intersection(showcols), [units_column, description_column]]
+    
+    # If static metadata is missing for some columns, those rows will be filled with NaNs.
     df_cols[units_column] = df_cols[units_column].fillna('')
     df_cols[description_column] = df_cols[description_column].fillna(df_cols.index.to_series())
 
