@@ -1,15 +1,15 @@
 ﻿Field,Aliases,Description,Units,Units-2,Sensor,Manufacturer,Notes,SiteKey
-Timestamp,TIMESTAMP,Date and time of data collection ,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,New_MET
+Timestamp,TIMESTAMP,Date and time of data collection,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,New_MET
 SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,New_MET
 WindSpeed,"WindSpd_WVc(1),WindSpd_WVc1",Mean horizontal wind speed,m/s,Meters per second,05103,RM Young,,New_MET
 WindDir,"WindSpd_WVc(2),WindSpd_WVc2",Unit vector mean wind direction,deg N,Degrees from north,05103,RM Young,,New_MET
-WindMax,WindSpd_Max,Maximum wind  speed,m/s,Meters per second,05103,RM Young,,New_MET
+WindMax,WindSpd_Max,Maximum wind speed,m/s,Meters per second,05103,RM Young,,New_MET
 WindDir_SMM,,Direction of max windspeed,deg N,Degrees from north,05103,RM Young,,New_MET
 AirTemp_F,AirTemp_F_Avg,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
 RH,RH_Avg,Average relative humidity,%,Percent,HMP60,Vaisala,,New_MET
 DewPt_F,DewPt_F_Avg,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
 FuelTemp,FuelTemp_Avg,Average fuel temperature,°F,Degrees Fahrenheit,CS205/107,Campbell Scientific,,New_MET
-FuelMoisture,FuelMoisture_Avg,Average fuel moisture,% ,Percent,CS506/266,Campbell Scientific,,New_MET
+FuelMoisture,FuelMoisture_Avg,Average fuel moisture,%,Percent,CS506/266,Campbell Scientific,,New_MET
 SoilVWC_15cm,"SoilMoist1,SoilMoist(1)",Soil moisture (volumetric water content) 15cm,%,Percent,CS655,Campbell Scientific,,New_MET
 SoilVWC_30cm,"SoilMoist2,SoilMoist(2)",Soil moisture (volumetric water content) 30cm,%,Percent,CS655,Campbell Scientific,,New_MET
 SoilVWC_50cm,"SoilMoist3,SoilMoist(3)",Soil moisture (volumetric water content) 50cm,%,Percent,CS655,Campbell Scientific,,New_MET
@@ -49,21 +49,21 @@ BatteryVolts,BatteryVolts_Avg,Battery voltage,V,Volts,battery,Dakota Lithium,,Ne
 Timestamp,timeStamp,The date and 15min time interval the data was recorded,mm/dd/yyyy hh:mm,Date and time,NA,NA,,GrassMETMeteo
 SeqNum,RN,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,"This does not run continuously through the record; every time a new program is sent or the logger is power-cycled, the program restarts and record number starts back at 0",GrassMETMeteo
 WindSpeed,"windSpeed,WSpd_ms",Mean horizontal wind speed,m/s,Meters per second,014A,MetOne,Has historically been reported to underestimate windspeeds due to corrosion on the bearings. Bearings should be replaced every 1-2 years or whenever large discrepancies appear between Windspeed sensors,GrassMETMeteo
-WindDir,"windDir,W_Dir",Unit vector mean wind direction,deg N,Degrees from north,024A  ,MetOne,"Wind vane tail tends to get off-kilter in high winds; it still returns good values, just need to tighten it up with an allan wrench",GrassMETMeteo
+WindDir,"windDir,W_Dir",Unit vector mean wind direction,deg N,Degrees from north,024A,MetOne,"Wind vane tail tends to get off-kilter in high winds; it still returns good values, just need to tighten it up with an allan wrench",GrassMETMeteo
 WindMax,"windMax,WS_ms_Max",Maximum wind speed recorded via a cup anemometer,m/s,Meters per second,014A,MetOne,Has historically been reported to underestimate windspeeds due to corrosion on the bearings. Bearings should be replaced every 1-2 years or whenever large discrepancies appear between Windspeed sensors,GrassMETMeteo
-WindSpeed2d,"windSpeed2d,WSp_2D",Wind speed,m/s,Meters per second,WINDSONIC,Gill ,Need to make sure the north markers on the sensor head are aligned north.,GrassMETMeteo
-WindDir2d,"windDir2d,WDir_2D",Wind direction,deg N,Degrees from north,WINDSONIC,Gill ,,GrassMETMeteo
-WindMax2d,"windMax2d,ws_2D_Max",Maximum wind speed during the 15min interval,m/s,Meters per second,WINDSONIC,Gill ,,GrassMETMeteo
+WindSpeed2d,"windSpeed2d,WSp_2D",Wind speed,m/s,Meters per second,WINDSONIC,Gill,Need to make sure the north markers on the sensor head are aligned north.,GrassMETMeteo
+WindDir2d,"windDir2d,WDir_2D",Wind direction,deg N,Degrees from north,WINDSONIC,Gill,,GrassMETMeteo
+WindMax2d,"windMax2d,ws_2D_Max",Maximum wind speed during the 15min interval,m/s,Meters per second,WINDSONIC,Gill,,GrassMETMeteo
 SolarRad,"solarRad,SlrkW_Avg",Average incoming solar radiation during 15min interval,kW/m²,Kilowatts per square meter,LI200,LiCOR,Good idea to wipe the dust and bird poop off occasionally,GrassMETMeteo
 SolarTot,"solarTot,SlrMJ_Tot",Total incoming solar radiation summed during the 15min interval,MJ/m²,Megajoules per square meter,LI200,LiCOR,Good idea to wipe the dust and bird poop off occasionally,GrassMETMeteo
-AirTemp_C,"airTemp,AirTC_Avg",Air temperature,°C,Degrees Celcius ,HMP45,Vaisala,,GrassMETMeteo
+AirTemp_C,"airTemp,AirTC_Avg",Air temperature,°C,Degrees Celcius,HMP45,Vaisala,,GrassMETMeteo
 RH,RH_Avg,Relative humidity,%,Percent,HMP45,Vaisala,Will sometimes produce values over 100% during rainfall events but usually 100-103%,GrassMETMeteo
 RainPulseCount,"rainHun15min,TE525_Rain_Tot",The number of tips of the rain bucket (.01 in),-,integer count,TE525,Texas Electronics,Guy wires and a screen on the bottom help prevent wind driven tips and wasp colonization respectively,GrassMETMeteo
-LeafWetness_mV,"leafWetness,LWmV_Avg",Leaf wetness ,mV,Millivolts,LWS,Meter,There is a continous 250mV floating charge on the sensor that responds in the postive direction when mositure forms or falls on the sensor. Not all but some rain events that occur after long dry spells will begin with LW values below 250mV …maybe dust on the sensors that creates a temporary film,GrassMETMeteo
-BarometricPressure,"barometricPressure,BP_mmHg_Avg",Barometric or atmospheric pressure,mmHg,millimeters of mercury ,CS106,Campbell Scientific,,GrassMETMeteo
+LeafWetness_mV,"leafWetness,LWmV_Avg",Leaf wetness,mV,Millivolts,LWS,Meter,There is a continous 250mV floating charge on the sensor that responds in the postive direction when mositure forms or falls on the sensor. Not all but some rain events that occur after long dry spells will begin with LW values below 250mV …maybe dust on the sensors that creates a temporary film,GrassMETMeteo
+BarometricPressure,"barometricPressure,BP_mmHg_Avg",Barometric or atmospheric pressure,mmHg,millimeters of mercury,CS106,Campbell Scientific,,GrassMETMeteo
 RainInchYear,"rainInchYear,TE525_Rain_yr",Cumulative rainfall since the start of the water year (Oct 1 – Sep 30),in,inches,TE525,Texas Electronics,"This value will automatically reset to zero if the station losses power or something else crazy happens. For the purpose of this spreadsheet I like to populate this column by manually summing up ""rainInch15min Formula""",GrassMETMeteo
 Davis_Rain_yr,,Does not exist anymore,in,inches,NA,NA,,GrassMETMeteo
-RainInchFormula,rainInch15min Formula,This is a postprocessed product of rainHun15min / 100 ,in,inches,TE525,Texas Electronics,"By performing a running total on this column I can QC and in some cases produce the ""rainInchYear"" data.",GrassMETMeteo
+RainInchFormula,rainInch15min Formula,This is a postprocessed product of rainHun15min / 100,in,inches,TE525,Texas Electronics,"By performing a running total on this column I can QC and in some cases produce the ""rainInchYear"" data.",GrassMETMeteo
 Timestamp,,The date and 60min time interval the data was recorded,mm/dd/yyyy hh:mm,Date and time,NA,,,GrassMETSoils
 SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,GrassMETSoils
 VWC_15cm,vwc(1),Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS650,Campbell Scientific,,GrassMETSoils
@@ -78,12 +78,12 @@ WaterPotential_psi_15cm,WaterPotential_psi(1),Soil-water matric potential 15cm,p
 WaterPotential_psi_30cm,WaterPotential_psi(2),Soil-water matric potential 30cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
 WaterPotential_psi_56cm,WaterPotential_psi(3),Soil-water matric potential 56cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
 WaterPotential_psi_91cm,WaterPotential_psi(4),Soil-water matric potential 91cm,psi,Pounds per square inch,229-L,Campbell Scientific,,GrassMETSoils
-Timestamp,TIMESTAMP,Date and time of data collection ,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
+Timestamp,TIMESTAMP,Date and time of data collection,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
 SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,LongTermVegetationPlots_Met
 AirTemp_F,AirTemp_F_Avg,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,LongTermVegetationPlots_Met
 RH,RH_Avg,Average relative humidity,%,Percent,HMP60,Vaisala,,LongTermVegetationPlots_Met
 DewPt_F,DewPt_F_Avg,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,,LongTermVegetationPlots_Met
-LeafWetness_mV,Leaf_Wet_mV_Avg,Leaf wetness ,mV,Millivolts,LWS,Meter,,LongTermVegetationPlots_Met
+LeafWetness_mV,Leaf_Wet_mV_Avg,Leaf wetness,mV,Millivolts,LWS,Meter,,LongTermVegetationPlots_Met
 SoilVWC_15cm,SoilVWC1,Soil moisture (volumetric water content) 15cm,-,Water fraction by volume,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
 SoilEC_15cm,SoilEC1,Soil electical conductivity 15cm,dS/m,Decisiemens per meter,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
 SoilTemp_C_15cm,SoilT1_C,Soil temperature 15cm,°C,Degrees Celcius,CS655,Campbell Scientific,,LongTermVegetationPlots_Met
