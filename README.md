@@ -6,7 +6,7 @@ An interactive application for:
 - Saving the data, along with column and site metadata and notes about data anomalies, in Excel workbooks
 
 ## Installation (Windows ONLY)
-1. Download the installer by clicking [this link](https://github.com/uleman-code/Pepperwood/raw/refs/heads/main/ingest_installer.exe).
+1. Download the installer by clicking [this link](https://github.com/uleman-code/Pepperwood/releases/download/v1.0.0/ingest_installer.exe).
 1. Run the downloaded installer (a Setup Wizard), `ingest_installer.exe`.
     - By default, it installs into `C:\Users\<your-username>\AppData\Local\Programs\Ingest`; you can override this.
     - A shortcut is automatically added to the Start menu. In addition, you can choose (by filling a checkbox) to create a desktop shortcut.
