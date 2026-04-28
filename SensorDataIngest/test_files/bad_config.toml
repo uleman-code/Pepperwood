@@ -1,0 +1,77 @@
+config_version = "0.6"
+
+[application]
+site_metadata_file = "site_metadata.csv"
+column_metadata_file = "column_metadata.csv"
+debug = false
+file_cache_root = "./file_cache"
+keep_cached_files = false
+console_logging_level = "INFO"
+file_logging_level = "DEBUG"
+logging_directory = "./logs"
+logfile_max_size = "10 MB"
+logfile_backup_count = 3
+host = "localhost"     # <<< Added to make this file invalid
+
+[input]
+datalogger_file_extensions = [
+    ".dat",
+    ".csv",
+]
+excel_file_extensions = [
+    ".xlsx",
+    ".xls",
+]
+
+[output]
+data_na_representation = "#N/A"
+notes_columns = [
+    "Start of issue",
+    "End of issue",
+    "Sensor or Data Field",
+    "Data Omitted",
+    "Nature of problem",
+]
+notes_hyperlink_column = "Link"
+[output.worksheet_names]
+data    = "Data"
+meta    = "Columns"
+station = "Meta"
+notes   = "Notes"
+
+[metadata]
+# Keep the first two in sync with column metadata, meaning that they must be found
+# there in the Name column for all values of the SiteKey.
+# Likewise for any settings with the "meta_" prefix; they refer to column names in the site and/or column metadata.
+# Similarly, any settings with the "input_" prefix refer to column names in input_variable_meta_columns or input_site_meta_columns.
+# timestamp_column = "Timestamp"   <<< Commented out to make this file invalid
+sequence_number_column = "SeqNum"
+default_sampling_interval = "15min"
+# Arbitrary: Names of columns for variable metadata found in the first few rows of a data logger file.
+input_variable_meta_columns = [
+    "Name",
+    "Units",
+    "Data Process",
+]
+# Arbitrary: Names of columns for site/station metadata found in the first few rows of a data logger file.
+input_site_meta_columns = [
+    "Data File Format",
+    "Station Name",              # Identify below as the input site ID column
+    "Data Logger Model",
+    "Data Logger Serial Number",
+    "Data Logger OS Version",
+    "Data Logger Program Name",
+    "Data Logger Program Signature",
+    "Table Name",
+]
+# The following two values must not be the same.
+input_site_id_column = "Station Name"
+meta_site_id_column = "Site ID"
+
+input_units_column = "Units"
+input_description_column = "Description"
+input_column_name_column = "Name"
+meta_field_column = "Field"
+meta_aliases_column = "Aliases"
+meta_interval_column = "Logging interval (min)"
+meta_site_key_column = "SiteKey"

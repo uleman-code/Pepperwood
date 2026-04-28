@@ -1,0 +1,22 @@
+﻿Site ID,UTME (WGS 1984 UTM Z10N),UTMN,Start Date,Logger,Logging interval (min),Elevation (ft),Slope (deg.),Aspect (deg. N),Climatic Water Deficit (mm/yr),Soil Type,Backhaul,SiteKey
+Lower Martin MET,522575,4273059,7/1/19,CR1000X,15,449.1,15.69,180.17,813.96,Spreckles Loam,Radio Network,New_MET
+Redwood MET,526292,4270627,6/19/19,CR1000X,15,1323.57,7.66,227.01,807.59,Yorkville Clay Loam,Radio Network,New_MET
+Roger's MET,525116,4269893,8/7/19,CR1000X,15,1132.68,4.09,219.8,1084.56,Yorkville Clay Loam,Radio Network,New_MET
+Upper Martin MET,524879,4271127,6/20/19,CR1000X,15,1164.45,9.57,316.2,933.21,Yorkville Clay Loam,Radio Network,New_MET
+Grass MET,526656,4269181,10/4/10,CR3000,15 and 60min,1211.57,209.09,12.84,972.75,Yorkville Clay Loam,Radio Network,GrassMETSoils
+Plot 1301,526265,4270350,2013,,15,1261.78,18.77,14.92,866.32,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1307,525888,4270668,2013,,15,1352.86,24.08,47.11,750.1,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1309,522830,4273334,2013,,15,491.79,17.38,265.8,1049.99,Laughlin Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1310,522783,4273545,2013,,15,428.6,23.27,0.67,993.74,NA,Radio Network,LongTermVegetationPlots_Met
+Plot 1312,522503,4272837,2013,,15,403.04,37.09,347.69,1117.46,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1321,524739,4269591,2013,,15,984.56,33.9,40.07,923.06,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1322,525084,4269552,2013,,15,1010,18.49,12.96,703.93,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1324,523801,4272002,2013,,15,821.23,16.24,46.74,1091.78,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1325,526466,4270806,2013,,15,1212.15,11.39,24.82,826.54,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1332,524978,4271290,2013,,15,951.3,24.23,13.77,683.41,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1335,525087,4271051,2013,,15,1177.13,10.07,340.12,935.84,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1338,524949,4269709,2013,,15,972.81,14.78,197.46,829.37,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1339,524901,4269863,2013,,15,1005.75,19.51,271.21,1010.76,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1344,522872,4272878,2013,,15,459.28,19.71,228.21,868.7,Felta Very Gravely Loam,Radio Network,LongTermVegetationPlots_Met
+Plot 1349,526499,4270456,2013,,15,1307.87,5.72,43.32,850.13,Laniger Loam,Radio Network,LongTermVegetationPlots_Met
+Oak Soil Moisture ,526817,4269163,7/19/11,CR1000,60,1244.89,13.39,207.42,943.05,Huse Stony Clay Loam,Radio Network,OakSoilMoisture

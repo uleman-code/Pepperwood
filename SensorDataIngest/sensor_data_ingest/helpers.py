@@ -4,6 +4,7 @@
 import base64
 import io
 import logging
+from math import log
 import decorator
 
 from pathlib import Path
@@ -146,7 +147,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
         contents    Base64-encoded string of the file contents
 
     Returns:
-        Four or three DataFrames: data, metadata, station data, and (Escel case, unless from an early version) QA notes
+        Four or three DataFrames: data, metadata, station data, and (Excel case, unless from an early version) QA notes
     
     Raises:
         UnsupportedFileTypeError     The file suffix is not .dat, .csv, .xls, or .xlsx
@@ -268,6 +269,87 @@ def clear_file_cache(session_id: str | None = None) -> None:
     if session_id is not None:
         logger.debug('Removing session-specific upload directory %s.', target)
         target.rmdir()
+
+
+def _common_prefix_length(name_a: str, name_b: str) -> int:
+    """Return the length of the common prefix shared by two basename strings."""
+    length = 0
+    for char_a, char_b in zip(name_a, name_b):
+        if char_a != char_b:
+            break
+        length += 1
+    return length
+
+@log_func
+def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[Path] | list[str]) -> list[tuple[Path, Path]]:
+    """Pair files from two sets by matching the beginning of their base names.
+
+    The function ignores differences in the trailing part of the names, which are often timestamps or other variable
+    suffixes. A pair is returned only when each file has exactly one best match on the opposite side.
+
+    Args:
+        left_files    File paths or names from the first directory.
+        right_files   File paths or names from the second directory.
+
+    Returns:
+        A list of matched (left_path, right_path) tuples. Any file without a unique partner is omitted.
+    """
+    left_paths: list[Path] = [Path(p) for p in left_files]
+    right_paths: list[Path] = [Path(p) for p in right_files]
+
+    left_bases: list[str] = [p.name.rsplit('.', 1)[0] for p in left_paths]
+    right_bases: list[str] = [p.name.rsplit('.', 1)[0] for p in right_paths]
+
+    # Compare names in a case-insensitive way, but preserve original paths for output.
+    left_normalized = [name.casefold() for name in left_bases]
+    right_normalized = [name.casefold() for name in right_bases]
+
+    prefix_lengths: dict[tuple[int, int], int] = {}
+    for left_index, left_name in enumerate(left_normalized):
+        for right_index, right_name in enumerate(right_normalized):
+            length = _common_prefix_length(left_name, right_name)
+            if length:
+                prefix_lengths[(left_index, right_index)] = length
+
+    left_best: dict[int, tuple[int, int]] = {}
+    for left_index in range(len(left_paths)):
+        candidates = [
+            (right_index, length)
+            for (li, right_index), length in prefix_lengths.items()
+            if li == left_index
+        ]
+        if not candidates:
+            continue
+        max_length = max(length for _, length in candidates)
+        best_matches = [right_index for right_index, length in candidates if length == max_length]
+        if len(best_matches) == 1:
+            left_best[left_index] = (best_matches[0], max_length)
+
+    right_best: dict[int, tuple[int, int]] = {}
+    for right_index in range(len(right_paths)):
+        candidates = [
+            (left_index, length)
+            for (left_index, ri), length in prefix_lengths.items()
+            if ri == right_index
+        ]
+        if not candidates:
+            continue
+        max_length = max(length for _, length in candidates)
+        best_matches = [left_index for left_index, length in candidates if length == max_length]
+        if len(best_matches) == 1:
+            right_best[right_index] = (best_matches[0], max_length)
+
+    matches: list[tuple[Path, Path]] = []
+    for left_index, (right_index, left_length) in left_best.items():
+        right_match = right_best.get(right_index)
+        if right_match is None:
+            continue
+        if right_match[0] != left_index:
+            continue
+        matches.append((left_paths[left_index], right_paths[right_index]))
+
+    return matches
+
 
 @log_func
 def merge_metadata(frames: Frames) -> None:
