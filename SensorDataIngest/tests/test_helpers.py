@@ -1,17 +1,21 @@
 import os
 from pathlib import Path
+import pytest
 from ..sensor_data_ingest import config as cfg
 
-this_module: Path = Path(__file__)
-config_file: Path = this_module.parent.parent / 'test_files' / 'good_config.toml'
-os.environ['INGEST_CONFIG_FILE'] = str(config_file)
-cfg.config_init(app_name=this_module.stem)
-cfg.logging_init()
-cfg.metadata_init()
+@pytest.fixture(scope="session", autouse=True)
+def init_config():
+    """Initialize configuration for all tests in this module."""
+    this_module: Path = Path(__file__)
+    config_file: Path = this_module.parent.parent / 'test_files' / 'good_config.toml'
+    os.environ['INGEST_CONFIG_FILE'] = str(config_file)
+    cfg.config_init(app_name=this_module.stem)
+    cfg.logging_init()
+    cfg.metadata_init()
+    yield
 
 def test_load_data_good_dat() -> None:
     """Test loading data from a good .dat file."""
-
     import pandas as pd
     from ..sensor_data_ingest.helpers import load_data, Frames
 
@@ -19,13 +23,15 @@ def test_load_data_good_dat() -> None:
     test_file: str = str(Path(__file__).parent.parent / 'test_files' / 'good_data.dat')
     frames: Frames = load_data(test_file)
 
-    assert isinstance(frames.data, pd.DataFrame) and frames.data.shape == (228, 47)
-    assert isinstance(frames.meta, pd.DataFrame) and frames.meta.shape == (47, 3)
-    assert isinstance(frames.station, pd.DataFrame) and frames.station.shape == (1, 8)
+    assert isinstance(frames.data, pd.DataFrame)
+    assert frames.data.shape == (228, 47)
+    assert isinstance(frames.meta, pd.DataFrame)
+    assert frames.meta.shape == (47, 3)
+    assert isinstance(frames.station, pd.DataFrame)
+    assert frames.station.shape == (1, 8)
 
 def test_load_data_good_xlsx() -> None:
     """Test loading data from a good Excel file."""
-
     import pandas as pd
     from ..sensor_data_ingest.helpers import load_data, Frames
 
@@ -33,15 +39,18 @@ def test_load_data_good_xlsx() -> None:
     test_file: str = str(Path(__file__).parent.parent / 'test_files' / 'good_data.xlsx')
     frames: Frames = load_data(test_file)
 
-    assert isinstance(frames.data, pd.DataFrame) and frames.data.shape == (228, 47)
-    assert isinstance(frames.meta, pd.DataFrame) and frames.meta.shape == (47, 3)
-    assert isinstance(frames.station, pd.DataFrame) and frames.station.shape == (1, 8)
-    assert isinstance(frames.notes, pd.DataFrame) and frames.notes.shape == (0, 5)
+    assert isinstance(frames.data, pd.DataFrame)
+    assert frames.data.shape == (228, 47)
+    assert isinstance(frames.meta, pd.DataFrame)
+    assert frames.meta.shape == (47, 3)
+    assert isinstance(frames.station, pd.DataFrame)
+    assert frames.station.shape == (1, 8)
+    assert isinstance(frames.notes, pd.DataFrame)
+    assert frames.notes.shape == (0, 5)
 
 
 def test_pair_files_by_prefix_unique_match() -> None:
     """Test that files with unique beginning-name matches are paired."""
- 
     from ..sensor_data_ingest.helpers import pair_files_by_prefix
 
     left_files = [
@@ -56,31 +65,83 @@ def test_pair_files_by_prefix_unique_match() -> None:
     matches = pair_files_by_prefix(left_files, right_files)
 
     assert len(matches) == 2
-    assert matches[0][0].name == 'siteA_20240101.dat' and matches[0][1].name == 'siteA_20240303.csv'
-    assert matches[1][0].name == 'siteB-20240202.dat' and matches[1][1].name == 'siteB-20240404.csv'
+    assert matches[0] == (Path('siteA_20240101.dat'), Path('siteA_20240303.csv'))
+    assert matches[1] == (Path('siteB-20240202.dat'), Path('siteB-20240404.csv'))
 
 
 def test_pair_files_by_prefix_ambiguous_unmatched() -> None:
     """Test that ambiguous matches are left unmatched."""
-
     from ..sensor_data_ingest.helpers import pair_files_by_prefix
 
     left_files = [Path('siteA_20240101.dat')]
     right_files = [Path('siteA_20240202.csv'), Path('siteA_20240303.csv')]
 
     matches = pair_files_by_prefix(left_files, right_files)
-
     assert matches == []
 
 
 def test_pair_files_by_prefix_no_match() -> None:
     """Test that files with no shared beginning are not paired."""
-
     from ..sensor_data_ingest.helpers import pair_files_by_prefix
 
     left_files = [Path('alpha.dat')]
     right_files = [Path('beta.csv')]
 
     matches = pair_files_by_prefix(left_files, right_files)
-
     assert matches == []
+
+
+def test_pair_files_by_prefix_empty_inputs() -> None:
+    """Test that pair_files_by_prefix returns empty list for empty input lists."""
+    from ..sensor_data_ingest.helpers import pair_files_by_prefix
+    
+    # Empty left list
+    assert pair_files_by_prefix([], [Path('siteA.csv')]) == []
+    
+    # Empty right list
+    assert pair_files_by_prefix([Path('siteA.dat')], []) == []
+    
+    # Both empty
+    assert pair_files_by_prefix([], []) == []
+
+
+def test_load_data_missing_file() -> None:
+    """Test that load_data raises FileNotFoundError for a non-existent file."""
+    from ..sensor_data_ingest.helpers import load_data
+    
+    nonexistent_file = str(Path(__file__).parent.parent / 'test_files' / 'nonexistent_data.dat')
+    
+    with pytest.raises(FileNotFoundError):
+        load_data(nonexistent_file)
+
+
+def test_load_data_corrupt_file() -> None:
+    """Test that load_data raises BadFileError for a malformed/corrupted file."""
+    import tempfile
+    from ..sensor_data_ingest.helpers import load_data, BadFileError
+    
+    # Create a temporary file with invalid CSV structure
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.dat', delete=False) as tmp:
+        tmp.write("This is not valid CSV data\nJust some random text\n")
+        tmp_path = tmp.name
+    
+    try:
+        with pytest.raises(BadFileError) as exc_info:
+            load_data(tmp_path)
+    finally:
+        Path(tmp_path).unlink()
+
+    assert 'Error parsing file' in str(exc_info.value)
+
+
+def test_load_data_unsupported_extension() -> None:
+    """Test that load_data raises UnsupportedFileTypeError for unsupported file extensions."""
+    from ..sensor_data_ingest.helpers import load_data, UnsupportedFileTypeError
+    
+    # Use a file path with an unsupported extension (doesn't need to exist)
+    unsupported_file = str(Path(__file__).parent.parent / 'test_files' / 'data.txt')
+    
+    with pytest.raises(UnsupportedFileTypeError) as exc_info:
+        load_data(unsupported_file)
+    
+    assert '.txt' in str(exc_info.value)

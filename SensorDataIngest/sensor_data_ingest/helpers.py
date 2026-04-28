@@ -4,7 +4,7 @@
 import base64
 import io
 import logging
-from math import log
+
 import decorator
 
 from pathlib import Path
@@ -243,6 +243,8 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                 # This should not happen: the Upload element limits the supported filename extensions.
                 logger.error(f'Unsupported file type: {Path(filename).suffix}.')
                 raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
+    except UnsupportedFileTypeError:
+        raise
     except (UnicodeDecodeError, ValueError) as err:
         logger.error('Error reading file %s. %s', filename, err)
         raise BadFileError(str(err)) from err
