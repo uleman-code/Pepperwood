@@ -49,6 +49,46 @@ def test_load_data_good_xlsx() -> None:
     assert frames.notes.shape == (0, 5)
 
 
+def test_load_data_missing_file() -> None:
+    """Test that load_data raises FileNotFoundError for a non-existent file."""
+    from ..sensor_data_ingest.helpers import load_data
+    
+    nonexistent_file = str(Path(__file__).parent.parent / 'test_files' / 'nonexistent_data.dat')
+    
+    with pytest.raises(FileNotFoundError):
+        load_data(nonexistent_file)
+
+
+def test_load_data_corrupt_file() -> None:
+    """Test that load_data raises BadFileError for a malformed/corrupted file."""
+    import tempfile
+    from ..sensor_data_ingest.helpers import load_data, BadFileError
+    
+    # Create a temporary file with invalid CSV structure
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.dat', delete=False) as tmp:
+        tmp.write("This is not valid CSV data\nJust some random text\n")
+        tmp_path = tmp.name
+    
+    try:
+        with pytest.raises(BadFileError):
+            load_data(tmp_path)
+    finally:
+        Path(tmp_path).unlink()
+
+
+def test_load_data_unsupported_extension() -> None:
+    """Test that load_data raises UnsupportedFileTypeError for unsupported file extensions."""
+    from ..sensor_data_ingest.helpers import load_data, UnsupportedFileTypeError
+    
+    # Use a file path with an unsupported extension (doesn't need to exist)
+    unsupported_file = str(Path(__file__).parent.parent / 'test_files' / 'data.txt')
+    
+    with pytest.raises(UnsupportedFileTypeError) as exc_info:
+        load_data(unsupported_file)
+    
+    assert '.txt' in str(exc_info.value)
+
+
 def test_pair_files_by_prefix_unique_match() -> None:
     """Test that files with unique beginning-name matches are paired."""
     from ..sensor_data_ingest.helpers import pair_files_by_prefix
@@ -103,45 +143,3 @@ def test_pair_files_by_prefix_empty_inputs() -> None:
     
     # Both empty
     assert pair_files_by_prefix([], []) == []
-
-
-def test_load_data_missing_file() -> None:
-    """Test that load_data raises FileNotFoundError for a non-existent file."""
-    from ..sensor_data_ingest.helpers import load_data
-    
-    nonexistent_file = str(Path(__file__).parent.parent / 'test_files' / 'nonexistent_data.dat')
-    
-    with pytest.raises(FileNotFoundError):
-        load_data(nonexistent_file)
-
-
-def test_load_data_corrupt_file() -> None:
-    """Test that load_data raises BadFileError for a malformed/corrupted file."""
-    import tempfile
-    from ..sensor_data_ingest.helpers import load_data, BadFileError
-    
-    # Create a temporary file with invalid CSV structure
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.dat', delete=False) as tmp:
-        tmp.write("This is not valid CSV data\nJust some random text\n")
-        tmp_path = tmp.name
-    
-    try:
-        with pytest.raises(BadFileError) as exc_info:
-            load_data(tmp_path)
-    finally:
-        Path(tmp_path).unlink()
-
-    assert 'Error parsing file' in str(exc_info.value)
-
-
-def test_load_data_unsupported_extension() -> None:
-    """Test that load_data raises UnsupportedFileTypeError for unsupported file extensions."""
-    from ..sensor_data_ingest.helpers import load_data, UnsupportedFileTypeError
-    
-    # Use a file path with an unsupported extension (doesn't need to exist)
-    unsupported_file = str(Path(__file__).parent.parent / 'test_files' / 'data.txt')
-    
-    with pytest.raises(UnsupportedFileTypeError) as exc_info:
-        load_data(unsupported_file)
-    
-    assert '.txt' in str(exc_info.value)

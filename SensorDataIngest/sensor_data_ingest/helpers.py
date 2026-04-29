@@ -243,7 +243,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                 # This should not happen: the Upload element limits the supported filename extensions.
                 logger.error(f'Unsupported file type: {Path(filename).suffix}.')
                 raise UnsupportedFileTypeError(f'We do not support the **{Path(filename).suffix}** file type.')
-    except UnsupportedFileTypeError:
+    except (UnsupportedFileTypeError, BadFileError):
         raise
     except (UnicodeDecodeError, ValueError) as err:
         logger.error('Error reading file %s. %s', filename, err)
@@ -275,12 +275,11 @@ def clear_file_cache(session_id: str | None = None) -> None:
 
 def _common_prefix_length(name_a: str, name_b: str) -> int:
     """Return the length of the common prefix shared by two basename strings."""
-    length = 0
-    for char_a, char_b in zip(name_a, name_b):
+    for i, (char_a, char_b) in enumerate(zip(name_a, name_b)):
         if char_a != char_b:
-            break
-        length += 1
-    return length
+            return i
+    return min(len(name_a), len(name_b))
+
 
 @log_func
 def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[Path] | list[str]) -> list[tuple[Path, Path]]:
@@ -299,56 +298,39 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     left_paths: list[Path] = [Path(p) for p in left_files]
     right_paths: list[Path] = [Path(p) for p in right_files]
 
-    left_bases: list[str] = [p.name.rsplit('.', 1)[0] for p in left_paths]
-    right_bases: list[str] = [p.name.rsplit('.', 1)[0] for p in right_paths]
+    if not left_paths or not right_paths:
+        return []
 
-    # Compare names in a case-insensitive way, but preserve original paths for output.
-    left_normalized = [name.casefold() for name in left_bases]
-    right_normalized = [name.casefold() for name in right_bases]
+    # Extract and normalize basenames (remove extension, case-insensitive)
+    # Path.stem is the idiomatic way to get the filename without suffix.
+    left_lookup: dict[int, str] = {
+        i: p.stem.casefold() for i, p in enumerate(left_paths)
+    }
+    right_lookup: dict[int, str] = {
+        i: p.stem.casefold() for i, p in enumerate(right_paths)
+    }
 
-    prefix_lengths: dict[tuple[int, int], int] = {}
-    for left_index, left_name in enumerate(left_normalized):
-        for right_index, right_name in enumerate(right_normalized):
-            length = _common_prefix_length(left_name, right_name)
-            if length:
-                prefix_lengths[(left_index, right_index)] = length
-
-    left_best: dict[int, tuple[int, int]] = {}
-    for left_index in range(len(left_paths)):
-        candidates = [
-            (right_index, length)
-            for (li, right_index), length in prefix_lengths.items()
-            if li == left_index
-        ]
-        if not candidates:
-            continue
-        max_length = max(length for _, length in candidates)
-        best_matches = [right_index for right_index, length in candidates if length == max_length]
-        if len(best_matches) == 1:
-            left_best[left_index] = (best_matches[0], max_length)
-
-    right_best: dict[int, tuple[int, int]] = {}
-    for right_index in range(len(right_paths)):
-        candidates = [
-            (left_index, length)
-            for (left_index, ri), length in prefix_lengths.items()
-            if ri == right_index
-        ]
-        if not candidates:
-            continue
-        max_length = max(length for _, length in candidates)
-        best_matches = [left_index for left_index, length in candidates if length == max_length]
-        if len(best_matches) == 1:
-            right_best[right_index] = (best_matches[0], max_length)
+    def find_best_unique_match(name: str, candidates: dict[int, str]) -> int | None:
+        """Find index of best (longest prefix) match if unique; return None if ambiguous or no match."""
+        scores = {idx: _common_prefix_length(name, cand_name) for idx, cand_name in candidates.items()}
+        # Filter to only matches with positive score
+        scores = {idx: score for idx, score in scores.items() if score > 0}
+        if not scores:
+            return None
+        # Check if best match is unique
+        max_score = max(scores.values())
+        best_matches = [idx for idx, score in scores.items() if score == max_score]
+        return best_matches[0] if len(best_matches) == 1 else None
 
     matches: list[tuple[Path, Path]] = []
-    for left_index, (right_index, left_length) in left_best.items():
-        right_match = right_best.get(right_index)
-        if right_match is None:
+    for left_idx, left_name in left_lookup.items():
+        # Find best match on right side
+        right_idx = find_best_unique_match(left_name, right_lookup)
+        if right_idx is None:
             continue
-        if right_match[0] != left_index:
-            continue
-        matches.append((left_paths[left_index], right_paths[right_index]))
+        # Verify it's bidirectional (right also best-matches this left)
+        if find_best_unique_match(right_lookup[right_idx], left_lookup) == left_idx:
+            matches.append((left_paths[left_idx], right_paths[right_idx]))
 
     return matches
 
