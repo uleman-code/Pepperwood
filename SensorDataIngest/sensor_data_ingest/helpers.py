@@ -4,6 +4,7 @@
 import base64
 import io
 import logging
+from math import e
 
 import decorator
 
@@ -89,6 +90,7 @@ file_cache: Path = Path(cfg.config.application.file_cache_root)
 
 csv_extensions: list[str] = cfg.config.input.datalogger_file_extensions
 excel_extensions: list[str] = cfg.config.input.excel_file_extensions
+extra_na_values: list[str] = cfg.config.input.extra_na_values
 
 worksheet_names: WorksheetNames = WorksheetNames(**cfg.config.output.worksheet_names)
 data_na_repr: str = cfg.config.output.data_na_representation
@@ -176,7 +178,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                     buffer: io.StringIO = io.StringIO(b64decoded.decode('utf-8'))
 
                 # First pass to read the real data
-                frames.data = pd.read_csv(buffer, skiprows=[0, 2, 3], parse_dates=[0], na_values='NAN')
+                frames.data = pd.read_csv(buffer, skiprows=[0, 2, 3], parse_dates=[0], na_values=extra_na_values)
 
                 # Second pass to read the column metadata
                 buffer.seek(0)
@@ -219,7 +221,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                             f'{worksheet_names.meta}, and {worksheet_names.station}. Found: {", ".join(sheet_names)}.'
                         )
 
-                    frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data, na_values='NAN')
+                    frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data, na_values=extra_na_values)
                     frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta)
                     frames.meta.columns = meta_columns
                     frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)

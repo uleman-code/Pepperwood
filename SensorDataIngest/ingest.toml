@@ -21,6 +21,8 @@ excel_file_extensions = [
     ".xlsx",
     ".xls",
 ]
+# Any NA representations beyond the standard
+extra_na_values = ['NAN']
 
 [output]
 data_na_representation = "#N/A"

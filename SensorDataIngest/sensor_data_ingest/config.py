@@ -115,6 +115,7 @@ class InputCfg(BaseModel):
 
     datalogger_file_extensions: list[str] = ['.dat', '.csv']
     excel_file_extensions: list[str] = ['.xlsx', '.xls']
+    extra_na_values: list[str] = ['NAN']
 
 
 class OutputCfg(BaseModel):
