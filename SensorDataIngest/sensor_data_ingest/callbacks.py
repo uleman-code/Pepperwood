@@ -37,7 +37,7 @@ from dash_extensions.enrich import (
 from . import config as cfg
 from . import helpers
 from . import layout
-from .helpers import Frames, clear_file_cache
+from .helpers import Frames
 
 class QA_Status(StrEnum):
     READY = auto()
@@ -55,10 +55,12 @@ ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}
 
 
 @decorator.decorator
-def log_func(fn: Callable, *args, **kwargs) -> Callable:
+def log_func(fn: Callable, *args, **kwargs) -> Any:
     """Function entry and exit logger, capturing exceptions as well.
 
     Very simplistic; no argument logging or execution timing.
+    Differs from the definition in helpers.py in that it logs PreventUpdate exceptions
+    as normal exits, rather than as exceptions.
     """
 
     ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
@@ -956,7 +958,7 @@ def batch_done(files_status: Status, badges: list[str]) -> tuple:
         if all(display == 'inline' for display in badges):
             logger.debug('Batch complete.')
             files_status['unsaved'] = False
-            clear_file_cache()
+            helpers.clear_file_cache()
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             return files_status, end_time
