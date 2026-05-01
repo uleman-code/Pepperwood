@@ -4,7 +4,6 @@
 import base64
 import io
 import logging
-from math import e
 
 import decorator
 

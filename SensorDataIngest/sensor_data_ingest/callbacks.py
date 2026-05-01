@@ -11,6 +11,7 @@ from pathlib import Path
 from dataclasses import asdict
 from typing import Any, Callable, TypedDict, Required, NotRequired
 from enum import StrEnum, auto
+import itertools
 import decorator
 
 import humanfriendly as hf
@@ -31,6 +32,7 @@ from dash_extensions.enrich import (
     Trigger,
     callback_context,
     dcc,
+    html,
     no_update,
 )
 
@@ -192,7 +194,7 @@ def load_file(files_status: Status) -> tuple:
 )
 @log_func
 def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple:
-    """Save the data currently in memory in an Excel (.XLSX) file.
+    """If a single file is loaded save the data in an Excel (.XLSX) file. If multiple, trigger batch processing instead.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
     the browser write it to a file, of the same name as the original but with a ".xlsx" extension. Depending
@@ -215,18 +217,22 @@ def save_file(files_status: Status, frame_store: dict[str, Any] | None) -> tuple
         files-status/data    (str)  Same as files_status parameter but with the unsaved flag set to False
     """
 
+    files = files_status['files']
+    if callback_context.triggered_id == 'save-button' and len(files) > 1:
+        logger.debug('Save requested for multiple files; kick off batch process.')
+        files_status['start_batch'] = True
+        return no_update, files_status
+
     if callback_context.triggered_id == 'files-status' and not (
         'qa_status' in files_status and files_status['qa_status'] == QA_Status.COMPLETE
     ):
-        logger.debug('Data is not ready to be saved.')
+        logger.debug('Multiple files loaded, or single-file data is not ready to be saved. Skip saving.')
         raise PreventUpdate
 
     frames: Frames = Frames(**frame_store) if frame_store else None
 
     if frames and not frames.data.empty:
-        outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
-        # frames: Frames = Frames(**frame_store)
-        outfile: str = Path(files_status['files'][0]).stem + '.xlsx'
+        outfile: str = str(Path(files_status['files'][0]).with_suffix('.xlsx'))
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
         # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
@@ -505,23 +511,15 @@ def toggle_save_clear(files_status: Status) -> tuple:
         clear-button/disabled  True to disable (no data); False to enable (data in memory)
     """
 
-    files: str = files_status['files']
-    have_file: bool = len(files) == 1
+    files: list[str] = list(files_status['files'])  # A single file comes in as a string.
+    num_files = len(files)
     do_not_save: bool = 'no_save' in files_status and files_status['no_save']
 
-    if have_file:
-        if do_not_save:
-            logger.debug(
-                'One file in memory, but a data problem makes it unwise to save. Enable Clear but disable Save and Append buttons.'
-            )
-            return True, True, False
-        else:
-            logger.debug('One file in memory. Enable Save, Append, and Clear buttons.')
-            return (False,) * 3
-    else:
-        logger.debug('Zero or multiple files in memory. Disable Save, Append and Clear buttons.')
-        return (True,) * 3
+    disable_save = num_files < 1 or do_not_save
+    disable_append = num_files != 1 or do_not_save  # Keep disabled for multiple until Append is implemented
+    disable_clear = num_files < 1
 
+    return disable_save, disable_append, disable_clear
 
 @blueprint.callback(
     Output('file-name', 'children'),
@@ -564,7 +562,7 @@ def show_file_info(files_status: Status, uploaded_files: list[dict[str, str | in
 
 
 @log_func
-def run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> list[dmc.Text]:
+def _run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> list[dmc.Text]:
     """Callback helper function: run the sanity/QA checks.
 
     Collect the results and create the messages to be displayed in the UI in case irregularities were found.
@@ -678,7 +676,7 @@ def report_sanity_checks(
     qa_report: list[dmc.Text]
 
     try:
-        qa_report = run_sanity_checks(frames, qa_range)
+        qa_report = _run_sanity_checks(frames, qa_range)
     except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
         qa_report = [dmc.Text(str(err), c='red', ta='right')]
         status['no_save'] = True  # Do not save; requires manual intervention
@@ -718,26 +716,30 @@ def setup_batch(files_status: Status, uploaded_files: list[dict[str, str | int |
         file-name/children          (str) Reuse for Batch mode operation header
         file-attributes/children    (list[str]) Reuse for start and completion time of batch operation
         next-file/data              (int) Set the next value for the loop counter
-        next-file/data              (int) Set the next value for the loop counter
-
     """
 
     if len(uploaded_files) <= 1:
         logger.debug('No file or a single filename: not a batch.')
         raise PreventUpdate
-
+    
     # When the batch is complete, the unsaved flag gets set to False.
     if not files_status['unsaved']:
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
 
-   # files_status has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
-    # Use the client-side filenames provided by the Upload component instead.
-    filenames: list[str] = [f['name'] for f in uploaded_files]
-    logger.debug('Files loaded: %s.', ", ".join(filenames))
-    start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    next_file: int = 0  # This triggers the start of the loop over file_counter
-    return 'Batch mode operation', [f'{len(filenames)} files. Started at {start_time}'], next_file
+    if 'start_batch' in files_status:
+        logger.debug('Batch triggered by user; start operation.')
+        start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        next_file: int = 0  # This triggers the start of the loop over file_counter
+        return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], next_file
+    else:
+        # files_status has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
+        # Show the client-side filenames provided by the Upload component instead.
+        filenames: list[str] = [f['name'] for f in uploaded_files]
+        logger.debug('Waiting for user to click Save to start batch processing.')
+        files_list: list[str | html.Br] = list(itertools.chain.from_iterable(zip([html.Br()] * len(filenames),
+                                                                                 [f'• {name}' for name in filenames])))
+        return ('Batch mode operation', [f'{len(filenames)} files loaded:'] + files_list, no_update)        
 
 
 @blueprint.callback(
@@ -810,7 +812,7 @@ def increment_file_counter(file_counter: int, uploaded_files: list[dict[str, str
 
     return next_file
 
-def done_no_save(file_counter: int) -> None:
+def _done_no_save(file_counter: int) -> None:
     """If the current file cannot be saved, stop the Loader and display a NOT SAVED badge.
 
     Parameters:
@@ -861,7 +863,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
         )
 
     file: str = files[file_counter]
-    outfile: str = Path(file).stem + '.xlsx'
+    outfile: str = str(Path(file).with_suffix('.xlsx'))
 
     logger.debug('(%s) Processing %s.', file_counter, Path(file).name)
 
@@ -873,7 +875,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
         set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {Path(file).name}:', c='red', ta='right'),
                                                                  dmc.Text(str(err), c='red', ta='right')]})
-        done_no_save(file_counter)
+        _done_no_save(file_counter)
         return
 
     data = frames.data
@@ -892,7 +894,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
     if frames.notes.empty:
         try:
-            qa_report: list[dmc.Text] = run_sanity_checks(frames, None)
+            qa_report: list[dmc.Text] = _run_sanity_checks(frames, None)
         except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
             no_save = True
             qa_report = [dmc.Text(str(err), c='red', ta='right')]
@@ -906,7 +908,7 @@ def process_batch(file_counter: int, status: Status) -> tuple:
     # for badges to know when it's complete. Instead of the usual "SAVED", though, let the user
     # know that no file was saved.
     if no_save:
-        done_no_save(file_counter)
+        _done_no_save(file_counter)
         return
 
     # Save the file.
@@ -958,6 +960,7 @@ def batch_done(files_status: Status, badges: list[str]) -> tuple:
         if all(display == 'inline' for display in badges):
             logger.debug('Batch complete.')
             files_status['unsaved'] = False
+            del files_status['start_batch']
             helpers.clear_file_cache()
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
