@@ -360,6 +360,33 @@ def toggle_loaddata(status: Status) -> tuple:
 
     return unsaved, no_update if unsaved else [], 'dimmed' if unsaved else 'black'
 
+@blueprint.callback(
+    Output('append-batch', 'display'),
+    Trigger('append-button', 'n_clicks'),
+    Input('files-status', 'data'),
+)
+@log_func
+def show_append_batch(status: Status) -> str:
+    """Toggle the display of the Append Batch element based on the status.
+
+    Parameters:
+        status  Filename(s) and (un)saved status
+
+    Returns:
+        append-batch/display  (str)  Show the Append Batch element if the Append button was clicked;
+                                     hide it if there's no data.
+    """
+
+    match callback_context.triggered_id:
+        case 'append-button':
+            logger.debug('Append button clicked; show Append Batch element.')
+            return 'block'
+        case 'files-status':
+            logger.debug('Files status changed; hide Append Batch element if no data.')
+            return 'none' if not status['files'] else no_update
+        case _:
+            logger.debug('Unexpected trigger: %s; hide Append Batch element.', callback_context.triggered_id)
+            return 'none'
 
 @blueprint.callback(
     Output('inspect-data', 'display'),
@@ -493,33 +520,45 @@ def show_badge(files_status: Status) -> tuple:
 @blueprint.callback(
     Output('save-button', 'disabled'),
     Output('append-button', 'disabled'),
+    Output('append-file', 'disabled'),
     Output('clear-button', 'disabled'),
     Input('files-status', 'data'),
 )
 @log_func
 def toggle_save_clear(files_status: Status) -> tuple:
-    """If there's one file loaded, enable the Save, Clear, and Append buttons; otherwise, disable them.
+    """If one or more files are loaded, enable the Save, Clear, and Append buttons; otherwise, disable them.
 
-    Batches have their own logic and use of these buttons.
+    For a single file, do not enable Save and Append if the no_save flag is set, which happens when 
+    the sanity checks find problems that require manual intervention.
+    
+    For a batch, enable the Append button but not the dcc.Upload component that contains it. Ignore
+    the no_save flag.
 
     Parameters:
         files_status    Filename(s) and (un)saved status
 
     Returns:
-        save-button/disabled   True to disable (no data); False to enable (data in memory)
-        append-button/disabled True to disable (no data); False to enable (data in memory)
-        clear-button/disabled  True to disable (no data); False to enable (data in memory)
+        save-button/disabled        True to disable; False to enable
+        append-button/disabled      True to disable; False to enable
+        append-file/disabled        True to disable; False to enable
+        clear-button/disabled       True to disable; False to enable
     """
 
     files: list[str] = list(files_status['files'])  # A single file comes in as a string.
     num_files = len(files)
     do_not_save: bool = 'no_save' in files_status and files_status['no_save']
 
-    disable_save = num_files < 1 or do_not_save
-    disable_append = num_files != 1 or do_not_save  # Keep disabled for multiple until Append is implemented
-    disable_clear = num_files < 1
+    # The Append button works differently for single file versus batch.
+    # Single file: Append is an active dcc.Upload component that allows dropping a file and upon click immediately
+    #              opens the browser's file-open dialog.
+    # Batch: Append is a regular button (no drag-drop) that exposes a separate du.Upload component, which takes
+    #        the file selection from there.
+    disable_save = num_files < 1 or do_not_save             # Enable unless nothing loaded or single bad file
+    disable_append_button = num_files < 1 or do_not_save    # Enable unless nothing loaded or single bad file
+    disable_append_file = num_files != 1 or do_not_save     # Enable only for a single file, unless that file is bad
+    disable_clear = num_files < 1                           # Enable for any number of files
 
-    return disable_save, disable_append, disable_clear
+    return disable_save, disable_append_button, disable_append_file, disable_clear
 
 @blueprint.callback(
     Output('file-name', 'children'),

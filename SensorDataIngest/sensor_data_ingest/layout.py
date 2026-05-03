@@ -13,7 +13,8 @@ import dash_uploader_uppy5 as du
 
 from . import config as cfg
 
-file_types = cfg.config.input.datalogger_file_extensions + cfg.config.input.excel_file_extensions
+excel_file_types = cfg.config.input.excel_file_extensions
+input_file_types = cfg.config.input.datalogger_file_extensions + excel_file_types
 
 header = dmc.Group(
     [
@@ -30,7 +31,7 @@ load_save = [
                 dmc.Text('Load Data', id='load-label', size='lg', fw='bold'),
                 du.Upload(
                     id='select-file',
-                    allowed_file_types=file_types,
+                    allowed_file_types=input_file_types,
                     auto_proceed=True,
                     max_number_of_files=1000,
                     file_manager_selection_type='both',
@@ -55,7 +56,9 @@ load_save = [
                         ),
                         id='append-file',
                         multiple=False,
-                        accept=','.join(cfg.config.input.excel_file_extensions),
+                        accept=','.join(excel_file_types),
+                        disabled=True,
+                        style_disabled={'opacity': 1},
                     ),
                     dmc.Tooltip(
                         dmc.Button('Clear', id='clear-button', disabled=True, color='red'),
@@ -94,6 +97,25 @@ columns = [
             inheritPadding=True,
         ),
         scrollbars='y',                # May be too rigid in case of very long column names
+    ),
+    dmc.CardSection(
+        id='append-batch',
+        children=
+        [
+            dmc.Text('Batch Append', id='append-label', size='lg', fw='bold'),
+            du.Upload(
+                id='select-append-batch',
+                allowed_file_types=excel_file_types,
+                auto_proceed=True,
+                max_number_of_files=1000,
+                file_manager_selection_type='both',
+                hide_progress_details=True,
+                theme='light',
+                size={'width': '100%', 'height': '130px'},
+            ),
+        ],
+        ta='center',
+        display='none',
     ),
 ]
 
