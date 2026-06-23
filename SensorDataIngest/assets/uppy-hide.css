@@ -1,5 +1,12 @@
-/* Hide Uppy Dashboard results: Upload complete, plus button, file thumbnails. */
+/* Hide Uppy Dashboard results: Upload complete, plus button, file thumbnails, progress bar. */
 .uppy-DashboardContent-bar,
-.uppy-Dashboard-files {
+.uppy-Dashboard-files,
+.uppy-Dashboard-progressindicators {
   display: none !important;
+}
+
+/* remove the drag-over up-arrow icon and reduce the height of its blue dashed hint box */
+.uppy-Dashboard-dropFilesHereHint {
+  background-image: none !important;
+  padding: 0 !important;
 }
