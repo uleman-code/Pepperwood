@@ -37,7 +37,7 @@ load_save = [
                     file_manager_selection_type='both',
                     hide_progress_details=True,
                     theme='light',
-                    size={'width': '100%', 'height': '130px'},
+                    size={'width': '100%', 'height': '75px'},
                 ),
             ],
             ta='center',
@@ -72,6 +72,25 @@ load_save = [
             inheritPadding=True,
             py='xs',
         ),
+        dmc.CardSection(
+            id='append-batch',
+            children=
+            [
+                dmc.Text('Batch Append', id='append-label', size='lg', fw='bold'),
+                du.Upload(
+                    id='select-append-batch',
+                    allowed_file_types=excel_file_types,
+                    auto_proceed=True,
+                    max_number_of_files=1000,
+                    file_manager_selection_type='both',
+                    hide_progress_details=True,
+                    theme='light',
+                    size={'width': '100%', 'height': '75px'},
+                ),
+            ],
+            ta='center',
+            display='none',
+        ),
     ]
 
 columns = [
@@ -97,25 +116,6 @@ columns = [
             inheritPadding=True,
         ),
         scrollbars='y',                # May be too rigid in case of very long column names
-    ),
-    dmc.CardSection(
-        id='append-batch',
-        children=
-        [
-            dmc.Text('Batch Append', id='append-label', size='lg', fw='bold'),
-            du.Upload(
-                id='select-append-batch',
-                allowed_file_types=excel_file_types,
-                auto_proceed=True,
-                max_number_of_files=1000,
-                file_manager_selection_type='both',
-                hide_progress_details=True,
-                theme='light',
-                size={'width': '100%', 'height': '130px'},
-            ),
-        ],
-        ta='center',
-        display='none',
     ),
 ]
 
@@ -147,7 +147,10 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                                           ),
                         dmc.Stack(
                             children=[
-                                dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold'),
+                                # dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold'),
+                                dcc.Markdown(id=f'file-name{suffix}', mathjax=True,
+                                             style={'fontSize': '18px', 'fontWeight': 'bold'},
+                                             className='compact-md'),
                                 dmc.Group(
                                     children=[
                                         dmc.Text(id=f'file-attributes{suffix}'),
