@@ -311,14 +311,17 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
                             remove batch processing output, if any
     """
 
-    files: list[Path] = [str(file_cache / file['response']['filename']) for file in uploaded_files]
+    files: list[str] = [str(file_cache / file['response']['filename']) for file in uploaded_files]
     if not files:
         logger.debug('Files were selected but none were uploaded.')
         raise PreventUpdate
     
     logger.debug('%s file(s) uploaded: %s', len(uploaded_files), ', '.join([f['name'] for f in uploaded_files]))
-
     status: dict[str, str | list[str] | bool] = dict(files=files, unsaved=True)
+
+    if 'upload_id' in uploaded_files:
+        logger.debug('File cache session ID is %s', uploaded_files['upload_id'])
+        status['session_id'] = uploaded_files['upload_id']
 
     return status, show_data[:3]
 
@@ -356,7 +359,8 @@ def toggle_loaddata(status: Status) -> tuple:
     )
 
     if not unsaved:
-        helpers.clear_file_cache()
+        session_id: str | None = status.get('session_id')
+        helpers.clear_file_cache(session_id)
 
     return unsaved, no_update if unsaved else [], 'dimmed' if unsaved else 'black'
 
@@ -585,6 +589,8 @@ def show_file_info(files_status: Status, uploaded_files: list[dict[str, str | in
     match len(files):
         case 1:
             if 'qa_status' not in files_status:
+                # append_arrow: str = r'$\xrightarrow{+}$'                     # Use Markdown with Latex to render arrow with plus sign
+                # name: str = f"{uploaded_files[0]['name']} {append_arrow}"
                 name: str = uploaded_files[0]['name']
                 info: str = f'Size: {hf.format_size(uploaded_files[0]["size"])}'
                 logger.debug('Data in memory; show file information.')
@@ -777,7 +783,7 @@ def setup_batch(files_status: Status, uploaded_files: list[dict[str, str | int |
         filenames: list[str] = [f['name'] for f in uploaded_files]
         logger.debug('Waiting for user to click Save to start batch processing.')
         files_list: list[str | html.Br] = list(itertools.chain.from_iterable(zip([html.Br()] * len(filenames),
-                                                                                 [f'• {name}' for name in filenames])))
+                                                                                 [f'\N{BULLET} {name}' for name in filenames])))
         return ('Batch mode operation', [f'{len(filenames)} files loaded:'] + files_list, no_update)        
 
 
@@ -1000,7 +1006,8 @@ def batch_done(files_status: Status, badges: list[str]) -> tuple:
             logger.debug('Batch complete.')
             files_status['unsaved'] = False
             del files_status['start_batch']
-            helpers.clear_file_cache()
+            session_id: str | None = files_status.get('session_id')
+            helpers.clear_file_cache(session_id)
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             return files_status, end_time
