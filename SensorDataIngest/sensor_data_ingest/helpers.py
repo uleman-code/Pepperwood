@@ -222,9 +222,9 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
 
                     frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data, na_values=extra_na_values)
                     frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta)
-                    frames.meta.columns = meta_columns
+                    # frames.meta.columns = meta_columns
                     frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)
-                    frames.station.columns = station_columns
+                    # frames.station.columns = station_columns
 
                     if worksheet_names.notes in sheet_names:
                         frames.notes = pd.read_excel(xl, sheet_name=worksheet_names.notes)
@@ -254,23 +254,24 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
     return frames
 
 @log_func
-def clear_file_cache(session_id: str | None = None) -> None:
+def clear_file_cache(upload_id: str | None = None) -> None:
     """Call after processing or clearing all files to empty the upload-file cache.
 
     Args:
-        session_id  If enabled, the file cache will have a subdirectory for each
-                    individual session (meaning, run of this app), to avoid conflict
-                    in multi-user operation. Only clear the current session's uploads.
+        upload_id  If enabled, the file cache will have a subdirectory for each
+                    individual instance of this app, to avoid conflict in multi-user
+                    operation (each user gets their own instance).
+                    Only clear the current instance's uploads.
     """
-    target = file_cache if session_id is None else file_cache / session_id
+    target = file_cache if upload_id is None else file_cache / upload_id
 
     logger.debug('Removing all uploaded files in %s.', target)
     for file in target.glob('*'):
         if file.is_file():
             file.unlink(missing_ok=True)
 
-    if session_id is not None:
-        logger.debug('Removing session-specific upload directory %s.', target)
+    if upload_id is not None:
+        logger.debug('Removing instance-specific upload directory %s.', target)
         target.rmdir()
 
 
@@ -352,8 +353,8 @@ def merge_metadata(frames: Frames) -> None:
         frames      The four DataFrames (data, meta, station, notes) for one file
 
     Raises:
-        SiteIdNotFoundError: The site ID in the station DataFrame was not found in the site or column metadata.
-                             Output metadata will be limited to what the .DAT file provides.
+        SiteIdNotFoundError: The site  ID in the station DataFrame was not found in the site or column metadata.
+                             Outputmetadata will be limited to what the .DAT file provides.
     """
 
     # Basic operation:
@@ -381,10 +382,12 @@ def merge_metadata(frames: Frames) -> None:
     # If there are more site columns than what's in a .DAT file, the input must be an Excel file that
     # already has merged metadata. If so, drop the extra columns (and, potentially, any additional rows)
     # and perform the merge again.
+    # Ignore KeyErrors when dropping columns: df_meta_sites has additional columns (SiteKey, normalized_site_id) 
+    # which are not preserved in the saved Excel file.
     # NOTE: This assumes that site metadata records don't change; instead, any edits are applied
     #       by creating a new row, with a different Start Date.
     if len(df_site.columns) > len(station_columns):
-        df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True)
+        df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True, errors='ignore')
 
     site_id_dat: str = df_site.at[0, input_site_id_column]
     df_site['normalized_site_id'] = df_site[input_site_id_column].apply(cfg.normalize_name)
@@ -1087,14 +1090,7 @@ def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
             + 'They are probably not from the same source.'
         )
 
-    # Be sure to keep the ordering of the frames dict constant by assigning the frames in order: data, meta, station, notes.
-    # This determines the order in which the corresponding worksheets appear in the Excel file.
-    combined_frames: Frames = {
-        'data': pd.DataFrame([]),
-        'meta': pd.DataFrame([]),
-        'station': pd.DataFrame([]),
-        'notes': pd.DataFrame([]),
-    }
+    combined_frames: Frames = Frames()
 
     # Concatenate the actual data; put the time series in order (making it independent of whether the "new" file is actually
     # newer or not); reset the index (leave renumbering the sequence number column till after sanity checks).
@@ -1102,7 +1098,7 @@ def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
     #   - Columns of the same name are concatenated regardless of the order in which they appear in the list.
     #       - Their position in the list is the same as in the new file; this allows any reshuffling to take hold and not be undone.
     #   - In case of a change in column order, the first-mentioned frame prevails--in this case, the new file.
-    #   - A new column (not present in the base file) appears in the right position in the list.
+    #   - A new column (not present in the base file) appears in the rightmost position in the list.
     #   - A dropped column (not present in the new file) ends up at the end of the list; this needs to be corrected separately.
     #   - A renamed column looks like a combination of a dropped column and a new column; this can be consolidated later, once
     #     we have a mechanism for loading metadata that includes column aliases.
@@ -1136,8 +1132,8 @@ def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
     # Use the newest info (from the new file to be appended) for meta- and station data. In case of schema or content
     # evolution, this keeps each output file up to date with the standards at the time of saving.
     # TODO: Fix up how this could mess up the Columns worksheet, losing info for dropped columns. But these worksheets will change anyway.
-    for frame in ['meta', 'station']:
-        combined_frames[frame] = new_frames[frame]
+    combined_frames.meta = new_frames.meta
+    combined_frames.station = new_frames.station
 
     if not base_frames.meta.equals(new_frames.meta):
         logger.warning('The metadata worksheets do not match. Keep the newer one.')
@@ -1180,7 +1176,7 @@ def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
     # If there's a Notes worksheet in the base file (the one to be appended to), copy it over and append
     # the new file's notes (generated in the current run).
     # If not, just copy over the new notes.
-    if 'notes' in base_frames:
+    if base_frames.notes is not None and not base_frames.notes.empty:
         combined_frames.notes = pd.concat([base_frames.notes, new_frames.notes])
         qa_range[0] = str(min(older_last, newer_first))
     else:

@@ -226,7 +226,7 @@ layout = dmc.AppShell(
                                         ml=10,
                                     ),
                     dcc.Store(
-                        id='files-status',
+                        id='files-context',
                         data=json.dumps({'filename': '', 'unsaved': False}),
                     ),
                     dcc.Store(id='frame-store'),
