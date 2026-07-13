@@ -8,7 +8,7 @@ do not depend on or affect Dash elements.
 import logging
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Any, Callable, Final
 from enum import StrEnum, auto
 import itertools
@@ -54,8 +54,9 @@ class Context:
     unsaved: bool
     upload_id: str
     qa_status: QA_Status = QA_Status.NONE
-    qa_range: list[str] = []
+    qa_range: list[str] = field(default_factory=list)
     no_save: bool = False
+    start_batch: bool = False
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
@@ -121,7 +122,7 @@ blueprint: DashBlueprint = layout.blueprint
     Input('files-context', 'data'),
 )
 @log_func
-def load_file(context_dict: dict) -> tuple:
+def load_file(context_dict: dict[str, Any]) -> tuple:
     """If one file was opened, load it.
 
     Triggered by a change in files-context after the user selects a single file, read the uploaded file 
@@ -201,7 +202,7 @@ def load_file(context_dict: dict) -> tuple:
     running=[(Output('wait-please', 'visible'), True, False)],  # Show busy indicator while saving
 )
 @log_func
-def save_file(context_dict: dict, frame_store: dict[str, Any] | None) -> tuple:
+def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) -> tuple:
     """If a single file is loaded save the data in an Excel (.XLSX) file. If multiple, trigger batch processing instead.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -327,8 +328,8 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
         raise PreventUpdate
     
     logger.debug('%s file(s) uploaded: %s', len(uploaded_files), ', '.join([f['name'] for f in uploaded_files]))
-    context: dict[str, str | list[str] | bool] = dict(files=files, unsaved=True,
-                                                     upload_id=uploaded_files[0]['upload_id'])
+    context: dict[str, str | list[str] | bool] = dict
+    context: Context = Context(files=files, unsaved=True, upload_id=uploaded_files[0]['upload_id'])
 
     logger.debug('File cache upload ID is %s', context.upload_id)
     return asdict(context), show_data[:3]
@@ -341,7 +342,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
     Input('files-context', 'data'),
 )
 @log_func
-def toggle_loaddata(context_dict: dict) -> tuple:
+def toggle_loaddata(context_dict: dict[str, Any]) -> tuple:
     """Disable the Load Data element when new data is loaded and not (yet) saved; re-enable when data is cleared or saved.
 
     This includes graying out the label of the Load Data area; the rest is governed by the Upload component
@@ -378,7 +379,7 @@ def toggle_loaddata(context_dict: dict) -> tuple:
     Input('files-context', 'data'),
 )
 @log_func
-def show_append_batch(context_dict: dict) -> str:
+def show_append_batch(context_dict: dict[str, Any]) -> str:
     """Toggle the display of the Append Batch element based on the current context.
 
     Parameters:
@@ -397,7 +398,7 @@ def show_append_batch(context_dict: dict) -> str:
             return 'block'
         case 'files-context':
             logger.debug('File context changed; hide Append Batch element if no data.')
-            return 'none' if not asdict(context).files else no_update
+            return 'none' if not context.files else no_update
         case _:
             logger.debug('Unexpected trigger: %s; hide Append Batch element.', callback_context.triggered_id)
             return 'none'
@@ -410,7 +411,7 @@ def show_append_batch(context_dict: dict) -> str:
     State('files-context', 'data'),
 )
 @log_func
-def show_columns(frame_store: dict[str, Any] | None, context_dict: dict) -> tuple:
+def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any]) -> tuple:
     """When data is loaded, populate the column selection element with checkboxes for all data columns (variables).
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
@@ -500,7 +501,7 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
     Input('files-context', 'data'),
 )
 @log_func
-def show_badge(context_dict: dict) -> tuple:
+def show_badge(context_dict: dict[str, Any]) -> tuple:
     """Respond to a Save action by showing a SAVED badge.
 
     Because this is triggered after every single-file save action, also use this callback to clear the data
@@ -542,7 +543,7 @@ def show_badge(context_dict: dict) -> tuple:
     Input('files-context', 'data'),
 )
 @log_func
-def toggle_save_clear(context_dict: dict) -> tuple:
+def toggle_save_clear(context_dict: dict[str, Any]) -> tuple:
     """If one or more files are loaded, enable the Save, Clear, and Append buttons; otherwise, disable them.
 
     For a single file, do not enable Save and Append if the no_save flag is set, which happens when 
@@ -564,7 +565,7 @@ def toggle_save_clear(context_dict: dict) -> tuple:
     context: Context = Context(**context_dict)
     files: list[str] = list(context.files)  # A single file comes in as a string.
     num_files = len(files)
-    do_not_save: bool = 'no_save' in context and context.no_save
+    do_not_save: bool = context.no_save
 
     # The Append button works differently for single file versus batch.
     # Single file: Append is an active dcc.Upload component that allows dropping a file and upon click immediately
@@ -585,7 +586,7 @@ def toggle_save_clear(context_dict: dict) -> tuple:
     State('select-file', 'uploadedFiles'),
 )
 @log_func
-def show_file_info(context_dict: dict, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
+def show_file_info(context_dict: dict[str, Any], uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
     """If there's data in memory, show information (filename, file-attributes) about the file that was loaded.
 
     Parameters:
@@ -753,7 +754,7 @@ def report_sanity_checks(
     State('select-file'   , 'uploadedFiles'),
 )
 @log_func
-def setup_batch(context_dict: dict, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
+def setup_batch(context_dict: dict[str, Any], uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -787,7 +788,7 @@ def setup_batch(context_dict: dict, uploaded_files: list[dict[str, str | int | d
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
 
-    if 'start_batch' in context:
+    if context.start_batch:
         logger.debug('Batch triggered by user; start operation.')
         start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         next_file: int = 0  # This triggers the start of the loop over file_counter
@@ -893,7 +894,7 @@ def _done_no_save(file_counter: int) -> None:
     # background=True,
 )
 @log_batch_func
-def process_batch(file_counter: int, context_dict: dict) -> tuple:
+def process_batch(file_counter: int, context_dict: dict[str, Any]) -> tuple:
     """Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -997,7 +998,7 @@ def process_batch(file_counter: int, context_dict: dict) -> tuple:
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
 )
 @log_func
-def batch_done(context_dict: dict, badges: list[str]) -> tuple:
+def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
     """Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
 
     Look for changes to the Saved badges: setup_batch() creates one, invisible (display='none'), for each file in the
@@ -1024,7 +1025,7 @@ def batch_done(context_dict: dict, badges: list[str]) -> tuple:
         if all(display == 'inline' for display in badges):
             logger.debug('Batch complete.')
             context.unsaved = False
-            del context.start_batch
+            context.start_batch = False
             upload_id: str | None = context.upload_id
             helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()
@@ -1069,7 +1070,7 @@ def append_file(
     Parameters:
         new_frames       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
         context          Server-side file path (of the new data) and (un)saved status
-        base_filename         Filename of the newly loaded existing Excel file
+        base_filename    Filename of the newly loaded existing Excel file
         contents         Base64-encoded file contents of the newly loaded existing Excel file
 
     Returns:
