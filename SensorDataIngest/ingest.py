@@ -33,7 +33,7 @@ app: DashProxy = DashProxy(
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 
-du.configurator(app, cfg.config.application.file_cache_root, use_upload_id=False)
+du.configurator(app, cfg.config.application.file_cache_root, use_upload_id=True)
 
 # Create the callbacks after configuring the Uploader, which in turn must happen after creating the app.
 from sensor_data_ingest import callbacks  # noqa: E402, F401
