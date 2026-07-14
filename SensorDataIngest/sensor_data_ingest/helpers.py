@@ -254,7 +254,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
     return frames
 
 @log_func
-def clear_file_cache(upload_id: str) -> None:
+def clear_file_cache(upload_id: str = '') -> None:
     """Call after processing or clearing all files to empty the upload-file cache.
 
     The upload-file cache may have been cleared previously and not exist anymore, for example if the data was saved and is

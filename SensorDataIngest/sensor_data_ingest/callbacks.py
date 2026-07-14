@@ -218,8 +218,8 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
     to click Save again after an Append operation.
 
     Parameters:
-        context   Server-side file paths and (un)saved status
-        frames          The four DataFrames (data, meta, site, notes) for one file
+        context_dict   Server-side file paths and (un)saved status
+        frame_store    The four DataFrames (data, meta, site, notes) for one file
 
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
@@ -251,7 +251,7 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
         # a single file (except for the displayed sanity check results). You could repeat the Append action to chain
         # any number of files together, not just two.
-        context.qa_status = None
+        context.qa_status = QA_Status.NONE
         context.qa_range = []
         context.no_save = False
 
@@ -269,17 +269,19 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
     Output('file-name', 'children', allow_duplicate=True),
     Output('file-attributes', 'children', allow_duplicate=True),
     Trigger('clear-button', 'n_clicks'),
+    State('files-context', 'data'),
     State('show-data', 'children'),
 )
 @log_func
-def clear(show_data: list[dmc.CardSection]) -> tuple:
+def clear(context_dict: dict[str, Any], show_data: list[dmc.CardSection]) -> tuple:
     """Clear all data in memory and on the screen, triggered by the Clear button.
 
     Set the filename and unsaved flag in files-context to blank and False, respectively, which in turn
     triggers all the follow-on chain of callbacks (clear the UI, clear the DataFrame store, etc.).
 
     Parameters:
-        show_data       The layout of the main app area
+        context_dict   Server-side file paths and (un)saved status
+        show_data      The layout of the main app area
 
     Returns:
         files-context/data       (str)  Empty list of server-side file paths, unsaved flag False
@@ -293,7 +295,9 @@ def clear(show_data: list[dmc.CardSection]) -> tuple:
 
     logger.debug('Responding to Clear button click. Reset files-context.')
 
-    context: Context = Context()
+    old_context: Context = Context(**context_dict)
+    upload_id: str = old_context.upload_id
+    context: Context = Context(upload_id=upload_id)  # Keep the upload ID so we can clear the file cache
 
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/file-attributes text.
     return asdict(context), True, show_data[:3], None, None
@@ -328,7 +332,6 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
         raise PreventUpdate
     
     logger.debug('%s file(s) uploaded: %s', len(uploaded_files), ', '.join([f['name'] for f in uploaded_files]))
-    context: dict[str, str | list[str] | bool] = dict
     context: Context = Context(files=files, unsaved=True, upload_id=uploaded_files[0]['upload_id'])
 
     logger.debug('File cache upload ID is %s', context.upload_id)
@@ -426,7 +429,7 @@ def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any
 
     Parameters:
         frame_store  The four DataFrames (data, meta, site, notes) for one file
-        context Filename(s) and (un)saved status
+        context_dict Filename(s) and (un)saved status
 
     Returns:
         inspect-data/display  (str)  Show the column selection part of the Navbar if there's data; otherwise blank it
@@ -474,9 +477,9 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
     Redraw the entire stacked plot each time the selection changes.
 
     Parameters:
-        showcols    Column names, in the order in which they were selected
-        frames      The four DataFrames (data, meta, site, notes) for one file
-        single_plot If true draw a single multivariable plot, otherwise multiple single-variable plots
+        showcols        Column names, in the order in which they were selected
+        frame_store     The four DataFrames (data, meta, site, notes) for one file
+        single_plot     If true draw a single multivariable plot, otherwise multiple single-variable plots
 
     Returns:
         stacked-graphs/figure (Figure) Plotly figure of all graphs in one stacked plot
@@ -691,8 +694,8 @@ def report_sanity_checks(
 
     Parameters:
         current_report  Previously shown sanity check results, if any
-        context         Filename(s) and (un)saved status
-        frames          The three or four DataFrames (data, meta, site, possibly notes) for one file
+        context_dict    Filename(s) and (un)saved status
+        frame_store     The three or four DataFrames (data, meta, site, possibly notes) for one file
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
@@ -1069,10 +1072,10 @@ def append_file(
     already were notes).
 
     Parameters:
-        new_frames       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
-        context          Server-side file path (of the new data) and (un)saved status
-        base_filename    Filename of the newly loaded existing Excel file
-        contents         Base64-encoded file contents of the newly loaded existing Excel file
+        frame_store       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
+        context_dict      Server-side file path (of the new data) and (un)saved status
+        base_filename     Filename of the newly loaded existing Excel file
+        contents          Base64-encoded file contents of the newly loaded existing Excel file
 
     Returns:
         frame-store/data     (dict) The three or four DataFrames of the combined set
