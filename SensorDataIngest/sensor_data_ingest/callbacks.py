@@ -233,8 +233,8 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
         context.start_batch = True
         return no_update, asdict(context)
 
-    if callback_context.triggered_id == 'files-context' and context.qa_status != QA_Status.COMPLETE:
-        logger.debug('Multiple files loaded, or single-file data is not ready to be saved. Skip saving.')
+    if len(files) == 1 and context.qa_status not in (QA_Status.NONE, QA_Status.COMPLETE):
+        logger.debug('Single-file data is not ready to be saved (QA pending). Skip saving.')
         raise PreventUpdate
 
     frames: Frames = Frames(**frame_store) if frame_store else None
