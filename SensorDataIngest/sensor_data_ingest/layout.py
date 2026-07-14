@@ -7,6 +7,7 @@ from dash_extensions.enrich import (
     DashBlueprint,
     TriggerTransform,
     ServersideOutputTransform,
+    DataclassTransform,
     dcc,
 )
 import dash_uploader_uppy5 as du
@@ -227,7 +228,11 @@ layout = dmc.AppShell(
                                     ),
                     dcc.Store(
                         id='files-context',
-                        data=json.dumps({'filename': '', 'unsaved': False}),
+                        data={
+                            'files': [], 'unsaved': False, 'upload_id': '',
+                            'qa_status': 'none', 'qa_range': [], 'no_save': False,
+                            'start_batch': False,
+                        },
                     ),
                     dcc.Store(id='frame-store'),
                     dcc.Store(id='file-counter'),
@@ -242,6 +247,6 @@ layout = dmc.AppShell(
             )
 
 blueprint: DashBlueprint = DashBlueprint(
-            transforms=[ServersideOutputTransform(), TriggerTransform()],
+            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
 )
 blueprint.layout = dmc.MantineProvider(layout)

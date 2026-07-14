@@ -29,7 +29,6 @@ app: DashProxy = DashProxy(
             prevent_initial_callbacks=True,
             title='Sensor Data Ingest',
             update_title=None,
-            # transforms=[ServersideOutputTransform(), TriggerTransform()],
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 
