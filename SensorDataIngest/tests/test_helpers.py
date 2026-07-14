@@ -59,21 +59,16 @@ def test_load_data_missing_file() -> None:
         load_data(nonexistent_file)
 
 
-def test_load_data_corrupt_file() -> None:
+def test_load_data_corrupt_file(tmp_path) -> None:
     """Test that load_data raises BadFileError for a malformed/corrupted file."""
-    import tempfile
     from ..sensor_data_ingest.helpers import load_data, BadFileError
     
     # Create a temporary file with invalid CSV structure
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.dat', delete=False) as tmp:
-        tmp.write("This is not valid CSV data\nJust some random text\n")
-        tmp_path = tmp.name
+    bad_file_path = tmp_path / "corrupt_data.dat"
+    bad_file_path.write_text("This is not valid CSV data\nJust some random text\n")
     
-    try:
-        with pytest.raises(BadFileError):
-            load_data(tmp_path)
-    finally:
-        Path(tmp_path).unlink()
+    with pytest.raises(BadFileError):
+        load_data(bad_file_path)
 
 
 def test_load_data_unsupported_extension() -> None:
