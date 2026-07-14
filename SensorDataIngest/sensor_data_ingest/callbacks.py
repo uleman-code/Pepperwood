@@ -122,7 +122,7 @@ blueprint: DashBlueprint = layout.blueprint
     Input('files-context', 'data'),
 )
 @log_func
-def load_file(context_dict: dict[str, Any]) -> tuple:
+def load_file(context: Context) -> tuple:
     """If one file was opened, load it.
 
     Triggered by a change in files-context after the user selects a single file, read the uploaded file 
@@ -150,8 +150,6 @@ def load_file(context_dict: dict[str, Any]) -> tuple:
     # - After a Save, the unsaved flag is False.
     # - In Append mode, the unsaved flag is True but a qa_status element is added.
 
-    context: Context = Context(**context_dict)
-
     if len(context.files) != 1 or context.qa_status != QA_Status.NONE:
         logger.debug('Zero or multiple files, or in Append mode; nothing to show interactively.')
         raise PreventUpdate
@@ -178,7 +176,7 @@ def load_file(context_dict: dict[str, Any]) -> tuple:
     except helpers.SiteIdNotFoundError as err:
         logger.info('Continuing with incomplete metadata: %s', err)
         return (
-            Serverside(asdict(frames), key='Frames'),
+            Serverside(frames, key='Frames'),
             True,
             'Continuing with incomplete metadata:',
             str(err)
@@ -190,7 +188,7 @@ def load_file(context_dict: dict[str, Any]) -> tuple:
     # performance in plot rendering and file saving, sometimes dramatically.
     # Providing a key to the Serverside constructor makes the serverside cache use and reuse a
     # single file, preventing unlimited storage growth.
-    return Serverside(asdict(frames), key='Frames'), False, '', ''
+    return Serverside(frames, key='Frames'), False, '', ''
 
 
 @blueprint.callback(
@@ -202,7 +200,7 @@ def load_file(context_dict: dict[str, Any]) -> tuple:
     running=[(Output('wait-please', 'visible'), True, False)],  # Show busy indicator while saving
 )
 @log_func
-def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) -> tuple:
+def save_file(context: Context, frames: Frames | None) -> tuple:
     """If a single file is loaded save the data in an Excel (.XLSX) file. If multiple, trigger batch processing instead.
 
     In response to a button click, take the data from the serverside frame store, download it to the browser, and have
@@ -219,25 +217,23 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
 
     Parameters:
         context_dict   Server-side file paths and (un)saved status
-        frame_store    The four DataFrames (data, meta, site, notes) for one file
+        frames         The four DataFrames (data, meta, site, notes) for one file
 
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
         files-context/data   (str)  Same as context parameter but with the unsaved flag set to False
     """
-    context: Context = Context(**context_dict)
+
     files: list[str] = context.files
 
     if callback_context.triggered_id == 'save-button' and len(files) > 1:
         logger.debug('Save requested for multiple files; kick off batch process.')
         context.start_batch = True
-        return no_update, asdict(context)
+        return no_update, context
 
     if len(files) == 1 and context.qa_status not in (QA_Status.NONE, QA_Status.COMPLETE):
         logger.debug('Single-file data is not ready to be saved (QA pending). Skip saving.')
         raise PreventUpdate
-
-    frames: Frames = Frames(**frame_store) if frame_store else None
 
     if frames and not frames.data.empty:
         outfile: str = Path(files[0]).with_suffix('.xlsx').name
@@ -256,7 +252,7 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
         context.no_save = False
 
         logger.debug(f'File {outfile} saved.')
-        return contents, asdict(context)
+        return contents, context
     else:
         logger.debug('Nothing to save.')
         raise PreventUpdate
@@ -273,7 +269,7 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
     State('show-data', 'children'),
 )
 @log_func
-def clear(context_dict: dict[str, Any], show_data: list[dmc.CardSection]) -> tuple:
+def clear(context: Context, show_data: list[dmc.CardSection]) -> tuple:
     """Clear all data in memory and on the screen, triggered by the Clear button.
 
     Set the filename and unsaved flag in files-context to blank and False, respectively, which in turn
@@ -300,7 +296,7 @@ def clear(context_dict: dict[str, Any], show_data: list[dmc.CardSection]) -> tup
     context: Context = Context(upload_id=upload_id)  # Keep the upload ID so we can clear the file cache
 
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/file-attributes text.
-    return asdict(context), True, show_data[:3], None, None
+    return context, True, show_data[:3], None, None
 
 
 @blueprint.callback(
@@ -335,7 +331,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
     context: Context = Context(files=files, unsaved=True, upload_id=uploaded_files[0]['upload_id'])
 
     logger.debug('File cache upload ID is %s', context.upload_id)
-    return asdict(context), show_data[:3]
+    return context, show_data[:3]
 
 
 @blueprint.callback(
@@ -345,7 +341,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
     Input('files-context', 'data'),
 )
 @log_func
-def toggle_loaddata(context_dict: dict[str, Any]) -> tuple:
+def toggle_loaddata(context: Context) -> tuple:
     """Disable the Load Data element when new data is loaded and not (yet) saved; re-enable when data is cleared or saved.
 
     This includes graying out the label of the Load Data area; the rest is governed by the Upload component
@@ -364,7 +360,6 @@ def toggle_loaddata(context_dict: dict[str, Any]) -> tuple:
         load-label/c              (str)  Color for the Load Data area label: dimmed for disabled, black for enabled
     """
 
-    context: Context = Context(**context_dict)
     unsaved: bool = context.unsaved
 
     if unsaved:
@@ -382,7 +377,7 @@ def toggle_loaddata(context_dict: dict[str, Any]) -> tuple:
     Input('files-context', 'data'),
 )
 @log_func
-def show_append_batch(context_dict: dict[str, Any]) -> str:
+def show_append_batch(context: Context) -> str:
     """Toggle the display of the Append Batch element based on the current context.
 
     Parameters:
@@ -392,8 +387,6 @@ def show_append_batch(context_dict: dict[str, Any]) -> str:
         append-batch/display  (str)  Show the Append Batch element if the Append button was clicked;
                                      hide it if there's no data.
     """
-
-    context: Context = Context(**context_dict)
 
     match callback_context.triggered_id:
         case 'append-button':
@@ -414,7 +407,7 @@ def show_append_batch(context_dict: dict[str, Any]) -> str:
     State('files-context', 'data'),
 )
 @log_func
-def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any]) -> tuple:
+def show_columns(frames: Frames | None, context: Context) -> tuple:
     """When data is loaded, populate the column selection element with checkboxes for all data columns (variables).
 
     When there is no data (for example, after a Clear), clear the column list, delete the checkboxes,
@@ -428,7 +421,7 @@ def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any
     did a Save.
 
     Parameters:
-        frame_store  The four DataFrames (data, meta, site, notes) for one file
+        frames       The four DataFrames (data, meta, site, notes) for one file
         context_dict Filename(s) and (un)saved status
 
     Returns:
@@ -436,9 +429,6 @@ def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any
         data-columns/children (list) A list of dmc.Checkbox elements, one for each data column
         select-columns/value  (list) Reset the current selection (uncheck all boxes)
     """
-
-    context: Context = Context(**context_dict)
-    frames: Frames = Frames(**frame_store) if frame_store else None
 
     if (frames and not frames.data.empty):
         if context.unsaved:
@@ -471,14 +461,14 @@ def show_columns(frame_store: dict[str, Any] | None, context_dict: dict[str, Any
     State('frame-store', 'data'),
 )
 @log_func
-def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, Any] | None) -> tuple:
+def draw_plots(showcols: list[str], single_plot: bool, frames: Frames | None) -> tuple:
     """Draw plots, one below the other, for each of the selected columns.
 
     Redraw the entire stacked plot each time the selection changes.
 
     Parameters:
         showcols        Column names, in the order in which they were selected
-        frame_store     The four DataFrames (data, meta, site, notes) for one file
+        frames          The four DataFrames (data, meta, site, notes) for one file
         single_plot     If true draw a single multivariable plot, otherwise multiple single-variable plots
 
     Returns:
@@ -486,8 +476,6 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
         plot-area/display     (str)    Hide the plot area if there are no graphs to show
                                        (otherwise you see an empty set of axes)
     """
-
-    frames = Frames(**frame_store) if frame_store else None
 
     if showcols:
         logger.debug('Columns selected; generating graphs.')
@@ -504,7 +492,7 @@ def draw_plots(showcols: list[str], single_plot: bool, frame_store: dict[str, An
     Input('files-context', 'data'),
 )
 @log_func
-def show_badge(context_dict: dict[str, Any]) -> tuple:
+def show_badge(context: Context) -> tuple:
     """Respond to a Save action by showing a SAVED badge.
 
     Because this is triggered after every single-file save action, also use this callback to clear the data
@@ -518,8 +506,6 @@ def show_badge(context_dict: dict[str, Any]) -> tuple:
         saved-badge/display (str) Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
         save-xlsx/data      (obj) None, to clear the data
     """
-
-    context: Context = Context(**context_dict)
 
     # To show the badge, there must be a single file loaded and it must be saved.
     # (The unsaved flag is also False if there nothing loaded.)
@@ -546,7 +532,7 @@ def show_badge(context_dict: dict[str, Any]) -> tuple:
     Input('files-context', 'data'),
 )
 @log_func
-def toggle_save_clear(context_dict: dict[str, Any]) -> tuple:
+def toggle_save_clear(context: Context) -> tuple:
     """If one or more files are loaded, enable the Save, Clear, and Append buttons; otherwise, disable them.
 
     For a single file, do not enable Save and Append if the no_save flag is set, which happens when 
@@ -565,7 +551,6 @@ def toggle_save_clear(context_dict: dict[str, Any]) -> tuple:
         clear-button/disabled       True to disable; False to enable
     """
 
-    context: Context = Context(**context_dict)
     files: list[str] = list(context.files)  # A single file comes in as a string.
     num_files = len(files)
     do_not_save: bool = context.no_save
@@ -589,7 +574,7 @@ def toggle_save_clear(context_dict: dict[str, Any]) -> tuple:
     State('select-file', 'uploadedFiles'),
 )
 @log_func
-def show_file_info(context_dict: dict[str, Any], uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
+def show_file_info(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]):
     """If there's data in memory, show information (filename, file-attributes) about the file that was loaded.
 
     Parameters:
@@ -601,7 +586,6 @@ def show_file_info(context_dict: dict[str, Any], uploaded_files: list[dict[str, 
         file-attributes/children  (str) Friendly-formatted size of the currently loaded file
     """
 
-    context: Context = Context(**context_dict)
     files: list[str] = context.files
 
     # Make sure there's only one file and we're not appending.
@@ -682,7 +666,7 @@ def _run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> lis
 )
 @log_func
 def report_sanity_checks(
-    current_report: list[dmc.Text] | None, context_dict: dict[str, Any], frame_store: dict[str, Any] | None
+    current_report: list[dmc.Text] | None, context: Context, frames: Frames | None
 ) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     """Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -695,15 +679,12 @@ def report_sanity_checks(
     Parameters:
         current_report  Previously shown sanity check results, if any
         context_dict    Filename(s) and (un)saved status
-        frame_store     The three or four DataFrames (data, meta, site, possibly notes) for one file
+        frames          The three or four DataFrames (data, meta, site, possibly notes) for one file
 
     Returns:
         sanity-checks/children  The results of a few simple sanity checks
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     """
-
-    context: Context = Context(**context_dict)
-    frames: Frames = Frames(**frame_store) if frame_store else None
 
     if not frames or frames.data.empty:
         logger.debug('No data loaded. Clear the sanity check reports.')
@@ -747,7 +728,7 @@ def report_sanity_checks(
     report += qa_report
     report = list({t.children: t for t in report}.values())  # Remove duplicates while maintaining order (only needed in Append mode)
 
-    return report, asdict(context), Serverside(asdict(frames), key='Frames')
+    return report, context, Serverside(frames, key='Frames')
 
 
 @blueprint.callback(
@@ -758,7 +739,7 @@ def report_sanity_checks(
     State('select-file'   , 'uploadedFiles'),
 )
 @log_func
-def setup_batch(context_dict: dict[str, Any], uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
+def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -780,8 +761,6 @@ def setup_batch(context_dict: dict[str, Any], uploaded_files: list[dict[str, str
         file-attributes/children    (list[str]) Reuse for start and completion time of batch operation
         next-file/data              (int) Set the next value for the loop counter
     """
-
-    context: Context = Context(**context_dict)
 
     if len(uploaded_files) <= 1:
         logger.debug('No file or a single filename: not a batch.')
@@ -898,7 +877,7 @@ def _done_no_save(file_counter: int) -> None:
     # background=True,
 )
 @log_batch_func
-def process_batch(file_counter: int, context_dict: dict[str, Any]) -> tuple:
+def process_batch(file_counter: int, context: Context) -> tuple:
     """Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -914,7 +893,6 @@ def process_batch(file_counter: int, context_dict: dict[str, Any]) -> tuple:
         context         Filename(s) and (un)saved status
    """
 
-    context: Context = Context(**context_dict)
     files: list[str] = context.files
 
     if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
@@ -1002,7 +980,7 @@ def process_batch(file_counter: int, context_dict: dict[str, Any]) -> tuple:
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
 )
 @log_func
-def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
+def batch_done(context: Context, badges: list[str]) -> tuple:
     """Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
 
     Look for changes to the Saved badges: setup_batch() creates one, invisible (display='none'), for each file in the
@@ -1021,8 +999,6 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
         file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
     """
 
-    context: Context = Context(**context_dict)
-
     if badges:  # This also gets triggered when all batch-related badges disappear
         logger.debug('There are %s files in progress: %s', len(badges), badges)
 
@@ -1034,7 +1010,7 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
             helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-            return asdict(context), end_time
+            return context, end_time
         else:
             logger.debug(
                 f'Batch not complete; so far only {len([d for d in badges if d == "inline"])} files.'
@@ -1060,7 +1036,7 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
 )
 @log_func
 def append_file(
-    frame_store: dict[str, Any], context_dict: dict[str, Any], base_filename: str, contents: str
+    new_frames: Frames, context: Context, base_filename: str, contents: str
 ) -> tuple:
     """An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
 
@@ -1072,8 +1048,8 @@ def append_file(
     already were notes).
 
     Parameters:
-        frame_store       The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
-        context_dict      Server-side file path (of the new data) and (un)saved status
+        new_frames        The three or four DataFrames (data, meta, site, possibly notes) from the currently loaded new file
+        context           Server-side file path (of the new data) and (un)saved status
         base_filename     Filename of the newly loaded existing Excel file
         contents          Base64-encoded file contents of the newly loaded existing Excel file
 
@@ -1088,9 +1064,6 @@ def append_file(
 
     """
 
-    context: Context = Context(**context_dict)
-    new_frames: Frames = Frames(**frame_store)
-
     try:
         new_filename: str = Path(context.files[0]).name
         file_names: str = f"{new_filename} {append_arrow} {base_filename}"
@@ -1103,7 +1076,7 @@ def append_file(
             f'Rows: Base rows {len(base_frames.data)}; New rows {len(new_frames.data)}; Combined rows {len(combined_frames.data)}'
         )
 
-        return Serverside(asdict(combined_frames), key='Frames'), asdict(context), file_names, [], False, '', ''
+        return Serverside(combined_frames, key='Frames'), context, file_names, [], False, '', ''
     except helpers.UnmatchedColumnsError as e:
         logger.error(e)
         return no_update, no_update, no_update, no_update, True, 'Unmatched files', str(e)
