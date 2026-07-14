@@ -254,8 +254,11 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
     return frames
 
 @log_func
-def clear_file_cache(upload_id: str | None = None) -> None:
+def clear_file_cache(upload_id: str) -> None:
     """Call after processing or clearing all files to empty the upload-file cache.
+
+    The upload-file cache may have been cleared previously and not exist anymore, for example if the data was saved and is
+    now being cleared, or saved again. In that case, this function is a no-op.
 
     Args:
         upload_id  If enabled, the file cache will have a subdirectory for each
@@ -263,14 +266,22 @@ def clear_file_cache(upload_id: str | None = None) -> None:
                     operation (each user gets their own instance).
                     Only clear the current instance's uploads.
     """
-    target = file_cache if upload_id is None else file_cache / upload_id
+    target = file_cache / upload_id if upload_id else file_cache
 
-    logger.debug('Removing all uploaded files in %s.', target)
+    # If upload_id is enabled and the cache was already cleared, then the target directory is gone too, and it ends here.
+    if not target.exists():
+        logger.debug('Upload-file cache %s does not exist. Nothing to clear.', target)
+        return
+
+    # If upload_id is not enabled, the cache may already have been cleared, but then the cache directory still exists
+    # and should remain. Looping over the empty list of files does nothing.
+    # If upload_id is enabled, there will be files and a directory to remove; otherwise, we wouldn't get here.
+    logger.debug('Removing all uploaded files, if any, in %s.', target)
     for file in target.glob('*'):
         if file.is_file():
             file.unlink(missing_ok=True)
 
-    if upload_id is not None:
+    if upload_id:
         logger.debug('Removing instance-specific upload directory %s.', target)
         target.rmdir()
 
