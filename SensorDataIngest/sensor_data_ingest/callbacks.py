@@ -50,9 +50,9 @@ class QA_Status(StrEnum):
 
 @dataclass
 class Context:
-    files: list[str]
-    unsaved: bool
-    upload_id: str
+    files: list[str] = field(default_factory=list)
+    unsaved: bool = False
+    upload_id: str = ''
     qa_status: QA_Status = QA_Status.NONE
     qa_range: list[str] = field(default_factory=list)
     no_save: bool = False
@@ -152,7 +152,7 @@ def load_file(context_dict: dict[str, Any]) -> tuple:
 
     context: Context = Context(**context_dict)
 
-    if len(context.files) != 1 or context.qa_status is not None:
+    if len(context.files) != 1 or context.qa_status != QA_Status.NONE:
         logger.debug('Zero or multiple files, or in Append mode; nothing to show interactively.')
         raise PreventUpdate
 
@@ -223,7 +223,7 @@ def save_file(context_dict: dict[str, Any], frame_store: dict[str, Any] | None) 
 
     Returns:
         save-xlsx/data       (dict) Content and filename to be downloaded to the browser
-        files-context/data    (str)  Same as context parameter but with the unsaved flag set to False
+        files-context/data   (str)  Same as context parameter but with the unsaved flag set to False
     """
     context: Context = Context(**context_dict)
     files: list[str] = context.files
@@ -282,18 +282,18 @@ def clear(show_data: list[dmc.CardSection]) -> tuple:
         show_data       The layout of the main app area
 
     Returns:
-        files-context/data      (str)  Empty list of server-side file paths, unsaved flag False
-        frame-store/clear_data (bool) Delete the contents of the serverside DataFrame store
-        show-data/children     (list[dmc.CardSection]) Truncated contents of the main app area:
-                               remove batch processing output, if any
-        file-name/children     (str)  Empty string to clear
+        files-context/data       (str)  Empty list of server-side file paths, unsaved flag False
+        frame-store/clear_data   (bool) Delete the contents of the serverside DataFrame store
+        show-data/children       (list[dmc.CardSection]) Truncated contents of the main app area:
+                                                         remove batch processing output, if any
+        file-name/children       (str)  Empty string to clear
         file-attributes/children (str)  Empty string to clear
 
     """
 
     logger.debug('Responding to Clear button click. Reset files-context.')
 
-    context: Context = Context(files=[], unsaved=False)
+    context: Context = Context()
 
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/file-attributes text.
     return asdict(context), True, show_data[:3], None, None
@@ -316,7 +316,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
         show_data           The layout of the main app area
 
     Returns:
-        files-context/data   (dict) Server-side file paths and unsaved status
+        files-context/data  (dict) Server-side file paths and unsaved status
         show-data/children  (list[dmc.CardSection]) Truncated contents of the main app area:
                             remove batch processing output, if any
     """
@@ -679,7 +679,7 @@ def _run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> lis
 )
 @log_func
 def report_sanity_checks(
-    current_report: list[dmc.Text] | None, context: Context, frame_store: dict[str, Any] | None
+    current_report: list[dmc.Text] | None, context_dict: dict[str, Any], frame_store: dict[str, Any] | None
 ) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     """Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -699,6 +699,7 @@ def report_sanity_checks(
         frame-store/data        The four DataFrames (data, meta, site, notes) for one file
     """
 
+    context: Context = Context(**context_dict)
     frames: Frames = Frames(**frame_store) if frame_store else None
 
     if not frames or frames.data.empty:
@@ -1013,7 +1014,7 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
                         NOTE: This takes advantage of pattern-matching callback inputs.
 
     Returns:
-        files-context/data      (str)  Same as context parameter but with the unsaved flag set to False
+        files-context/data       (str)  Same as context parameter but with the unsaved flag set to False
         file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
     """
 
@@ -1026,7 +1027,7 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
             logger.debug('Batch complete.')
             context.unsaved = False
             context.start_batch = False
-            upload_id: str | None = context.upload_id
+            upload_id: str = context.upload_id
             helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
@@ -1056,7 +1057,7 @@ def batch_done(context_dict: dict[str, Any], badges: list[str]) -> tuple:
 )
 @log_func
 def append_file(
-    frame_store: dict[str, Any], context: Context, base_filename: str, contents: str
+    frame_store: dict[str, Any], context_dict: dict[str, Any], base_filename: str, contents: str
 ) -> tuple:
     """An existing Excel file was opened, to be appended to. Append the current data and update the frame store.
 
@@ -1075,7 +1076,7 @@ def append_file(
 
     Returns:
         frame-store/data     (dict) The three or four DataFrames of the combined set
-        files-context/data    (dict) Original context, with new members, the timestamp range on which to perform QA analysis
+        files-context/data   (dict) Original context, with new members, the timestamp range on which to perform QA analysis
         file-name/children   (str)  The names the new and existing files, linked by a compound arrow-plus, indicating appending
         append-file/contents (list) Empty to reset, so a new Append file upload always results in a contents change
         read-error/opened    (bool) True in case of error (show error modal), otherwise False
@@ -1084,6 +1085,7 @@ def append_file(
 
     """
 
+    context: Context = Context(**context_dict)
     new_frames: Frames = Frames(**frame_store)
 
     try:
