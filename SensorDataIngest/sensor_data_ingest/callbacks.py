@@ -8,7 +8,7 @@ do not depend on or affect Dash elements.
 import logging
 from datetime import datetime
 from pathlib import Path
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, field, asdict
 from typing import Any, Callable, Final
 from enum import StrEnum, auto
 import itertools
@@ -45,7 +45,8 @@ append_arrow: Final[str] = r'$\xrightarrow{+}$'     # Use Markdown with Latex to
 
 class QA_Status(StrEnum):
     NONE = auto()
-    READY = auto()
+    APPEND_READY = auto()
+    APPEND_COMPLETE = auto()
     COMPLETE = auto()
 
 @dataclass
@@ -71,7 +72,15 @@ def log_func(fn: Callable, *args, **kwargs) -> Any:
     as normal exits, rather than as exceptions.
     """
 
-    ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__})
+    context_value = ''
+    for arg in list(args) + list(kwargs.values()):
+        if isinstance(arg, Context):
+            context_value = asdict(arg)
+            context_value['files'] = [Path(f).name for f in context_value.get('files', [])]
+            del context_value['upload_id']      # Keep it short; this never changes.
+            break
+
+    ee_logger.debug('>>> Enter.', extra={'fname': fn.__name__, 'context': context_value})
 
     try:
         out = fn(*args, **kwargs)
@@ -231,11 +240,14 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         context.start_batch = True
         return no_update, context
 
-    if len(files) == 1 and context.qa_status not in (QA_Status.NONE, QA_Status.COMPLETE):
-        logger.debug('Single-file data is not ready to be saved (QA pending). Skip saving.')
+    # The only time we want to respond to a context-change trigger is when we're in append mode and the QA checks have completed.
+    if callback_context.triggered_id == 'files-context' and context.qa_status != QA_Status.APPEND_COMPLETE:
+        logger.debug('Not in append mode and context changed for unrelated reason, or appended file not ready to be saved (QA pending): skip saving.')
         raise PreventUpdate
 
-    if frames and not frames.data.empty:
+    # Guard against a save requested while QA checks are still in process. The window of vulnerabiity is very small, but not zero.
+    # Note that QA can only be completed if there is data in memory, so there is no need to check for that here.
+    if context.qa_status in (QA_Status.APPEND_COMPLETE, QA_Status.COMPLETE):
         outfile: str = Path(files[0]).with_suffix('.xlsx').name
 
         # Dash provides a convenience function to create the required dictionary. That function in turn
@@ -251,10 +263,13 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         context.qa_range = []
         context.no_save = False
 
-        logger.debug(f'File {outfile} saved.')
+        logger.debug(f'File "{outfile}" saved.')
         return contents, context
+    elif not frames or frames.data.empty:
+        logger.debug('No data in memory; nothing to save.')
+        raise PreventUpdate
     else:
-        logger.debug('Nothing to save.')
+        logger.debug('File not ready to be saved (QA pending); skip saving.')
         raise PreventUpdate
 
 
@@ -269,14 +284,14 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
     State('show-data', 'children'),
 )
 @log_func
-def clear(context: Context, show_data: list[dmc.CardSection]) -> tuple:
+def clear(old_context: Context, show_data: list[dmc.CardSection]) -> tuple:
     """Clear all data in memory and on the screen, triggered by the Clear button.
 
     Set the filename and unsaved flag in files-context to blank and False, respectively, which in turn
     triggers all the follow-on chain of callbacks (clear the UI, clear the DataFrame store, etc.).
 
     Parameters:
-        context_dict   Server-side file paths and (un)saved status
+        old_context    Server-side file paths and (un)saved status
         show_data      The layout of the main app area
 
     Returns:
@@ -291,7 +306,6 @@ def clear(context: Context, show_data: list[dmc.CardSection]) -> tuple:
 
     logger.debug('Responding to Clear button click. Reset files-context.')
 
-    old_context: Context = Context(**context_dict)
     upload_id: str = old_context.upload_id
     context: Context = Context(upload_id=upload_id)  # Keep the upload ID so we can clear the file cache
 
@@ -393,7 +407,8 @@ def show_append_batch(context: Context) -> str:
             logger.debug('Append button clicked; show Append Batch element.')
             return 'block'
         case 'files-context':
-            logger.debug('File context changed; hide Append Batch element if no data.')
+            logger.debug('Context changed%s', ': data cleared, so hide Append Batch element' if not context.files 
+                         else ' for unrelated reason: ignore.')
             return 'none' if not context.files else no_update
         case _:
             logger.debug('Unexpected trigger: %s; hide Append Batch element.', callback_context.triggered_id)
@@ -591,7 +606,7 @@ def show_file_info(context: Context, uploaded_files: list[dict[str, str | int | 
     # Make sure there's only one file and we're not appending.
     match len(files):
         case 1:
-            if context.unsaved and context.qa_status != QA_Status.READY:
+            if context.unsaved and context.qa_status != QA_Status.APPEND_READY:
                 name: str = uploaded_files[0]['name']
                 info: str = f'Size: {hf.format_size(uploaded_files[0]["size"])}'
                 logger.debug('Data in memory; show file information.')
@@ -666,7 +681,7 @@ def _run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> lis
 )
 @log_func
 def report_sanity_checks(
-    current_report: list[dmc.Text] | None, context: Context, frames: Frames | None
+    current_report: list[dmc.Text] | None, context: Context, frames: Frames
 ) -> tuple[list[dmc.Text], dict, Serverside[dict]]:
     """Perform sanity checks/QA on the data and report the results in a separate area of the app shell.
 
@@ -700,7 +715,7 @@ def report_sanity_checks(
     report: list[dmc.Text]
     qa_range: list[str] | None
 
-    if context.qa_status != QA_Status.NONE:
+    if context.qa_status == QA_Status.APPEND_READY:
         # Append mode: an existing Excel file was loaded and concatenated with the new data.
         # Sanity-test only the part of the time series indicated by qa_range, and append the results
         # to whatever is already reported (but remove duplicates).
@@ -711,11 +726,12 @@ def report_sanity_checks(
         current_report = [dmc.Text(**c['props']) for c in current_report]
         report = current_report + [dmc.Text(f'{len(data):,} total samples after appending.', ta='right')]
         qa_range = context.qa_range
-        context.qa_status = QA_Status.COMPLETE
+        context.qa_status = QA_Status.APPEND_COMPLETE
     else:
         logger.debug('New data found. Running and reporting sanity checks.')
         report = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', ta='right')]
         qa_range = None
+        context.qa_status = QA_Status.COMPLETE
 
     qa_report: list[dmc.Text]
 
@@ -1022,17 +1038,17 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
 
 
 @blueprint.callback(
-    Output('frame-store' , 'data'    , allow_duplicate=True),
+    Output('frame-store'  , 'data'    , allow_duplicate=True),
     Output('files-context', 'data'    , allow_duplicate=True),
-    Output('file-name'   , 'children', allow_duplicate=True),
-    Output('append-file' , 'contents'),
-    Output('read-error'  , 'opened'  , allow_duplicate=True),
-    Output('error-title' , 'children', allow_duplicate=True),
-    Output('error-text'  , 'children', allow_duplicate=True),
-    State( 'frame-store' , 'data'    ),
+    Output('file-name'    , 'children', allow_duplicate=True),
+    Output('append-file'  , 'contents'),
+    Output('read-error'   , 'opened'  , allow_duplicate=True),
+    Output('error-title'  , 'children', allow_duplicate=True),
+    Output('error-text'   , 'children', allow_duplicate=True),
+    State( 'frame-store'  , 'data'    ),
     State( 'files-context', 'data'    ),
-    State( 'append-file' , 'filename'),
-    Input( 'append-file' , 'contents'),
+    State( 'append-file'  , 'filename'),
+    Input( 'append-file'  , 'contents'),
 )
 @log_func
 def append_file(
@@ -1071,7 +1087,7 @@ def append_file(
         logger.debug('Existing file data initialized.')
         combined_frames: Frames
         combined_frames, context.qa_range = helpers.append(base_frames, new_frames)
-        context.qa_status = QA_Status.READY
+        context.qa_status = QA_Status.APPEND_READY
         logger.info(
             f'Rows: Base rows {len(base_frames.data)}; New rows {len(new_frames.data)}; Combined rows {len(combined_frames.data)}'
         )
