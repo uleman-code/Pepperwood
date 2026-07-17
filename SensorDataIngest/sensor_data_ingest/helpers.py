@@ -493,7 +493,7 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
     return renamer
 
 @log_func
-def verify_standard_columns(frames: Frames) -> None:
+def _verify_standard_columns(frames: Frames) -> None:
     """Make sure that the configured timestamp and sequence number columns are actually in the data and column metadata.
     
     If not, it means that no metadata was found for the site or the columns. Use a heuristic approach to identify these
@@ -534,7 +534,7 @@ def verify_standard_columns(frames: Frames) -> None:
 
 
 @log_func
-def get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
+def _get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     """Determine the sampling interval for the site, from the static metadata or the configuration default.
 
     Look up the sampling interval in the metadata. This must be an integer (interpreted as the number of
@@ -722,7 +722,7 @@ def render_graphs(
 
 
 @log_func
-def report_duplicates(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
+def _report_duplicates(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
     """Construct a report listing each occurrence of duplicated rows or duplicate timestamps with otherwise distinct values.
 
     There are three distinct cases:
@@ -800,7 +800,7 @@ def report_duplicates(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.D
 
 
 @log_func
-def report_missing_column_values(
+def _report_missing_column_values(
     df: pd.DataFrame, column: str, qa_range: pd.Series | slice
 ) -> pd.DataFrame:
     """Construct a missing-value report for each occurrence or range of missing values in a given column.
@@ -857,7 +857,7 @@ def report_missing_column_values(
 
 
 @log_func
-def fill_missing_rows(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
+def _fill_missing_rows(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.DataFrame:
     """Complete a regular time series by inserting NaN-valued records wherever there are gaps.
 
     A dropout in the time series means that there simply is no record for the expected timestamp. There may be a single
@@ -893,7 +893,7 @@ def fill_missing_rows(df: pd.DataFrame, sampling_interval: pd.Timedelta) -> pd.D
 
 
 @log_func
-def report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
+def _report_missing_samples(old_dt_index: pd.DatetimeIndex, new_dt_index: pd.DatetimeIndex,
                            sampling_interval:pd.Timedelta) -> pd.DataFrame:
     """Given the datetime index before and after insertion of missing rows, report what was found and changed.
 
@@ -997,16 +997,16 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
         TimestampColumnNotFoundError     Passed through 
     """
 
-    # NOTE: verify_standard_columns() raises an exception if it cannot unambiguously identify the timestamp column.
+    # NOTE: _verify_standard_columns() raises an exception if it cannot unambiguously identify the timestamp column.
     #       Let caller deal with it.
-    verify_standard_columns(frames)
-    sampling_interval: pd.Timedelta = get_sampling_interval(frames.station)
+    _verify_standard_columns(frames)
+    sampling_interval: pd.Timedelta = _get_sampling_interval(frames.station)
     df_data: pd.DataFrame = frames.data
     df_notes: pd.DataFrame = frames.notes
 
-    # NOTE: report_duplicates() raises an exception if it finds duplicate timestamps with
+    # NOTE: _report_duplicates() raises an exception if it finds duplicate timestamps with
     #       distinct variable values. Let caller deal with it.
-    duplicates_report: pd.DataFrame = report_duplicates(df_data, sampling_interval)
+    duplicates_report: pd.DataFrame = _report_duplicates(df_data, sampling_interval)
     duplicates_found: bool = bool(len(duplicates_report))
     original_size: int = len(df_data)
     df_data = (
@@ -1029,7 +1029,7 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
         # Note that this is the one test that needs to be limited to data not previously analyzed, to avoid double reporting.
         missing_values_report = pd.concat(
             [
-                report_missing_column_values(df_data, col, s_qa_range)
+                _report_missing_column_values(df_data, col, s_qa_range)
                 for col in variable_columns[missing_value_columns.astype(bool)]
             ]
         )
@@ -1038,9 +1038,9 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
         missing_values_report = pd.DataFrame([], columns=qa_report_columns)
 
     original_index: pd.DatetimeIndex = pd.DatetimeIndex(df_data[timestamp_column])
-    df_data = fill_missing_rows(df_data, sampling_interval)
+    df_data = _fill_missing_rows(df_data, sampling_interval)
     new_index: pd.DatetimeIndex = pd.DatetimeIndex(df_data[timestamp_column])
-    missing_samples_report: pd.DataFrame = report_missing_samples(original_index, new_index, sampling_interval)
+    missing_samples_report: pd.DataFrame = _report_missing_samples(original_index, new_index, sampling_interval)
     missing_samples_found: bool = bool(len(missing_samples_report))
 
     df_notes = pd.concat(
