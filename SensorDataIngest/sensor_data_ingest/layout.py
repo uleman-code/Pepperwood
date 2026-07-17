@@ -1,6 +1,7 @@
 """Dynamic Dash layout: app shell with header, navigation bar, and main area."""
 
-import json
+import dataclasses
+from typing import Any
 
 import dash_mantine_components as dmc
 from dash_extensions.enrich import (
@@ -13,6 +14,17 @@ from dash_extensions.enrich import (
 import dash_uploader_uppy5 as du
 
 from . import config as cfg
+
+
+# Regular DataclassTransform assumes all dataclasses are regular client objects (that need to be JSON-serialized
+# and -deserialized). It fails to take into account Serverside dataclasses, which are stored as-is.
+# TODO: Possible defect?
+class SafeDataclassTransform(DataclassTransform):
+    """Deal with dataclasses that are not JSON-serialized because they're stored server-side."""
+    def _try_load(self, data: Any, ann=None) -> Any:
+        if dataclasses.is_dataclass(data):
+            return data
+        return super()._try_load(data, ann)
 
 excel_file_types = cfg.config.input.excel_file_extensions
 input_file_types = cfg.config.input.datalogger_file_extensions + excel_file_types
@@ -247,6 +259,6 @@ layout = dmc.AppShell(
             )
 
 blueprint: DashBlueprint = DashBlueprint(
-            transforms=[ServersideOutputTransform(), TriggerTransform(), DataclassTransform()],
+            transforms=[SafeDataclassTransform(), TriggerTransform(), ServersideOutputTransform()],
 )
 blueprint.layout = dmc.MantineProvider(layout)
