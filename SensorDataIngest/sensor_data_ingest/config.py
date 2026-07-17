@@ -275,8 +275,8 @@ def logging_init() -> None:
     # instead of the wrapper itself) for funcName.
     ee_logger    = logging.getLogger(program_name + '_ee')
     ee_handler   = logging.FileHandler(logging_dir / (program_name + '.log'))
-    ee_formatter = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{fname:28s}: {message}',
-                                     style='{', datefmt='%Y-%m-%d %H:%M:%S')
+    ee_formatter = logging.Formatter('{asctime}|{levelname:7s}|{module:9s}|{fname:28s}: {message} {context}',
+                                     style='{', datefmt='%Y-%m-%d %H:%M:%S', defaults={'context': ''})
 
     ee_handler.setLevel(app_config.file_logging_level)
     ee_handler.setFormatter(ee_formatter)
