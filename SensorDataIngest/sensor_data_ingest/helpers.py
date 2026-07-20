@@ -308,6 +308,7 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     Returns:
         A list of matched (left_path, right_path) tuples. Any file without a unique partner is omitted.
     """
+    # TODO: Return string paths instead of Path objects.
     left_paths: list[Path] = [Path(p) for p in left_files]
     right_paths: list[Path] = [Path(p) for p in right_files]
 

@@ -58,6 +58,8 @@ class Context:
     qa_range: list[str] = field(default_factory=list)
     no_save: bool = False
     start_batch: bool = False
+    append_pairs: list[list[str]] = field(default_factory=list)
+    # TODO: Move the file pairs to a separate store
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
@@ -346,6 +348,41 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
 
     logger.debug('File cache upload ID is %s', context.upload_id)
     return context, show_data[:3]
+
+
+@blueprint.callback(
+    Output('files-context', 'data', allow_duplicate=True),
+    Input('select-append-batch', 'uploadedFiles'),
+    State('files-context', 'data'),
+)
+@log_func
+def append_batch_files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+                                context: Context) -> Context:
+    """Match newly selected append files to the currently loaded files and start the append batch."""
+
+    # TODO: Expand docstring
+    if not uploaded_files or len(context.files) <= 1:
+        logger.debug('No append files uploaded or not in multi-file mode; ignore.')
+        raise PreventUpdate
+
+    append_files: list[str] = [
+        str(file_cache / file['upload_id'] / file['response']['filename'])
+        for file in uploaded_files
+    ]
+    # TODO: Fix up for pair_files_by_frefix to return string paths instead of Path objects.
+    matches = helpers.pair_files_by_prefix(context.files, append_files)
+    if not matches:
+        logger.warning('No unique matches found for append batch. Files: %s vs %s',
+                       [Path(p).name for p in context.files],
+                       [Path(p).name for p in append_files])
+        raise PreventUpdate
+
+    context.append_pairs = [[str(left), str(right)] for left, right in matches]
+    context.start_batch = True
+    logger.debug('Append batch matched %s pair(s): %s',
+                 len(matches),
+                 [f'{Path(left).name} <- {Path(right).name}' for left, right in matches])
+    return context
 
 
 @blueprint.callback(
@@ -778,11 +815,6 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         next-file/data              (int) Set the next value for the loop counter
     """
 
-    if len(uploaded_files) <= 1:
-        logger.debug('No file or a single filename: not a batch.')
-        raise PreventUpdate
-    
-    # When the batch is complete, the unsaved flag gets set to False.
     if not context.unsaved:
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
@@ -791,9 +823,45 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         logger.debug('Batch triggered by user; start operation.')
         start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         next_file: int = 0  # This triggers the start of the loop over file_counter
+
+        # TODO: Don't update the top-level file-name/file-attributes area. Use the individual
+        #       file-info-n CardSection for each file instead.
+        if context.append_pairs:
+            filenames: list[str] = [
+                f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
+                for pair in context.append_pairs
+            ]
+            files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
+                zip([html.Br()] * len(filenames), [f'\N{BULLET} {name}' for name in filenames])
+            ))
+            return (
+                'Batch append operation',
+                [f'{len(filenames)} pairs matched:'] + files_list,
+                next_file,
+            )
+
         return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], next_file
     else:
-        # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
+        if context.append_pairs:
+            filenames: list[str] = [
+                f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
+                for pair in context.append_pairs
+            ]
+            logger.debug('Waiting for append batch to start.')
+            files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
+                zip([html.Br()] * len(filenames), [f'\N{BULLET} {name}' for name in filenames])
+            ))
+            return (
+                'Batch append operation',
+                [f'{len(filenames)} pairs matched:'] + files_list,
+                no_update,
+            )
+
+        if len(uploaded_files) <= 1:
+            logger.debug('No file or a single filename: not a batch.')
+            raise PreventUpdate
+
+        # context has the server-side full paths, which may have been sanitized (safe) versions of the original filenames.
         # Show the client-side filenames provided by the Upload component instead.
         filenames: list[str] = [f['name'] for f in uploaded_files]
         logger.debug('Waiting for user to click Save to start batch processing.')
@@ -808,9 +876,16 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
     Trigger('next-file'   , 'modified_timestamp'),
     State(  'next-file'   , 'data'              ),
     State(  'select-file' , 'uploadedFiles'     ),
+    State(  'files-context', 'data'              ),
+    State(  'select-append-batch', 'uploadedFiles'  ),
 )
 @log_batch_func
-def next_in_batch(next_file: int, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
+def next_in_batch(
+    next_file: int,
+    uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+    context: Context,
+    append_uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+) -> tuple:
     """Show file information and a busy indicator for the current item in the batch.
 
     Parameters:
@@ -821,7 +896,7 @@ def next_in_batch(next_file: int, uploaded_files: list[dict[str, str | int | dic
         show-data/children (object) Patch object to add another CardSection to the main app area
         file-counter/data  (int)    The file counter value for the current batch item
     """
-
+    # TODO: Add the append information here. Also, don't know why append_uploaded_files in in the parameter list.
     # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
     # Use the client-side filenames provided by the Upload component instead.
     this_file = uploaded_files[next_file]
@@ -842,9 +917,14 @@ def next_in_batch(next_file: int, uploaded_files: list[dict[str, str | int | dic
     Trigger('file-counter', 'modified_timestamp'),
     State(  'file-counter', 'data'              ),
     State(  'select-file' , 'uploadedFiles'     ),
+    State(  'files-context', 'data'              ),
 )
 @log_batch_func
-def increment_file_counter(file_counter: int, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> int:
+def increment_file_counter(
+    file_counter: int,
+    uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+    context: Context,
+) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
     The reason for incrementing the loop index in a separate callback rather than in process_batch()
@@ -863,10 +943,11 @@ def increment_file_counter(file_counter: int, uploaded_files: list[dict[str, str
     Raises
         PreventUpdate when the end of the batch is reached.
     """
-
+    # TODO: Don't need context in the parameter list. Batch size is simply uploaded_files; unpaired files are saved without appending.
     next_file: int = file_counter + 1
+    batch_size = len(context.append_pairs) if context.append_pairs else len(uploaded_files)
 
-    if next_file >= len(uploaded_files):
+    if next_file >= batch_size:
         logger.debug('Reached the end of the batch; stop operation.')
         raise PreventUpdate
 
@@ -909,6 +990,77 @@ def process_batch(file_counter: int, context: Context) -> tuple:
         context         Filename(s) and (un)saved status
    """
 
+    # TODO: Fold append logic into the existing process flow. If not possible, make separate callback.
+    append_pairs = [tuple(pair) for pair in context.append_pairs] if context.append_pairs else []
+    is_append_batch = bool(append_pairs)
+
+    if is_append_batch:
+        original_file, base_file = append_pairs[file_counter]
+        outfile: str = Path(base_file).with_suffix('.xlsx').name
+        logger.debug('(%s) Appending %s to %s.', file_counter, Path(original_file).name, Path(base_file).name)
+
+        try:
+            base_frames = helpers.load_data(base_file)
+            logger.debug('(%s) Base file data initialized.', file_counter)
+        except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
+            logger.error('(%s) Base file Read Error:\n%s', file_counter, err)
+            set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading base file {Path(base_file).name}:', c='red', ta='right'),
+                                                                     dmc.Text(str(err), c='red', ta='right')]})
+            _done_no_save(file_counter)
+            return
+
+        try:
+            frames = helpers.load_data(original_file)
+            logger.debug('(%s) Original file data initialized.', file_counter)
+        except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
+            logger.error('(%s) Original file Read Error:\n%s', file_counter, err)
+            set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading original file {Path(original_file).name}:', c='red', ta='right'),
+                                                                     dmc.Text(str(err), c='red', ta='right')]})
+            _done_no_save(file_counter)
+            return
+
+        report: list[dmc.Text] = [dmc.Text(f'{len(base_frames.data) + len(frames.data):,} samples; {len(frames.data.columns) - 2} variables.', ta='right')]
+        no_save = False
+
+        try:
+            helpers.merge_metadata(frames)
+        except helpers.SiteIdNotFoundError as err:
+            logger.info('Continuing with incomplete metadata: %s', err)
+            report += [dmc.Text(f'Incomplete metadata: {err}', c='red', ta='right')]
+
+        try:
+            combined_frames, qa_range = helpers.append(base_frames, frames)
+        except helpers.UnmatchedColumnsError as e:
+            logger.error('(%s) Append error: %s', file_counter, e)
+            set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(str(e), c='red', ta='right')]})
+            _done_no_save(file_counter)
+            return
+
+        report = [dmc.Text(f'{len(combined_frames.data):,} samples; {len(combined_frames.data.columns) - 2} variables.', ta='right')]
+
+        try:
+            qa_report: list[dmc.Text] = _run_sanity_checks(combined_frames, qa_range)
+        except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
+            no_save = True
+            qa_report = [dmc.Text(str(err), c='red', ta='right')]
+
+        report += qa_report
+        set_props(f'sanity-checks-{file_counter}', {'children': report})
+
+        if no_save:
+            _done_no_save(file_counter)
+            return
+
+        data_for_download: dict[str, Any | None] = dcc.send_bytes(
+            helpers.multi_df_to_excel(combined_frames), outfile
+        )
+        logger.debug('(%s) Got byte string for Download.', file_counter)
+        set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
+        set_props(f'wait-please-{file_counter}', {'visible': False})
+        set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
+
+        return
+
     files: list[str] = context.files
 
     if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
@@ -924,7 +1076,7 @@ def process_batch(file_counter: int, context: Context) -> tuple:
         )
 
     file: str = files[file_counter]
-    outfile: str = str(Path(file).with_suffix('.xlsx'))
+    outfile: str = Path(file).with_suffix('.xlsx').name
 
     logger.debug('(%s) Processing %s.', file_counter, Path(file).name)
 
@@ -1022,6 +1174,7 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
             logger.debug('Batch complete.')
             context.unsaved = False
             context.start_batch = False
+            context.append_pairs = []
             upload_id: str = context.upload_id
             helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()

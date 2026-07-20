@@ -244,6 +244,7 @@ layout = dmc.AppShell(
                             'files': [], 'unsaved': False, 'upload_id': '',
                             'qa_status': 'none', 'qa_range': [], 'no_save': False,
                             'start_batch': False,
+                            'append_pairs': [],     # TODO: Move the file pairs to a separate store
                         },
                     ),
                     dcc.Store(id='frame-store'),
