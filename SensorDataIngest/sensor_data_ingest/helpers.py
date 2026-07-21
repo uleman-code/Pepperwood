@@ -295,7 +295,7 @@ def _common_prefix_length(name_a: str, name_b: str) -> int:
 
 
 @log_func
-def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[Path] | list[str]) -> list[tuple[Path, Path]]:
+def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[Path] | list[str]) -> list[tuple[str, str | None]]:
     """Pair files from two sets by matching the beginning of their base names.
 
     The function ignores differences in the trailing part of the names, which are often timestamps or other variable
@@ -308,7 +308,6 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     Returns:
         A list of matched (left_path, right_path) tuples. Any file without a unique partner is omitted.
     """
-    # TODO: Return string paths instead of Path objects.
     left_paths: list[Path] = [Path(p) for p in left_files]
     right_paths: list[Path] = [Path(p) for p in right_files]
 
@@ -340,11 +339,12 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     for left_idx, left_name in left_lookup.items():
         # Find best match on right side
         right_idx = find_best_unique_match(left_name, right_lookup)
+        # TODO: Add a None match to the list instead of dropping it
         if right_idx is None:
             continue
         # Verify it's bidirectional (right also best-matches this left)
         if find_best_unique_match(right_lookup[right_idx], left_lookup) == left_idx:
-            matches.append((left_paths[left_idx], right_paths[right_idx]))
+            matches.append((str(left_paths[left_idx]), str(right_paths[right_idx])))
 
     return matches
 

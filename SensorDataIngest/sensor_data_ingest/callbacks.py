@@ -355,11 +355,19 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
     State('files-context', 'data'),
 )
 @log_func
-def append_batch_files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-                                context: Context) -> Context:
-    """Match newly selected append files to the currently loaded files and start the append batch."""
+def start_append_batch(uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+                       context: Context) -> tuple[Context, list[list[str | None]]]:
+    """Match newly selected append files to the currently loaded files and start the append batch.
+    
+    Parameters:
+        uploaded_files      Filenames and other info of the uploaded files
+        context             The current application context
 
-    # TODO: Expand docstring
+    Returns:
+        files-context/data  Updated context with start_batch set to True
+        append-pairs/data   List of matched pairs of files to be appended together
+    """
+
     if not uploaded_files or len(context.files) <= 1:
         logger.debug('No append files uploaded or not in multi-file mode; ignore.')
         raise PreventUpdate
@@ -368,19 +376,17 @@ def append_batch_files_uploaded(uploaded_files: list[dict[str, str | int | dict[
         str(file_cache / file['upload_id'] / file['response']['filename'])
         for file in uploaded_files
     ]
-    # TODO: Fix up for pair_files_by_frefix to return string paths instead of Path objects.
-    matches = helpers.pair_files_by_prefix(context.files, append_files)
-    if not matches:
+    append_pairs: list[tuple[str, str | None]] = helpers.pair_files_by_prefix(context.files, append_files)
+    if not append_pairs:
         logger.warning('No unique matches found for append batch. Files: %s vs %s',
                        [Path(p).name for p in context.files],
                        [Path(p).name for p in append_files])
         raise PreventUpdate
 
-    append_pairs: list[tuple[str,str]] = [(str(left), str(right)) for left, right in matches]
     context.start_batch = True
     logger.debug('Append batch matched %s pair(s): %s',
-                 len(matches),
-                 [f'{Path(left).name} <- {Path(right).name}' for left, right in matches])
+                 len(append_pairs),
+                 [f'{Path(left).name} <- {Path(right).name}' for left, right in append_pairs])
     return context, append_pairs
 
 
@@ -878,14 +884,12 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
     State(  'next-file'   , 'data'              ),
     State(  'select-file' , 'uploadedFiles'     ),
     State(  'files-context', 'data'              ),
-    State(  'select-append-batch', 'uploadedFiles'  ),
 )
 @log_batch_func
 def next_in_batch(
     next_file: int,
     uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
     context: Context,
-    append_uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
 ) -> tuple:
     """Show file information and a busy indicator for the current item in the batch.
 
@@ -897,7 +901,7 @@ def next_in_batch(
         show-data/children (object) Patch object to add another CardSection to the main app area
         file-counter/data  (int)    The file counter value for the current batch item
     """
-    # TODO: Add the append information here. Also, don't know why append_uploaded_files in in the parameter list.
+    # TODO: Add the append information here.
     # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
     # Use the client-side filenames provided by the Upload component instead.
     this_file = uploaded_files[next_file]
@@ -918,13 +922,11 @@ def next_in_batch(
     Trigger('file-counter', 'modified_timestamp'),
     State('file-counter', 'data'),
     State('select-file' , 'uploadedFiles'),
-    State('append-pairs', 'data'),
 )
 @log_batch_func
 def increment_file_counter(
     file_counter: int,
     uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-    append_pairs: list[list[str]],
 ) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
@@ -945,9 +947,8 @@ def increment_file_counter(
     Raises
         PreventUpdate when the end of the batch is reached.
     """
-    # TODO: Don't need context in the parameter list. Batch size is simply uploaded_files; unpaired files are saved without appending.
     next_file: int = file_counter + 1
-    batch_size = len(append_pairs) if append_pairs else len(uploaded_files)
+    batch_size = len(uploaded_files)
 
     if next_file >= batch_size:
         logger.debug('Reached the end of the batch; stop operation.')
