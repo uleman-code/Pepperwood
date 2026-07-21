@@ -14,7 +14,6 @@ from enum import StrEnum, auto
 import itertools
 import decorator
 
-from flask import app
 import humanfriendly as hf
 
 import dash_mantine_components as dmc
@@ -919,11 +918,13 @@ def next_in_batch(
     Trigger('file-counter', 'modified_timestamp'),
     State('file-counter', 'data'),
     State('select-file' , 'uploadedFiles'),
+    State('append-pairs', 'data'),
 )
 @log_batch_func
 def increment_file_counter(
     file_counter: int,
     uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+    append_pairs: list[list[str]],
 ) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
@@ -936,7 +937,8 @@ def increment_file_counter(
     Parameters:
         file_counter    The index of the current file in the list of files (the batch)
         uploaded_files  The selected filenames (here only used to get the length of the batch)
-    
+        append_pairs    List of matched pairs of files for Batch Append mode
+
     Returns:
         next-file/data  The next value for the file counter.
         
