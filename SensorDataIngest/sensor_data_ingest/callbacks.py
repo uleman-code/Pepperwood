@@ -446,8 +446,12 @@ def show_append_batch(context: Context) -> str:
 
     match callback_context.triggered_id:
         case 'append-button':
-            logger.debug('Append button clicked; show Append Batch element.')
-            return 'block'
+            if len(context.files) > 1:
+                logger.debug('Append button clicked in batch; show Append Batch element.')
+                return 'block'
+            else:
+                logger.debug('Append button clicked but not a batch; hide Append Batch element.')
+                return 'none'
         case 'files-context':
             logger.debug('Context changed%s', ': data cleared, so hide Append Batch element' if not context.files 
                          else ' for unrelated reason: ignore.')
@@ -792,6 +796,7 @@ def report_sanity_checks(
 @blueprint.callback(
     Output('file-name', 'children', allow_duplicate=True),
     Output('file-attributes', 'children', allow_duplicate=True),
+    Output('append-batch', 'display', allow_duplicate=True),
     Output('next-file', 'data', allow_duplicate=True),
     Input('files-context', 'data'),
     State('select-file', 'uploadedFiles'),
@@ -819,9 +824,15 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
     Returns:
         file-name/children          (str) Reuse for Batch mode operation header
         file-attributes/children    (list[str]) Reuse for start and completion time of batch operation
+        append-batch/display        (str) Hide the Append Batch element once batch processing starts
         next-file/data              (int) Set the next value for the loop counter
     """
 
+    if len(uploaded_files) <= 1:
+        logger.debug('No file or a single filename: not a batch.')
+        raise PreventUpdate
+    
+    # When the batch is complete, the unsaved flag gets set to False.
     if not context.unsaved:
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
@@ -830,51 +841,15 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         logger.debug('Batch triggered by user; start operation.')
         start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         next_file: int = 0  # This triggers the start of the loop over file_counter
-
-        # TODO: Don't update the top-level file-name/file-attributes area. Use the individual
-        #       file-info-n CardSection for each file instead.
-        if append_pairs:
-            filenames: list[str] = [
-                f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
-                for pair in append_pairs
-            ]
-            files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
-                zip([html.Br()] * len(filenames), [f'\N{BULLET} {name}' for name in filenames])
-            ))
-            return (
-                'Batch append operation',
-                [f'{len(filenames)} pairs matched:'] + files_list,
-                next_file,
-            )
-
-        return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], next_file
+        return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], 'none', next_file
     else:
-        if append_pairs:
-            filenames: list[str] = [
-                f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
-                for pair in append_pairs
-            ]
-            logger.debug('Waiting for append batch to start.')
-            files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
-                zip([html.Br()] * len(filenames), [f'\N{BULLET} {name}' for name in filenames])
-            ))
-            return (
-                'Batch append operation',
-                [f'{len(filenames)} pairs matched:'] + files_list,
-                no_update,
-            )
-
-        if len(uploaded_files) <= 1:
-            logger.debug('No file or a single filename: not a batch.')
-            raise PreventUpdate
-
-        # context has the server-side full paths, which may have been sanitized (safe) versions of the original filenames.
+        # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
         # Show the client-side filenames provided by the Upload component instead.
         filenames: list[str] = [f['name'] for f in uploaded_files]
         logger.debug('Waiting for user to click Save to start batch processing.')
         files_list: list[str | html.Br] = list(itertools.chain.from_iterable(zip([html.Br()] * len(filenames),
                                                                                  [f'\N{BULLET} {name}' for name in filenames])))
-        return ('Batch mode operation', [f'{len(filenames)} files loaded:'] + files_list, no_update)        
+        return ('Batch mode operation', [f'{len(filenames)} files loaded:'] + files_list, no_update, no_update)        
 
 
 @blueprint.callback(
@@ -883,13 +858,13 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
     Trigger('next-file'   , 'modified_timestamp'),
     State(  'next-file'   , 'data'              ),
     State(  'select-file' , 'uploadedFiles'     ),
-    State(  'files-context', 'data'              ),
+    State(  'append-pairs', 'data'              ),
 )
 @log_batch_func
 def next_in_batch(
     next_file: int,
     uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-    context: Context,
+    append_pairs: list[list[str]],
 ) -> tuple:
     """Show file information and a busy indicator for the current item in the batch.
 
@@ -901,7 +876,6 @@ def next_in_batch(
         show-data/children (object) Patch object to add another CardSection to the main app area
         file-counter/data  (int)    The file counter value for the current batch item
     """
-    # TODO: Add the append information here.
     # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
     # Use the client-side filenames provided by the Upload component instead.
     this_file = uploaded_files[next_file]
@@ -909,6 +883,8 @@ def next_in_batch(
     # Construct a whole new CardSection element, to be appended to the show-data area
     this_file_info: dmc.CardSection = layout.make_file_info(next_file)              # file-info-n
     this_file_info.children.children[1].children[0].children = this_file['name']    # file-name-n
+    if append_pairs and append_pairs[next_file][1]:
+        this_file_info.children.children[1].children[0].children += f' {append_arrow} {Path(append_pairs[next_file][1]).name}'
     this_file_info.children.children[1].children[1].children[0].children = f'Size: {hf.format_size(this_file["size"])}' # file-attributes-n
 
     showdata: Patch = Patch()
