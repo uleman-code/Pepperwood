@@ -692,26 +692,24 @@ def _run_sanity_checks(frames: Frames, qa_range: list[str] | None = None) -> lis
     missing_values: bool
     missing_samples: bool
 
+    def warning_text(msg: str) -> dmc.Text:
+        return dmc.Text(msg, c='red', ta='right')
+
     duplicate_samples, missing_values, missing_samples = helpers.run_qa(frames, qa_range)
 
     if duplicate_samples:
         report.append(
-            dmc.Text('Duplicate samples were found and dropped.', c='red', ta='right')
+            warning_text('Duplicate samples were found and dropped.')
         )
 
     if missing_values:
         report.append(
-            dmc.Text('One or more variables have data dropouts.', c='red', ta='right')
+            warning_text('One or more variables have data dropouts.')
         )
 
     if missing_samples:
         report.append(
-            dmc.Text(
-                'There are gaps in the time series; placeholder samples were inserted.',
-                c='red',
-               
-                ta='right',
-            )
+            warning_text('There are gaps in the time series; placeholder samples were inserted.')
         )
 
     return report
@@ -971,14 +969,35 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
         append_pairs    List of matched pairs of files for Batch Append mode
    """
 
-    # TODO: Fold append logic into the existing process flow. If not possible, make separate callback.
-    is_append_batch = bool(append_pairs)
+    is_append_batch: bool = bool(append_pairs)
+    files: list[str] = context.files
 
-    if is_append_batch:
-        original_file, base_file = append_pairs[file_counter]
-        outfile: str = Path(base_file).with_suffix('.xlsx').name
-        logger.debug('(%s) Appending %s to %s.', file_counter, Path(original_file).name, Path(base_file).name)
+    if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
+        logger.error(
+            '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
+            file_counter, file_counter, len(files)
+        )
 
+    file: str = files[file_counter]
+    outfile: str = Path(file).with_suffix('.xlsx').name
+    qa_range: list[str] | None = None
+
+    logger.debug('(%s) Processing %s.', file_counter, Path(file).name)
+
+    # Read the (original) file contents into DataFrames.
+    try:
+        frames: list[Any] = helpers.load_data(file)
+        logger.debug('(%s) Data initialized.', file_counter)
+    except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
+        logger.error('(%s) File Read Error:\n%s', file_counter, err)
+        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {Path(file).name}:', c='red', ta='right'),
+                                                                 dmc.Text(str(err), c='red', ta='right')]})
+        _done_no_save(file_counter)
+        return
+
+    # If in Append mode, do the same with the base file and merge the two sets of DataFrames. Then run the sanity checks on the combined data.
+    if is_append_batch and append_pairs[file_counter][1]:
+        base_file: str = append_pairs[file_counter][1]
         try:
             base_frames = helpers.load_data(base_file)
             logger.debug('(%s) Base file data initialized.', file_counter)
@@ -990,86 +1009,12 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
             return
 
         try:
-            frames = helpers.load_data(original_file)
-            logger.debug('(%s) Original file data initialized.', file_counter)
-        except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
-            logger.error('(%s) Original file Read Error:\n%s', file_counter, err)
-            set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading original file {Path(original_file).name}:', c='red', ta='right'),
-                                                                     dmc.Text(str(err), c='red', ta='right')]})
-            _done_no_save(file_counter)
-            return
-
-        report: list[dmc.Text] = [dmc.Text(f'{len(base_frames.data) + len(frames.data):,} samples; {len(frames.data.columns) - 2} variables.', ta='right')]
-        no_save = False
-
-        try:
-            helpers.merge_metadata(frames)
-        except helpers.SiteIdNotFoundError as err:
-            logger.info('Continuing with incomplete metadata: %s', err)
-            report += [dmc.Text(f'Incomplete metadata: {err}', c='red', ta='right')]
-
-        try:
-            combined_frames, qa_range = helpers.append(base_frames, frames)
+            frames, qa_range = helpers.append(base_frames, frames)
         except helpers.UnmatchedColumnsError as e:
             logger.error('(%s) Append error: %s', file_counter, e)
             set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(str(e), c='red', ta='right')]})
             _done_no_save(file_counter)
             return
-
-        report = [dmc.Text(f'{len(combined_frames.data):,} samples; {len(combined_frames.data.columns) - 2} variables.', ta='right')]
-
-        try:
-            qa_report: list[dmc.Text] = _run_sanity_checks(combined_frames, qa_range)
-        except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
-            no_save = True
-            qa_report = [dmc.Text(str(err), c='red', ta='right')]
-
-        report += qa_report
-        set_props(f'sanity-checks-{file_counter}', {'children': report})
-
-        if no_save:
-            _done_no_save(file_counter)
-            return
-
-        data_for_download: dict[str, Any | None] = dcc.send_bytes(
-            helpers.multi_df_to_excel(combined_frames), outfile
-        )
-        logger.debug('(%s) Got byte string for Download.', file_counter)
-        set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
-        set_props(f'wait-please-{file_counter}', {'visible': False})
-        set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
-
-        return
-
-    files: list[str] = context.files
-
-    if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
-        logger.error(
-            '(%s) Something is wrong. Processing file %s but there are only %s files in the batch.',
-            file_counter, file_counter, len(files)
-        )
-        logger.debug('(%s) Exit.', file_counter)
-        return (
-            True,
-            'System Error:',
-            f'Processing file number {file_counter} but there are only {len(files)} in the batch.'
-        )
-
-    file: str = files[file_counter]
-    outfile: str = Path(file).with_suffix('.xlsx').name
-
-    logger.debug('(%s) Processing %s.', file_counter, Path(file).name)
-
-    # Read the file contents into DataFrames.
-    try:
-        frames = helpers.load_data(file)
-        logger.debug('(%s) Data initialized.', file_counter)
-    except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
-        logger.error('(%s) File Read Error:\n%s', file_counter, err)
-        set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading file {Path(file).name}:', c='red', ta='right'),
-                                                                 dmc.Text(str(err), c='red', ta='right')]})
-        _done_no_save(file_counter)
-        return
 
     data = frames.data
     report: list[dmc.Text] = [dmc.Text(f'{len(data):,} samples; {len(data.columns) - 2} variables.', ta='right')]
