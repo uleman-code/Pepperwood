@@ -326,11 +326,10 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     def find_best_unique_match(name: str, candidates: dict[int, str]) -> int | None:
         """Find index of best (longest prefix) match if unique; return None if ambiguous or no match."""
         scores = {idx: _common_prefix_length(name, cand_name) for idx, cand_name in candidates.items()}
-        # Filter to only matches with positive score
         scores = {idx: score for idx, score in scores.items() if score > 0}
         if not scores:
             return None
-        # Check if best match is unique
+        
         max_score = max(scores.values())
         best_matches = [idx for idx, score in scores.items() if score == max_score]
         return best_matches[0] if len(best_matches) == 1 else None
@@ -339,12 +338,18 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
     for left_idx, left_name in left_lookup.items():
         # Find best match on right side
         right_idx = find_best_unique_match(left_name, right_lookup)
-        # TODO: Add a None match to the list instead of dropping it
+        
         if right_idx is None:
+            logger.debug('No unique match for "%s".', left_paths[left_idx])
+            matches.append((str(left_paths[left_idx]), None))
             continue
+
         # Verify it's bidirectional (right also best-matches this left)
         if find_best_unique_match(right_lookup[right_idx], left_lookup) == left_idx:
             matches.append((str(left_paths[left_idx]), str(right_paths[right_idx])))
+        else:
+            logger.debug('Match "%s" for "%s" is not bidirectional.', right_lookup[right_idx], left_paths[left_idx])
+            matches.append((str(left_paths[left_idx]), None))
 
     return matches
 
