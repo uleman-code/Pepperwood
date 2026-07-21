@@ -376,7 +376,7 @@ def append_batch_files_uploaded(uploaded_files: list[dict[str, str | int | dict[
                        [Path(p).name for p in append_files])
         raise PreventUpdate
 
-    append_pairs = [[str(left), str(right)] for left, right in matches]
+    append_pairs: list[tuple[str,str]] = [(str(left), str(right)) for left, right in matches]
     context.start_batch = True
     logger.debug('Append batch matched %s pair(s): %s',
                  len(matches),
@@ -977,7 +977,7 @@ def _done_no_save(file_counter: int) -> None:
     # background=True,
 )
 @log_batch_func
-def process_batch(file_counter: int, context: Context, append_pairs: list[tuple[str, str]]) -> tuple:
+def process_batch(file_counter: int, context: Context, append_pairs: list[list[str]]) -> tuple:
     """Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -1169,7 +1169,7 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
     Returns:
         files-context/data       (str)  Same as context parameter but with the unsaved flag set to False
         file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
-        append-pairs/data        (list) Clear the list of append pairs
+        append-pairs/data        (None) Clear the list of file pairs for appending
     """
 
     if badges:  # This also gets triggered when all batch-related badges disappear
