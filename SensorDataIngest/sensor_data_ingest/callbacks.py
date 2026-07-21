@@ -14,6 +14,7 @@ from enum import StrEnum, auto
 import itertools
 import decorator
 
+from flask import app
 import humanfriendly as hf
 
 import dash_mantine_components as dmc
@@ -58,8 +59,6 @@ class Context:
     qa_range: list[str] = field(default_factory=list)
     no_save: bool = False
     start_batch: bool = False
-    append_pairs: list[list[str]] = field(default_factory=list)
-    # TODO: Move the file pairs to a separate store
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
@@ -352,6 +351,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
 
 @blueprint.callback(
     Output('files-context', 'data', allow_duplicate=True),
+    Output('append-pairs', 'data', allow_duplicate=True),
     Input('select-append-batch', 'uploadedFiles'),
     State('files-context', 'data'),
 )
@@ -377,12 +377,12 @@ def append_batch_files_uploaded(uploaded_files: list[dict[str, str | int | dict[
                        [Path(p).name for p in append_files])
         raise PreventUpdate
 
-    context.append_pairs = [[str(left), str(right)] for left, right in matches]
+    append_pairs = [[str(left), str(right)] for left, right in matches]
     context.start_batch = True
     logger.debug('Append batch matched %s pair(s): %s',
                  len(matches),
                  [f'{Path(left).name} <- {Path(right).name}' for left, right in matches])
-    return context
+    return context, append_pairs
 
 
 @blueprint.callback(
@@ -785,14 +785,15 @@ def report_sanity_checks(
 
 
 @blueprint.callback(
-    Output('file-name'    , 'children'     , allow_duplicate=True),
-    Output('file-attributes', 'children'     , allow_duplicate=True),
-    Output('next-file'    , 'data'         , allow_duplicate=True),
-    Input('files-context'  , 'data'         ),
-    State('select-file'   , 'uploadedFiles'),
+    Output('file-name', 'children', allow_duplicate=True),
+    Output('file-attributes', 'children', allow_duplicate=True),
+    Output('next-file', 'data', allow_duplicate=True),
+    Input('files-context', 'data'),
+    State('select-file', 'uploadedFiles'),
+    State('append-pairs', 'data'),
 )
 @log_func
-def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]]) -> tuple:
+def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]], append_pairs: list[list[str]]) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -808,6 +809,7 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
     Parameters:
         context   Filename(s) and (un)saved status
         uploaded_files  Filenames and other info of the uploaded files
+        append_pairs    List of matched pairs of files for Batch Append mode
 
     Returns:
         file-name/children          (str) Reuse for Batch mode operation header
@@ -826,10 +828,10 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
 
         # TODO: Don't update the top-level file-name/file-attributes area. Use the individual
         #       file-info-n CardSection for each file instead.
-        if context.append_pairs:
+        if append_pairs:
             filenames: list[str] = [
                 f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
-                for pair in context.append_pairs
+                for pair in append_pairs
             ]
             files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
                 zip([html.Br()] * len(filenames), [f'\N{BULLET} {name}' for name in filenames])
@@ -842,10 +844,10 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
 
         return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], next_file
     else:
-        if context.append_pairs:
+        if append_pairs:
             filenames: list[str] = [
                 f'{Path(pair[1]).name} {append_arrow} {Path(pair[0]).name}'
-                for pair in context.append_pairs
+                for pair in append_pairs
             ]
             logger.debug('Waiting for append batch to start.')
             files_list: list[str | html.Br] = list(itertools.chain.from_iterable(
@@ -913,17 +915,15 @@ def next_in_batch(
 
 
 @blueprint.callback(
-    Output( 'next-file'   , 'data'              , allow_duplicate=True),
+    Output( 'next-file', 'data', allow_duplicate=True),
     Trigger('file-counter', 'modified_timestamp'),
-    State(  'file-counter', 'data'              ),
-    State(  'select-file' , 'uploadedFiles'     ),
-    State(  'files-context', 'data'              ),
+    State('file-counter', 'data'),
+    State('select-file' , 'uploadedFiles'),
 )
 @log_batch_func
 def increment_file_counter(
     file_counter: int,
     uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-    context: Context,
 ) -> int:
     """Set the next value for the batch loop index (file counter). Stop at the end of the batch.
 
@@ -935,7 +935,7 @@ def increment_file_counter(
 
     Parameters:
         file_counter    The index of the current file in the list of files (the batch)
-        filenames       The selected filenames (here only used to get the length of the batch)
+        uploaded_files  The selected filenames (here only used to get the length of the batch)
     
     Returns:
         next-file/data  The next value for the file counter.
@@ -945,7 +945,7 @@ def increment_file_counter(
     """
     # TODO: Don't need context in the parameter list. Batch size is simply uploaded_files; unpaired files are saved without appending.
     next_file: int = file_counter + 1
-    batch_size = len(context.append_pairs) if context.append_pairs else len(uploaded_files)
+    batch_size = len(append_pairs) if append_pairs else len(uploaded_files)
 
     if next_file >= batch_size:
         logger.debug('Reached the end of the batch; stop operation.')
@@ -969,12 +969,13 @@ def _done_no_save(file_counter: int) -> None:
 
 @blueprint.callback(
     Trigger('file-counter', 'modified_timestamp'),
-    State(  'file-counter', 'data'              ),
-    State(  'files-context', 'data'              ),
+    State('file-counter', 'data'),
+    State('files-context', 'data'),
+    State('append-pairs', 'data'),
     # background=True,
 )
 @log_batch_func
-def process_batch(file_counter: int, context: Context) -> tuple:
+def process_batch(file_counter: int, context: Context, append_pairs: list[tuple[str, str]]) -> tuple:
     """Process one file in the batch, without user involvement.
 
     Read the file contents into DataFrames, perform sanity checks, and save the DataFrames to an Excel file.
@@ -988,10 +989,10 @@ def process_batch(file_counter: int, context: Context) -> tuple:
     Parameters:
         file_counter    The index of the current file in the list of files (the batch)
         context         Filename(s) and (un)saved status
+        append_pairs    List of matched pairs of files for Batch Append mode
    """
 
     # TODO: Fold append logic into the existing process flow. If not possible, make separate callback.
-    append_pairs = [tuple(pair) for pair in context.append_pairs] if context.append_pairs else []
     is_append_batch = bool(append_pairs)
 
     if is_append_batch:
@@ -1144,6 +1145,7 @@ def process_batch(file_counter: int, context: Context) -> tuple:
 @blueprint.callback(
     Output('files-context', 'data'),
     Output('file-attributes', 'children', allow_duplicate=True),
+    Output('append-pairs', 'data', allow_duplicate=True),
     State('files-context', 'data'),
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
 )
@@ -1165,6 +1167,7 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
     Returns:
         files-context/data       (str)  Same as context parameter but with the unsaved flag set to False
         file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
+        append-pairs/data        (list) Clear the list of append pairs
     """
 
     if badges:  # This also gets triggered when all batch-related badges disappear
@@ -1174,12 +1177,12 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
             logger.debug('Batch complete.')
             context.unsaved = False
             context.start_batch = False
-            context.append_pairs = []
+            append_pairs = None
             upload_id: str = context.upload_id
             helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-            return context, end_time
+            return context, end_time, append_pairs
         else:
             logger.debug(
                 f'Batch not complete; so far only {len([d for d in badges if d == "inline"])} files.'
