@@ -1211,14 +1211,14 @@ def append(base_frames: Frames, new_frames: Frames) -> tuple[Frames, list[str]]:
                     [newer_first, newer_first, col, 'No', 'New variable name introduced.']
                     for col in added_columns
                 ],
-                index=qa_report_columns,
+                columns=qa_report_columns,
             ),
             pd.DataFrame(
                 [
                     [newer_first, newer_first, col, 'No', 'Variable name dropped.']
                     for col in dropped_columns
                 ],
-                index=qa_report_columns,
+                columns=qa_report_columns,
             ),
         ]
     )
