@@ -1,10 +1,10 @@
 ﻿Field,Aliases,Description,Units,Units-2,Sensor,Manufacturer,Notes,SiteKey
 Timestamp,TIMESTAMP,Date and time of data collection,mm/dd/yyyy hh:mm,Date and time,CR1000X,Campbell Scientific,,New_MET
 SeqNum,RECORD,Sequence number of 15min interval,-,None,CR1000X,Campbell Scientific,,New_MET
-WindSpeed,"WindSpd_WVc(1),WindSpd_WVc1",Mean horizontal wind speed,m/s,Meters per second,05103,RM Young,,New_MET
-WindDir,"WindSpd_WVc(2),WindSpd_WVc2",Unit vector mean wind direction,deg N,Degrees from north,05103,RM Young,,New_MET
-WindMax,WindSpd_Max,Maximum wind speed,m/s,Meters per second,05103,RM Young,,New_MET
-WindDir_SMM,,Direction of max windspeed,deg N,Degrees from north,05103,RM Young,,New_MET
+WindSpeed,"WindSpd_WVc(1),WindSpd_WVc1",Mean horizontal wind speed,m/s,Meters per second,"05103",RM Young,,New_MET
+WindDir,"WindSpd_WVc(2),WindSpd_WVc2",Unit vector mean wind direction,deg N,Degrees from north,"05103",RM Young,,New_MET
+WindMax,WindSpd_Max,Maximum wind speed,m/s,Meters per second,"05103",RM Young,,New_MET
+WindDir_SMM,,Direction of max windspeed,deg N,Degrees from north,"05103",RM Young,,New_MET
 AirTemp_F,AirTemp_F_Avg,Average air temperature,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
 RH,RH_Avg,Average relative humidity,%,Percent,HMP60,Vaisala,,New_MET
 DewPt_F,DewPt_F_Avg,Average dew point,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
@@ -36,9 +36,9 @@ SoilVR_50cm,SoilVR3,Soil voltage ratio 50cm,-,Dimensionless,CS655,Campbell Scien
 SoilVR_100cm,SoilVR4,Soil voltage ratio 100cm,-,Dimensionless,CS655,Campbell Scientific,,New_MET
 RainGauge_Tot,,15min precipitation total,in,Inches,TE525WS,Texas Electronics,,New_MET
 LeafWetness_mV,LWmv_avg,Leaf wetness,mV,Millivolts,LWS,Meter Group,,New_MET
-DailyMaxGust,,Maximum wind speed up to that point in the day,m/s,Meters per second,05103,RM Young,,New_MET
+DailyMaxGust,,Maximum wind speed up to that point in the day,m/s,Meters per second,"05103",RM Young,,New_MET
 TimeofMaxGust,,Time of maximum wind speed up to that point in the day,hhmm,Time of day,CR1000X,Campbell Scientific,,New_MET
-DirofMaxGust,,Direction of maximum gust up to that point in the day,deg N,Degrees from north,05103,RM Young,,New_MET
+DirofMaxGust,,Direction of maximum gust up to that point in the day,deg N,Degrees from north,"05103",RM Young,,New_MET
 DailyMaxTemp,,Maximum temperature up to that point in the day,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
 DailyMinTemp,,Minimum temperature up to that point in the day,°F,Degrees Fahrenheit,HMP60,Vaisala,,New_MET
 DailyMaxFuelTemp,,Maximum fuel temperature up to that point in the day,°F,Degrees Fahrenheit,CS205/107,Campbell Scientific,,New_MET
