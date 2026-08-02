@@ -220,7 +220,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                             f'{worksheet_names.meta}, and {worksheet_names.station}. Found: {", ".join(sheet_names)}.'
                         )
 
-                    frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data, na_values=extra_na_values)
+                    frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data)
                     frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta)
                     # frames.meta.columns = meta_columns
                     frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)
@@ -416,7 +416,12 @@ def merge_metadata(frames: Frames) -> None:
     
     site_key: str = df_site.at[0, site_key_column]
 
-    frames.station = df_site.drop(columns=['normalized_site_id', site_key_column])
+    # In addition to getting rid of columns that are for internal use only, also try to convert the sampling interval
+    # to integer. If the static metadata is cleaned up, this may not be necessary, but initially there was one site with a
+    # non-numeric value in this column, which causes the in-memory copy to keep the entire column as dtype str. Once we pick out
+    # the row for the current site, chances are we can use the integer value.
+    frames.station = df_site.drop(columns=['normalized_site_id', site_key_column]).astype({interval_column: 'int'}, errors='ignore')
+
     logger.info('Site ID "%s" found in static site metadata. Site metadata merged.', site_id_dat)
 
     column_metadata: pd.DataFrame = df_meta_columns[df_meta_columns[site_key_column] == site_key]
