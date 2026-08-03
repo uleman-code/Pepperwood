@@ -221,7 +221,11 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
                         )
 
                     frames.data = pd.read_excel(xl, sheet_name=worksheet_names.data)
-                    frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta)
+
+                    # The aliases column in column metadata contains strings which are comma-separated lists. An empty list is represented by
+                    # an empty string, which is saved to EXcel as such. But upon reading, by default pandas converts empty strings to NaN,
+                    # which is not a problem in most columns but creates inconsistency in the Aliases column.
+                    frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta, dtype=str).fillna({aliases_column: ''})
                     # frames.meta.columns = meta_columns
                     frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)
                     # frames.station.columns = station_columns

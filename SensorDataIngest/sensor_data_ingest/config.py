@@ -332,7 +332,7 @@ def metadata_init() -> None:
     metadata['sites']['normalized_site_id'] = metadata['sites'].iloc[:, 0].apply(normalize_name)
 
     column_file = column_file if column_file.is_absolute() else config_file.parent / column_file
-    df_columns: pd.DataFrame = pd.read_csv(column_file)
+    df_columns: pd.DataFrame = pd.read_csv(column_file, dtype=str)
 
     # Aliases should be lists of comma-separated strings (ignoring spaces), but are read in as strings. 
     # Convert them to lists. Also, turn NaNs into empty lists.
