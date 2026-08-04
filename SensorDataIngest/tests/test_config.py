@@ -1,6 +1,5 @@
 from pathlib import Path
-import os
-import pytest
+import pytest as pt
 
 def test_load_good_config() -> None:
     """Test loading a good configuration file."""
@@ -9,7 +8,7 @@ def test_load_good_config() -> None:
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'good_config.toml'
-    os.environ['INGEST_CONFIG_FILE'] = str(test_file)
+    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
     cfg.config_init(app_name=this_module.stem)
 
     assert isinstance(cfg.config, Config)
@@ -23,9 +22,9 @@ def test_load_bad_config() -> None:
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'bad_config.toml'
-    os.environ['INGEST_CONFIG_FILE'] = str(test_file)
+    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
 
-    with pytest.raises(ValidationError) as exc_info:
+    with pt.raises(ValidationError) as exc_info:
         cfg.config_init(app_name=this_module.stem)
 
     error_msg = str(exc_info.value)
@@ -41,9 +40,9 @@ def test_config_not_found() -> None:
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'nonexistent_config.toml'
-    os.environ['INGEST_CONFIG_FILE'] = str(test_file)
+    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
 
-    with pytest.raises(FileNotFoundError) as exc_info:
+    with pt.raises(FileNotFoundError) as exc_info:
         cfg.config_init(app_name=this_module.stem)
 
     error_msg = str(exc_info.value)

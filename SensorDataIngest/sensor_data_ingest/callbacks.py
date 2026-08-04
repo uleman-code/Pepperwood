@@ -986,7 +986,7 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
     outfile: str = Path(file).with_suffix('.xlsx').name
     qa_range: list[str] | None = None
 
-        frames: Frames = helpers.load_data(file)
+    frames: Frames = helpers.load_data(file)
 
     # Read the (original) file contents into DataFrames.
     try:
@@ -1190,5 +1190,4 @@ def append_file(
             True,
             'Error Reading File',
             f'We could not process the file "{base_filename}": {e}',
-        )
         )
