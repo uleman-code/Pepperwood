@@ -377,11 +377,15 @@ def start_append_batch(uploaded_files: list[dict[str, str | int | dict[str, str 
         for file in uploaded_files
     ]
     append_pairs: list[tuple[str, str | None]] = helpers.pair_files_by_prefix(context.files, append_files)
-    if not append_pairs:
+    unmatched: list[str] = [Path(left).name for left, right in append_pairs if right is None]
+    if len(unmatched) == len(append_pairs):
         logger.warning('No unique matches found for append batch. Files: %s vs %s',
                        [Path(p).name for p in context.files],
                        [Path(p).name for p in append_files])
         raise PreventUpdate
+
+    if unmatched:
+        logger.warning('No unique append match for %s file(s): %s', len(unmatched), unmatched)
 
     context.start_batch = True
     logger.debug('Append batch matched %s pair(s): %s',
@@ -982,7 +986,7 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
     outfile: str = Path(file).with_suffix('.xlsx').name
     qa_range: list[str] | None = None
 
-    logger.debug('(%s) Processing %s.', file_counter, Path(file).name)
+        frames: Frames = helpers.load_data(file)
 
     # Read the (original) file contents into DataFrames.
     try:
@@ -1186,4 +1190,5 @@ def append_file(
             True,
             'Error Reading File',
             f'We could not process the file "{base_filename}": {e}',
+        )
         )

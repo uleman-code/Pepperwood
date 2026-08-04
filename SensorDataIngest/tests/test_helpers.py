@@ -115,6 +115,17 @@ def test_pair_files_by_prefix_ambiguous_unmatched() -> None:
     assert matches == []
 
 
+def test_pair_files_by_prefix_ambiguous_left_unmatched() -> None:
+    from ..sensor_data_ingest.helpers import pair_files_by_prefix
+
+    matches = pair_files_by_prefix(
+        [Path("siteA_20240101.dat"), Path("siteA_20240202.dat")],
+        [Path("siteA_20240303.csv")],
+    )
+
+    assert matches == []
+
+
 def test_pair_files_by_prefix_no_match() -> None:
     """Test that files with no shared beginning are not paired."""
     from ..sensor_data_ingest.helpers import pair_files_by_prefix

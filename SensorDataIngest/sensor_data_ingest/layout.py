@@ -22,7 +22,7 @@ from . import config as cfg
 class SafeDataclassTransform(DataclassTransform):
     """Deal with dataclasses that are not JSON-serialized because they're stored server-side."""
     def _try_load(self, data: Any, ann=None) -> Any:
-        if dataclasses.is_dataclass(data):
+        if dataclasses.is_dataclass(data) and not isinstance(data, type):
             return data
         return super()._try_load(data, ann)
 
@@ -168,7 +168,6 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                                           ),
                         dmc.Stack(
                             children=[
-                                # dmc.Text(id=f'file-name{suffix}', size='lg', fw='bold'),
                                 dcc.Markdown(id=f'file-name{suffix}', mathjax=True,
                                              style={'fontSize': '18px', 'fontWeight': 'bold'},
                                              className='compact-md'),

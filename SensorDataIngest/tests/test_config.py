@@ -45,6 +45,6 @@ def test_config_not_found() -> None:
 
     with pytest.raises(FileNotFoundError) as exc_info:
         cfg.config_init(app_name=this_module.stem)
-    
+
     error_msg = str(exc_info.value)
     assert 'No such file or directory' in error_msg

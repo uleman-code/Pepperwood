@@ -310,7 +310,8 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
         right_files   File paths or names from the second directory.
 
     Returns:
-        A list of matched (left_path, right_path) tuples. Any file without a unique partner is omitted.
+        One tuple per left file: (left_path, right_path). If a left file has no unique bidirectional
+        partner, right_path is None.
     """
     left_paths: list[Path] = [Path(p) for p in left_files]
     right_paths: list[Path] = [Path(p) for p in right_files]
@@ -338,7 +339,7 @@ def pair_files_by_prefix(left_files: list[Path] | list[str], right_files: list[P
         best_matches = [idx for idx, score in scores.items() if score == max_score]
         return best_matches[0] if len(best_matches) == 1 else None
 
-    matches: list[tuple[Path, Path]] = []
+    matches: list[tuple[str, str | None]] = []
     for left_idx, left_name in left_lookup.items():
         # Find best match on right side
         right_idx = find_best_unique_match(left_name, right_lookup)
