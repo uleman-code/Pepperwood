@@ -3,7 +3,9 @@
 import logging
 from pathlib import Path
 from typing import Final
+from urllib.parse import unquote
 
+from flask import abort, send_file
 from sensor_data_ingest import config as cfg
 from dash_extensions.enrich import (
     DashProxy,
@@ -31,6 +33,24 @@ app: DashProxy = DashProxy(
             update_title=None,
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
+file_cache: Path = Path(cfg.config.application.file_cache_root)
+
+
+@server.route('/download/<upload_id>/<path:filename>', methods=['GET'])
+def serve_download(upload_id: str, filename: str):
+    """Serve a previously generated Excel export directly to the user's browser."""
+
+    storage_path = file_cache / upload_id / 'download' / unquote(filename)
+    if not storage_path.is_file() or '..' in Path(filename).parts:
+        abort(404)
+
+    return send_file(
+        storage_path,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=Path(filename).name,
+        max_age=0,
+    )
 
 du.configurator(app, cfg.config.application.file_cache_root, use_upload_id=True)
 

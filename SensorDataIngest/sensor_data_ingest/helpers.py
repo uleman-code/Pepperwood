@@ -4,12 +4,14 @@
 import base64
 import io
 import logging
+import shutil
 
 import decorator
 
 from pathlib import Path
 from typing import Any, Callable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
+from urllib.parse import quote
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -277,13 +279,13 @@ def clear_file_cache(upload_id: str = '') -> None:
         logger.debug('Upload-file cache %s does not exist. Nothing to clear.', target)
         return
 
-    # If upload_id is not enabled, the cache may already have been cleared, but then the cache directory still exists
-    # and should remain. Looping over the empty list of files does nothing.
-    # If upload_id is enabled, there will be files and a directory to remove; otherwise, we wouldn't get here.
+    # Remove the contents recursively, including any nested download directory created for exported files.
     logger.debug('Removing all uploaded files, if any, in %s.', target)
-    for file in target.glob('*'):
-        if file.is_file():
-            file.unlink(missing_ok=True)
+    for item in target.iterdir():
+        if item.is_file() or item.is_symlink():
+            item.unlink(missing_ok=True)
+        elif item.is_dir():
+            shutil.rmtree(item, ignore_errors=True)
 
     if upload_id:
         logger.debug('Removing instance-specific upload directory %s.', target)
@@ -611,7 +613,7 @@ def multi_df_to_excel(frames: Frames) -> bytes:
 
     # The worksheet names in the Excel file are not necessarily the same as the DataFrame attribute names in frames.
     # So match each sheet name to the right frame. And keep them in the same order.
-    sheets: dict[str, pd.DataFrame] = {getattr(worksheet_names, k): getattr(frames, k) for k in frames.__dataclass_fields__.keys()}
+    sheets = {getattr(worksheet_names, field.name): getattr(frames, field.name) for field in fields(frames)}
 
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
@@ -653,6 +655,25 @@ def multi_df_to_excel(frames: Frames) -> bytes:
 
     logger.debug('Excel file buffer written.')
     return buffer.getvalue()  # Must return a byte string, not the IO buffer itself
+
+
+@log_func
+def save_excel_to_download_cache(frames: Frames, filename: str, upload_id: str = '') -> str:
+    """Persist an Excel export under the upload cache's per-instance download directory and return a browser URL.
+
+    The download directory lives under the same upload cache that Dash Uppy already isolates per user/session via a UUID,
+    so we do not generate a second UUID for each file export. The browser receives a direct Flask download URL, not raw
+    bytes through Dash.
+    """
+
+    download_root: Path = file_cache / (upload_id or 'downloads') / 'download'
+    download_root.mkdir(parents=True, exist_ok=True)
+
+    storage_name: str = Path(filename).name
+    storage_path: Path = download_root / storage_name
+    storage_path.write_bytes(multi_df_to_excel(frames))
+
+    return f'/download/{quote(upload_id or "downloads")}/{quote(storage_name)}'
 
 
 @log_func
@@ -993,9 +1014,6 @@ def run_qa(frames: Frames, qa_range: list[str] | None) -> tuple[bool, bool, bool
     The report is a DataFrame ("notes") with zero or more rows and the following columns:
     - The timestamps of any duplicates;
     - The first and last timestamps of the run of missing data (equal in the case of a singleton missing value);
-        The report is a DataFrame ("notes") with zero or more rows and the following columns:
-        - The timestamps of any duplicates;
-        - The first and last timestamps of the run of missing data (equal in the case of a singleton missing value);
 
         Parameters:
 

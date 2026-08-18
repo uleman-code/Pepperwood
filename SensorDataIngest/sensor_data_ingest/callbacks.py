@@ -201,7 +201,7 @@ def load_file(context: Context) -> tuple:
 
 
 @blueprint.callback(
-    Output('save-xlsx', 'data'),
+    Output('download-location', 'href'),
     Output('files-context', 'data', allow_duplicate=True),
     Trigger('save-button', 'n_clicks'),
     Input('files-context', 'data'),
@@ -250,10 +250,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
     if context.qa_status in (QA_Status.APPEND_COMPLETE, QA_Status.COMPLETE):
         outfile: str = Path(files[0]).with_suffix('.xlsx').name
 
-        # Dash provides a convenience function to create the required dictionary. That function in turn
-        # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
-        # is a custom function specific to this app.
-        contents: dict[str, Any | None] = dcc.send_bytes(helpers.multi_df_to_excel(frames), outfile)
+        download_url: str = helpers.save_excel_to_download_cache(frames, outfile, context.upload_id)
         context.unsaved = False
 
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
@@ -264,7 +261,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         context.no_save = False
 
         logger.debug(f'File "{outfile}" saved.')
-        return contents, context
+        return download_url, context
     elif not frames or frames.data.empty:
         logger.debug('No data in memory; nothing to save.')
         raise PreventUpdate
@@ -553,7 +550,6 @@ def draw_plots(showcols: list[str], single_plot: bool, frames: Frames | None) ->
 
 @blueprint.callback(
     Output('saved-badge', 'display'),
-    Output('save-xlsx', 'data', allow_duplicate=True),
     Input('files-context', 'data'),
 )
 @log_func
@@ -569,7 +565,6 @@ def show_badge(context: Context) -> tuple:
 
     Returns
         saved-badge/display (str) Show ('inline') the SAVED badge if data was saved; otherwise hide it ('none')
-        save-xlsx/data      (obj) None, to clear the data
     """
 
     # To show the badge, there must be a single file loaded and it must be saved.
@@ -586,7 +581,7 @@ def show_badge(context: Context) -> tuple:
         logger.debug('Zero or multiple files loaded; hide Saved badge.')
         retval = 'none'
 
-    return retval, None
+    return retval
 
 
 @blueprint.callback(
@@ -1053,16 +1048,11 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
         _done_no_save(file_counter)
         return
 
-    # Save the file.
-    # Dash provides a convenience function to create the required dictionary. That function in turn
-    # relies on a writer (e.g., DataFrame.to_excel) to produce the content. In this case, that writer
-    # is a custom function specific to this app.
-    data_for_download: dict[str, Any | None] = dcc.send_bytes(
-        helpers.multi_df_to_excel(frames), outfile
-    )
-    logger.debug('(%s) Got byte string for Download.', file_counter)
-    set_props(f'save-xlsx-{file_counter}', {'data': data_for_download})
-    logger.debug('(%s) Download complete. Clean up.', file_counter)
+    # Save the file to the server-side cache and tell the browser to navigate to the Flask download route.
+    download_url: str = helpers.save_excel_to_download_cache(frames, outfile, context.upload_id)
+    logger.debug('(%s) Prepared download URL %s.', file_counter, download_url)
+    set_props('download-location', {'href': download_url})
+    logger.debug('(%s) Download ready. Clean up.', file_counter)
 
     set_props(f'wait-please-{file_counter}', {'visible': False})
     set_props({'type': 'saved-badge', 'index': file_counter}, {'display': 'inline'})
