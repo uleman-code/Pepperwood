@@ -35,6 +35,11 @@ app: DashProxy = DashProxy(
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 file_cache: Path = Path(cfg.config.application.file_cache_root)
 
+def shutdown_cleanup():
+    """Perform any cleanup tasks before the application shuts down."""
+    logging.info('Shutting down %s application.', Path(__file__).stem)
+    logging.shutdown()
+    # TODO: Get access to the upload_ids in the current instance and delete the corresponding directories in the file cache.
 
 @server.route('/download/<upload_id>/<path:filename>', methods=['GET'])
 def serve_download(upload_id: str, filename: str):
@@ -44,13 +49,15 @@ def serve_download(upload_id: str, filename: str):
     if not storage_path.is_file() or '..' in Path(filename).parts:
         abort(404)
 
-    return send_file(
+    response = send_file(
         storage_path,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True,
         download_name=Path(filename).name,
         max_age=0,
     )
+    response.call_on_close(lambda: storage_path.unlink(missing_ok=True))
+    return response
 
 du.configurator(app, cfg.config.application.file_cache_root, use_upload_id=True)
 

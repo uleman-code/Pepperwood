@@ -133,7 +133,7 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
     Data, Columns, station, and Notes. Or, if saved by an earlier version, only three because there would be no Notes.
 
     There are two distinct cases:
-    1. The file was uploaded by the Dash Uploader, and persisted on the server. filename contains the (absolute or relative) path,
+    1. The file was uploaded and persisted on the server. filename contains the (absolute or relative) path,
        contents is ignored, and the file is read from disk.
     2. The file was loaded into the browser by dcc.Upload and kept in memory as a base64-encoded string. filename contains the
        original filename without the path, used only to get the suffix.
@@ -167,8 +167,9 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
         logger.debug('Got decoded file contents.')
 
     frames: Frames = Frames()
+    file_path: Path = Path(filename)
     try:
-        match Path(filename).suffix.lower():
+        match file_path.suffix.lower():
             case ext if ext in csv_extensions:
                 # Assume that the user uploaded a raw-data CSV file
                 logger.info('Reading CSV data file. Expect additional info in the first four rows.')
@@ -256,6 +257,9 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
         logger.error('Error reading file %s. %s', filename, err)
         raise BadFileError(str(err)) from err
 
+    if contents is not None:
+        file_path.unlink(missing_ok=True)  # Remove the temporary file in the upload cache.
+        
     logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)
     return frames
 
@@ -599,26 +603,32 @@ def _get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
 
 
 @log_func
-def multi_df_to_excel(frames: Frames) -> bytes:
-    """Save three DataFrames to a single Excel file buffer: data, (column) metadata, and station data.
+def multi_df_to_excel(frames: Frames, filename: str, upload_id: str) -> str:
+    """Save the DataFrames to an Excel file in the upload-scoped download cache.
 
     Each of the DataFrames becomes a separate worksheet in the file, named Data, Columns, and station.
 
     Parameters:
         frames      The four DataFrames (data, meta, station, notes) for one file
+        filename    The filename presented to the browser and used in the download cache
+        upload_id   The UUID assigned by dash_uploader_uppy5 to this upload session
 
     Returns:
-        The full Excel file contents (per specification of the dcc.send_bytes() convenience function)
+        The URL of the Flask download endpoint for the saved file
     """
 
     # The worksheet names in the Excel file are not necessarily the same as the DataFrame attribute names in frames.
     # So match each sheet name to the right frame. And keep them in the same order.
     sheets = {getattr(worksheet_names, field.name): getattr(frames, field.name) for field in fields(frames)}
 
+    download_root: Path = file_cache / upload_id / 'download'
+    download_root.mkdir(parents=True, exist_ok=True)
+    storage_name: str = Path(filename).name
+    storage_path: Path = download_root / storage_name
+
     # Writing multiple worksheets is a little tricky and requires an ExcelWriter context manager.
     # Setting column widths is even trickier.
-    buffer: io.BytesIO = io.BytesIO()
-    with pd.ExcelWriter(buffer) as xl:
+    with pd.ExcelWriter(storage_path) as xl:
         for sheet, df in sheets.items():
             logger.debug('Writing %s to sheet %s.', type(df).__name__, sheet)
 
@@ -653,27 +663,8 @@ def multi_df_to_excel(frames: Frames) -> bytes:
                 column_width: int = to_check.astype(str).str.len().max()
                 xl.sheets[sheet].set_column(column_index, column_index, column_width)
 
-    logger.debug('Excel file buffer written.')
-    return buffer.getvalue()  # Must return a byte string, not the IO buffer itself
-
-
-@log_func
-def save_excel_to_download_cache(frames: Frames, filename: str, upload_id: str = '') -> str:
-    """Persist an Excel export under the upload cache's per-instance download directory and return a browser URL.
-
-    The download directory lives under the same upload cache that Dash Uppy already isolates per user/session via a UUID,
-    so we do not generate a second UUID for each file export. The browser receives a direct Flask download URL, not raw
-    bytes through Dash.
-    """
-
-    download_root: Path = file_cache / (upload_id or 'downloads') / 'download'
-    download_root.mkdir(parents=True, exist_ok=True)
-
-    storage_name: str = Path(filename).name
-    storage_path: Path = download_root / storage_name
-    storage_path.write_bytes(multi_df_to_excel(frames))
-
-    return f'/download/{quote(upload_id or "downloads")}/{quote(storage_name)}'
+    logger.debug('Excel file written to %s.', storage_path)
+    return f'/download/{quote(Path(upload_id).name, safe="")}/{quote(storage_name, safe="")}'
 
 
 @log_func

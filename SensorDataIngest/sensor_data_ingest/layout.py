@@ -244,7 +244,7 @@ layout = dmc.AppShell(
                             'start_batch': False,
                         },
                     ),
-                    dcc.Location(id='download-location', refresh=False),
+                    dcc.Location(id='download-location', refresh=True),
                     dcc.Store(id='frame-store'),
                     dcc.Store(id='file-counter'),
                     dcc.Store(id='next-file'),

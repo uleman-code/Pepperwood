@@ -31,7 +31,6 @@ from dash_extensions.enrich import (
     State,
     Trigger,
     callback_context,
-    dcc,
     html,
     no_update,
 )
@@ -250,7 +249,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
     if context.qa_status in (QA_Status.APPEND_COMPLETE, QA_Status.COMPLETE):
         outfile: str = Path(files[0]).with_suffix('.xlsx').name
 
-        download_url: str = helpers.save_excel_to_download_cache(frames, outfile, context.upload_id)
+        download_url: str = helpers.multi_df_to_excel(frames, outfile, context.upload_id)
         context.unsaved = False
 
         # Remove artifacts, if any, of an Append process, so the combined data looks as if it was read directly from
@@ -424,7 +423,7 @@ def toggle_loaddata(context: Context) -> tuple:
         return unsaved, no_update, 'dimmed'
     else:
         logger.debug('Data saved or cleared; enable Load Data and clear upload cache.')
-        helpers.clear_file_cache(context.upload_id)
+        # helpers.clear_file_cache(context.upload_id)
         return unsaved, [], 'black'
 
 
@@ -555,10 +554,6 @@ def draw_plots(showcols: list[str], single_plot: bool, frames: Frames | None) ->
 @log_func
 def show_badge(context: Context) -> tuple:
     """Respond to a Save action by showing a SAVED badge.
-
-    Because this is triggered after every single-file save action, also use this callback to clear the data
-    in dcc.Download. Not clearing the data may result in the download action continuing to be triggered by
-    every UI interaction.
 
     Parameters:
         context   Server-side file paths and (un)saved status
@@ -1049,7 +1044,7 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
         return
 
     # Save the file to the server-side cache and tell the browser to navigate to the Flask download route.
-    download_url: str = helpers.save_excel_to_download_cache(frames, outfile, context.upload_id)
+    download_url: str = helpers.multi_df_to_excel(frames, outfile, context.upload_id)
     logger.debug('(%s) Prepared download URL %s.', file_counter, download_url)
     set_props('download-location', {'href': download_url})
     logger.debug('(%s) Download ready. Clean up.', file_counter)
