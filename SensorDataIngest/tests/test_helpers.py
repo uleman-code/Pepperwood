@@ -8,12 +8,12 @@ def init_config():
     """Initialize configuration for all tests in this module."""
     this_module: Path = Path(__file__)
     config_file: Path = this_module.parent.parent / 'test_files' / 'good_config.toml'
-    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(config_file))
-    cfg.config_init(app_name=this_module.stem)
-    cfg.logging_init()
-    cfg.metadata_init()
-    yield
-
+    with pt.MonkeyPatch.context() as mp:
+        mp.setenv('INGEST_CONFIG_FILE', str(config_file))
+        cfg.config_init(app_name=this_module.stem)
+        cfg.logging_init()
+        cfg.metadata_init()
+        yield
 
 def test_load_data_good_dat() -> None:
     """Test loading data from a good .dat file."""
@@ -102,8 +102,8 @@ def test_pair_files_by_prefix_unique_match() -> None:
     matches = pair_files_by_prefix(left_files, right_files)
 
     assert len(matches) == 2
-    assert matches[0] == (Path('siteA_20240101.dat'), Path('siteA_20240303.csv'))
-    assert matches[1] == (Path('siteB-20240202.dat'), Path('siteB-20240404.csv'))
+    assert matches[0] == ('siteA_20240101.dat', 'siteA_20240303.csv')
+    assert matches[1] == ('siteB-20240202.dat', 'siteB-20240404.csv')
 
 
 def test_pair_files_by_prefix_ambiguous_unmatched() -> None:
@@ -114,10 +114,11 @@ def test_pair_files_by_prefix_ambiguous_unmatched() -> None:
     right_files = [Path('siteA_20240202.csv'), Path('siteA_20240303.csv')]
 
     matches = pair_files_by_prefix(left_files, right_files)
-    assert matches == []
+    assert matches == [('siteA_20240101.dat', None)]
 
 
 def test_pair_files_by_prefix_ambiguous_left_unmatched() -> None:
+    """Test that ambiguous matches on the left are left unmatched."""
     from ..sensor_data_ingest.helpers import pair_files_by_prefix
 
     matches = pair_files_by_prefix(
@@ -125,7 +126,8 @@ def test_pair_files_by_prefix_ambiguous_left_unmatched() -> None:
         [Path('siteA_20240303.csv')],
     )
 
-    assert matches == []
+    assert matches == [('siteA_20240101.dat', None), ('siteA_20240202.dat', None)]
+
 
 
 def test_pair_files_by_prefix_no_match() -> None:
@@ -136,7 +138,7 @@ def test_pair_files_by_prefix_no_match() -> None:
     right_files = [Path('beta.csv')]
 
     matches = pair_files_by_prefix(left_files, right_files)
-    assert matches == []
+    assert matches == [('alpha.dat', None)]
 
 
 def test_pair_files_by_prefix_empty_inputs() -> None:

@@ -45,8 +45,12 @@ def shutdown_cleanup():
 def serve_download(upload_id: str, filename: str):
     """Serve a previously generated Excel export directly to the user's browser."""
 
-    storage_path = file_cache / upload_id / 'download' / unquote(filename)
-    if not storage_path.is_file() or '..' in Path(filename).parts:
+    download_root = (file_cache / unquote(upload_id) / 'download').resolve()
+    if download_root.parent.parent != file_cache.resolve():
+        abort(404)
+
+    storage_path = (download_root / unquote(filename)).resolve()
+    if download_root not in storage_path.parents or not storage_path.is_file():
         abort(404)
 
     response = send_file(

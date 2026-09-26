@@ -1,19 +1,19 @@
 from pathlib import Path
 import pytest as pt
 
-def test_load_good_config() -> None:
+def test_load_good_config(monkeypatch: pt.MonkeyPatch) -> None:
     """Test loading a good configuration file."""
     from ..sensor_data_ingest import config as cfg
     from ..sensor_data_ingest.config import Config
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'good_config.toml'
-    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
+    monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
     cfg.config_init(app_name=this_module.stem)
 
     assert isinstance(cfg.config, Config)
 
-def test_load_bad_config() -> None:
+def test_load_bad_config(monkeypatch: pt.MonkeyPatch) -> None:
     """Test loading a bad configuration file."""
     from pathlib import Path
 
@@ -22,7 +22,7 @@ def test_load_bad_config() -> None:
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'bad_config.toml'
-    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
+    monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
 
     with pt.raises(ValidationError) as exc_info:
         cfg.config_init(app_name=this_module.stem)
@@ -32,7 +32,7 @@ def test_load_bad_config() -> None:
     assert 'host' in error_msg
     assert 'timestamp_column' in error_msg
 
-def test_config_not_found() -> None:
+def test_config_not_found(monkeypatch: pt.MonkeyPatch) -> None:
     """Test loading a non-existent configuration file."""
     from pathlib import Path
 
@@ -40,7 +40,7 @@ def test_config_not_found() -> None:
 
     this_module: Path = Path(__file__)
     test_file: Path = this_module.parent.parent / 'test_files' / 'nonexistent_config.toml'
-    pt.monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
+    monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
 
     with pt.raises(FileNotFoundError) as exc_info:
         cfg.config_init(app_name=this_module.stem)

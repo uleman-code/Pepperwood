@@ -122,7 +122,7 @@ pd.set_option('plotting.backend', 'plotly')
 
 
 @log_func
-def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFrame]:
+def load_data(filename: str, contents: str | None = None) -> Frames:
     """Load a data file (CSV with .dat or .csv suffix; or Excel) and return three DataFrames: data, metadata, and station data.
 
     Files from data loggers have additional information in the first few lines, including column names and descriptions and
@@ -257,9 +257,9 @@ def load_data(filename: str, contents: str | None = None) -> dict[str, pd.DataFr
         logger.error('Error reading file %s. %s', filename, err)
         raise BadFileError(str(err)) from err
 
-    if contents is not None:
-        file_path.unlink(missing_ok=True)  # Remove the temporary file in the upload cache.
-        
+    if contents is None and file_cache in file_path.resolve().parents:
+        file_path.unlink(missing_ok=True)  # Remove the file from the upload cache after reading it.
+
     logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)
     return frames
 
@@ -283,18 +283,17 @@ def clear_file_cache(upload_id: str = '') -> None:
         logger.debug('Upload-file cache %s does not exist. Nothing to clear.', target)
         return
 
-    # Remove the contents recursively, including any nested download directory created for exported files.
-    logger.debug('Removing all uploaded files, if any, in %s.', target)
-    for item in target.iterdir():
-        if item.is_file() or item.is_symlink():
-            item.unlink(missing_ok=True)
-        elif item.is_dir():
-            shutil.rmtree(item, ignore_errors=True)
-
     if upload_id:
         logger.debug('Removing instance-specific upload directory %s.', target)
-        target.rmdir()
-
+        shutil.rmtree(target, ignore_errors=True)
+    else:
+        # Keep the shared cache root; remove only its contents.
+        logger.debug('Removing all uploaded files, if any, in %s.', target)
+        for item in target.iterdir():
+            if item.is_file() or item.is_symlink():
+                item.unlink(missing_ok=True)
+            elif item.is_dir():
+                shutil.rmtree(item, ignore_errors=True)
 
 def _common_prefix_length(name_a: str, name_b: str) -> int:
     """Return the length of the common prefix shared by two basename strings."""
@@ -381,8 +380,8 @@ def merge_metadata(frames: Frames) -> None:
         frames      The four DataFrames (data, meta, station, notes) for one file
 
     Raises:
-        SiteIdNotFoundError: The site  ID in the station DataFrame was not found in the site or column metadata.
-                             Outputmetadata will be limited to what the .DAT file provides.
+        SiteIdNotFoundError: The site ID in the station DataFrame was not found in the site or column metadata.
+                             Output metadata will be limited to what the .DAT file provides.
     """
 
     # Basic operation:

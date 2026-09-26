@@ -316,6 +316,9 @@ def metadata_init() -> None:
     The in-memory representations are extended with columns that serve lookup and join purposes. Note that
     their names, "normalized_site_id" and "merge_key", are hardcoded; they are only used internally,
     so there is no need to make them configurable.
+
+    Column metadata is read with dtype=str, so every value is a string. Consumers that need numeric values
+    must convert them (for example, the sampling-interval column in merge_metadata()).
     """
 
     assert config_is_set, 'Initialize configuration settings before metadata.'

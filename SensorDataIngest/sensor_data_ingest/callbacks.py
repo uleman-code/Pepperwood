@@ -244,8 +244,11 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         logger.debug('Not in append mode and context changed for unrelated reason, or appended file not ready to be saved (QA pending): skip saving.')
         raise PreventUpdate
 
+    if not frames or frames.data.empty:
+        logger.debug('No data in memory; nothing to save.')
+        raise PreventUpdate
+
     # Guard against a save requested while QA checks are still in process. The window of vulnerabiity is very small, but not zero.
-    # Note that QA can only be completed if there is data in memory, so there is no need to check for that here.
     if context.qa_status in (QA_Status.APPEND_COMPLETE, QA_Status.COMPLETE):
         outfile: str = Path(files[0]).with_suffix('.xlsx').name
 
@@ -261,9 +264,6 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
 
         logger.debug(f'File "{outfile}" saved.')
         return download_url, context
-    elif not frames or frames.data.empty:
-        logger.debug('No data in memory; nothing to save.')
-        raise PreventUpdate
     else:
         logger.debug('File not ready to be saved (QA pending); skip saving.')
         raise PreventUpdate
@@ -976,11 +976,10 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
     outfile: str = Path(file).with_suffix('.xlsx').name
     qa_range: list[str] | None = None
 
-    frames: Frames = helpers.load_data(file)
-
     # Read the (original) file contents into DataFrames.
+    frames: Frames
     try:
-        frames: list[Any] = helpers.load_data(file)
+        frames = helpers.load_data(file)
         logger.debug('(%s) Data initialized.', file_counter)
     except (helpers.BadFileError, helpers.UnsupportedFileTypeError) as err:
         logger.error('(%s) File Read Error:\n%s', file_counter, err)
@@ -1091,8 +1090,6 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
             context.unsaved = False
             context.start_batch = False
             append_pairs = None
-            upload_id: str = context.upload_id
-            helpers.clear_file_cache(upload_id)
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
             return context, end_time, append_pairs
