@@ -86,6 +86,35 @@ def test_load_data_unsupported_extension() -> None:
     assert '.txt' in str(exc_info.value)
 
 
+def test_shutdown_cleanup_removes_active_upload_dirs(tmp_path) -> None:
+    """Shutdown cleanup should remove each tracked upload directory without error when empty."""
+    import importlib.util
+    import sys
+
+    module_path = Path(__file__).resolve().parents[1] / 'ingest.py'
+    sys.path.insert(0, str(module_path.parent))
+    spec = importlib.util.spec_from_file_location('pepperwood_ingest_test', module_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+
+    module.file_cache = tmp_path
+    module.ACTIVE_UPLOAD_IDS.clear()
+
+    upload_dir = tmp_path / 'upload-123'
+    (upload_dir / 'download').mkdir(parents=True)
+    module.track_upload_id('upload-123')
+
+    module.shutdown_cleanup()
+
+    assert 'upload-123' not in module.ACTIVE_UPLOAD_IDS
+    assert not upload_dir.exists()
+
+    module.shutdown_cleanup()
+    assert module.ACTIVE_UPLOAD_IDS == set()
+
+
 def test_pair_files_by_prefix_unique_match() -> None:
     """Test that files with unique beginning-name matches are paired."""
     from ..sensor_data_ingest.helpers import pair_files_by_prefix

@@ -1,6 +1,8 @@
 """Main module for the SensorDataIngest application for Pepperwood."""
 
+import atexit
 import logging
+import shutil
 from pathlib import Path
 from typing import Final
 from urllib.parse import unquote
@@ -34,12 +36,40 @@ app: DashProxy = DashProxy(
             )
 server = app.server  # noqa: F841  # Expose the Flask server for deployment in the cloud.
 file_cache: Path = Path(cfg.config.application.file_cache_root)
+ACTIVE_UPLOAD_IDS: set[str] = set()
+_SHUTDOWN_CLEANUP_REGISTERED: bool = False
+
+
+def track_upload_id(upload_id: str | None) -> None:
+    """Remember an upload directory that still needs cleanup on shutdown."""
+    if upload_id:
+        ACTIVE_UPLOAD_IDS.add(str(upload_id))
+
+
+def untrack_upload_id(upload_id: str | None) -> None:
+    """Forget a tracked upload directory once it has been processed or cleared."""
+    if upload_id:
+        ACTIVE_UPLOAD_IDS.discard(str(upload_id))
+
 
 def shutdown_cleanup():
     """Perform any cleanup tasks before the application shuts down."""
     logging.info('Shutting down %s application.', Path(__file__).stem)
+
+    for upload_id in sorted(ACTIVE_UPLOAD_IDS):
+        upload_root = file_cache / upload_id
+        if upload_root.exists():
+            logging.info('Removing upload cache directory %s.', upload_root)
+            shutil.rmtree(upload_root, ignore_errors=True)
+            
+        untrack_upload_id(upload_id)
+
     logging.shutdown()
-    # TODO: Get access to the upload_ids in the current instance and delete the corresponding directories in the file cache.
+
+
+if not _SHUTDOWN_CLEANUP_REGISTERED:
+    atexit.register(shutdown_cleanup)
+    _SHUTDOWN_CLEANUP_REGISTERED = True
 
 @server.route('/download/<upload_id>/<path:filename>', methods=['GET'])
 def serve_download(upload_id: str, filename: str):
@@ -74,7 +104,4 @@ if __name__ == '__main__':
     #       This has to do with Flask and its support for automatic reloading upon any code changes.
     #       It can be suppressed, at the cost of losing that very convenient reloading behavior.
     #       The duplicate messages do not appear when debug=False.
-    try:
-        app.run(debug=cfg.config.application.debug)
-    except KeyboardInterrupt:
-        logging.shutdown()
+    app.run(debug=cfg.config.application.debug)
