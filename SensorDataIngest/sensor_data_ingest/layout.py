@@ -10,6 +10,7 @@ from dash_extensions.enrich import (
     ServersideOutputTransform,
     DataclassTransform,
     dcc,
+    html,
 )
 import dash_uploader_uppy5 as du
 
@@ -198,6 +199,10 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                             gap=0,
                             style={'display': 'flex', 'flexWrap': 'wrap'},
                         ),
+                        *(
+                            [dcc.Store(id={'type': 'batch-download-url', 'index': n})]
+                            if n is not None else []
+                        ),
                     ],
                     justify='space-between',
                     style={'position': 'relative'},
@@ -245,6 +250,7 @@ layout = dmc.AppShell(
                         },
                     ),
                     dcc.Location(id='download-location', refresh=True),
+                    html.Div(id='batch-downloads', style={'display': 'none'}),
                     dcc.Store(id='frame-store'),
                     dcc.Store(id='file-counter'),
                     dcc.Store(id='next-file'),

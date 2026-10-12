@@ -1050,10 +1050,10 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
         _done_no_save(file_counter)
         return
 
-    # Save the file to the server-side cache and tell the browser to navigate to the Flask download route.
+    # Save the file now; batch_done starts browser downloads when every file is processed.
     download_url: str = helpers.multi_df_to_excel(frames, outfile, context.upload_id)
     logger.debug('(%s) Prepared download URL %s.', file_counter, download_url)
-    set_props('download-location', {'href': download_url})
+    set_props({'type': 'batch-download-url', 'index': file_counter}, {'data': download_url})
     logger.debug('(%s) Download ready. Clean up.', file_counter)
 
     set_props(f'wait-please-{file_counter}', {'visible': False})
@@ -1066,28 +1066,32 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
     Output('files-context', 'data'),
     Output('file-attributes', 'children', allow_duplicate=True),
     Output('append-pairs', 'data', allow_duplicate=True),
+    Output('batch-downloads', 'children'),
     State('files-context', 'data'),
     Input({'type': 'saved-badge', 'index': ALL}, 'display'),
+    State({'type': 'batch-download-url', 'index': ALL}, 'data'),
 )
 @log_func
-def batch_done(context: Context, badges: list[str]) -> tuple:
+def batch_done(context: Context, badges: list[str], download_urls: list[str | None]) -> tuple:
     """Keep track of batch progress; set file unsaved flag to re-enable new file selection when all files are processed.
 
     Look for changes to the Saved badges: setup_batch() creates one, invisible (display='none'), for each file in the
     batch, and process_batch() makes it visible (display='inline') as it finishes with each file. When all badges are
     visible, the batch is complete.
 
-    When the batch is complete, empty the upload-file cache.
+    When the batch is complete, start each successful file's download without navigating away from the app.
 
     Parameters:
-        context   Server-side file paths and unsaved status
+        context         Server-side file paths and unsaved status
         badges          The display attribute for all batch-related Saved badges
                         NOTE: This takes advantage of pattern-matching callback inputs.
+        download_urls   Download URLs for successfully saved files; failed files have no URL.
 
     Returns:
         files-context/data       (str)  Same as context parameter but with the unsaved flag set to False
         file-attributes/children (str)  Add the completion time of the batch operation (start time was added by setup_batch())
         append-pairs/data        (None) Clear the list of file pairs for appending
+        batch-downloads/children (list) Hidden frames that start the completed files' downloads
     """
 
     if badges:  # This also gets triggered when all batch-related badges disappear
@@ -1100,7 +1104,17 @@ def batch_done(context: Context, badges: list[str]) -> tuple:
             append_pairs = None
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-            return context, end_time, append_pairs
+            downloads = [
+                html.Iframe(
+                    id=f'batch-download-{index}',
+                    src=url,
+                    title=f'Batch download {index + 1}',
+                )
+                for index, url in enumerate(download_urls)
+                if url is not None
+            ]
+            logger.debug('Starting %s batch file download(s).', len(downloads))
+            return context, end_time, append_pairs, downloads
         else:
             logger.debug(
                 f'Batch not complete; so far only {len([d for d in badges if d == "inline"])} files.'
