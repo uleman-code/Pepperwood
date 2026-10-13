@@ -12,7 +12,6 @@ from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from typing import Any, Callable, Final
 from enum import StrEnum, auto
-import itertools
 import decorator
 
 import humanfriendly as hf
@@ -274,6 +273,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
     Output('files-context', 'data', allow_duplicate=True),
     Output('frame-store', 'clear_data'),
     Output('show-data', 'children', allow_duplicate=True),
+    Output('batch-file-sections', 'children', allow_duplicate=True),
     Output('file-name', 'children', allow_duplicate=True),
     Output('file-attributes', 'children', allow_duplicate=True),
     Trigger('clear-button', 'n_clicks'),
@@ -302,12 +302,13 @@ def clear(show_data: list[dmc.CardSection]) -> tuple:
     logger.debug('Responding to Clear button click. Reset files-context, frame store, and UI elements.')
 
     # Always clear the DataFrame store, truncate the main app area, and clear the filename/file-attributes text.
-    return Context(), True, show_data[:3], None, None
+    return Context(), True, show_data[:4], [], None, None
 
 
 @blueprint.callback(
     Output('files-context', 'data', allow_duplicate=True),
     Output('show-data', 'children', allow_duplicate=True),
+    Output('batch-file-sections', 'children', allow_duplicate=True),
     Input('select-file' , 'uploadedFiles'),
     State('show-data', 'children'),
     # TODO: Use failedFiles for error processing.
@@ -343,7 +344,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
         lifecycle.track_upload_id(context.upload_id)
 
     logger.debug('File cache upload ID is %s', context.upload_id)
-    return context, show_data[:3]
+    return context, show_data[:4], []
 
 
 @blueprint.callback(
@@ -798,12 +799,15 @@ def report_sanity_checks(
     Output('file-attributes', 'children', allow_duplicate=True),
     Output('append-batch', 'display', allow_duplicate=True),
     Output('next-file', 'data', allow_duplicate=True),
+    Output('batch-file-sections', 'children', allow_duplicate=True),
     Input('files-context', 'data'),
     State('select-file', 'uploadedFiles'),
-    State('append-pairs', 'data'),
+    # State('append-pairs', 'data'),
 )
 @log_func
-def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]], append_pairs: list[list[str]]) -> tuple:
+def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
+                # append_pairs: list[list[str]]
+               ) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
     Looping over a batch of multiple files works as follows:
@@ -841,56 +845,55 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         logger.debug('Batch triggered by user; start operation.')
         start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         next_file: int = 0  # This triggers the start of the loop over file_counter
-        return 'Batch mode operation', [f'{len(uploaded_files)} files. Started at {start_time}'], 'none', next_file
+        return (
+            'Batch mode operation',
+            [f'{len(uploaded_files)} files. Started at {start_time}'],
+            'none',
+            next_file,
+            no_update,
+        )
     else:
-        # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
-        # Show the client-side filenames provided by the Upload component instead.
-        filenames: list[str] = [f['name'] for f in uploaded_files]
-        logger.debug('Waiting for user to click Save to start batch processing.')
-        files_list: list[str | html.Br] = list(itertools.chain.from_iterable(zip([html.Br()] * len(filenames),
-                                                                                 [f'\N{BULLET} {name}' for name in filenames])))
-        return ('Batch mode operation', [f'{len(filenames)} files loaded:'] + files_list, no_update, no_update)        
+        logger.debug('Preparing file information while waiting for the user to click Save.')
+        file_sections: list[dmc.CardSection] = []
+        for index, uploaded_file in enumerate(uploaded_files):
+            filename = uploaded_file['name']
+            # if append_pairs and append_pairs[index][1]:
+            #     filename += f' {append_arrow} {Path(append_pairs[index][1]).name}'
+
+            file_sections.append(
+                layout.make_file_info(
+                    index,
+                    filename=filename,
+                    attributes=f'Size: {hf.format_size(uploaded_file["size"])}',
+                )
+            )
+
+        return (
+            'Batch mode operation',
+            [f'{len(uploaded_files)} files loaded. Click Save to process.'],
+            no_update,
+            no_update,
+            file_sections,
+        )
 
 
 @blueprint.callback(
-    Output( 'show-data'   , 'children'          ),
     Output( 'file-counter', 'data'              ),
     Trigger('next-file'   , 'modified_timestamp'),
     State(  'next-file'   , 'data'              ),
-    State(  'select-file' , 'uploadedFiles'     ),
-    State(  'append-pairs', 'data'              ),
 )
 @log_batch_func
-def next_in_batch(
-    next_file: int,
-    uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-    append_pairs: list[list[str]],
-) -> tuple:
+def next_in_batch(next_file: int) -> int:
     """Show file information and a busy indicator for the current item in the batch.
 
     Parameters:
-        next_file       The current file's index in the batch list
-        uploaded_files  Filenames and other info of the uploaded files
+        next_file   The current file's index in the batch list
 
     Returns:
-        show-data/children (object) Patch object to add another CardSection to the main app area
-        file-counter/data  (int)    The file counter value for the current batch item
+        file-counter/data  (int) The file counter value for the current batch item
     """
-    # context has the server-side full paths, which may have sanitized (safe) versions of the original filenames.
-    # Use the client-side filenames provided by the Upload component instead.
-    this_file = uploaded_files[next_file]
-
-    # Construct a whole new CardSection element, to be appended to the show-data area
-    this_file_info: dmc.CardSection = layout.make_file_info(next_file)              # file-info-n
-    this_file_info.children.children[1].children[0].children = this_file['name']    # file-name-n
-    if append_pairs and append_pairs[next_file][1]:
-        this_file_info.children.children[1].children[0].children += f' {append_arrow} {Path(append_pairs[next_file][1]).name}'
-    this_file_info.children.children[1].children[1].children[0].children = f'Size: {hf.format_size(this_file["size"])}' # file-attributes-n
-
-    showdata: Patch = Patch()
-    showdata.append(this_file_info)
-
-    return showdata, next_file
+    set_props(f'wait-please-{next_file}', {'visible': True})
+    return next_file
 
 
 @blueprint.callback(

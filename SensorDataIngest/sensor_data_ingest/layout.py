@@ -143,7 +143,11 @@ columns = [
 
 navbar = dmc.Card(load_save + columns, withBorder=True, h='100dvh')
 
-def make_file_info(n: int | None = None) -> dmc.CardSection:
+def make_file_info(
+    n: int | None = None,
+    filename: str = '',
+    attributes: str = '',
+) -> dmc.CardSection:
     """Create a card section for one file's file info, progress, and QA results.
 
     In a batch process, one of these is created for each file, with the suffix n (1, 2, 3, ...)
@@ -164,17 +168,17 @@ def make_file_info(n: int | None = None) -> dmc.CardSection:
                         dmc.LoadingOverlay(id=f'wait-please{suffix}',
                                            loaderProps={'type': 'dots' if n is not None else 'oval'},
                                            overlayProps={'backgroundOpacity': 0 if n is not None else 0.2},
-                                           visible=n is not None,
+                                           visible=False,
                                            mt=25,
                                           ),
                         dmc.Stack(
                             children=[
-                                dcc.Markdown(id=f'file-name{suffix}', mathjax=True,
+                                dcc.Markdown(filename, id=f'file-name{suffix}', mathjax=True,
                                              style={'fontSize': '18px', 'fontWeight': 'bold'},
                                              className='compact-md'),
                                 dmc.Group(
                                     children=[
-                                        dmc.Text(id=f'file-attributes{suffix}'),
+                                        dmc.Text(attributes, id=f'file-attributes{suffix}'),
                                         dmc.Badge(
                                             'Saved',
                                             id=badge_id,
@@ -222,6 +226,7 @@ page_main = dmc.Card(
             zIndex=10000,
         ),
         make_file_info(),
+        html.Div(id='batch-file-sections'),
         dmc.CardSection(
             dcc.Graph(
                 id='stacked-graphs',

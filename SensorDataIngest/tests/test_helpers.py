@@ -86,6 +86,67 @@ def test_load_data_unsupported_extension() -> None:
     assert '.txt' in str(exc_info.value)
 
 
+def test_multi_df_to_excel_uses_fixed_widths_for_data_sheet(monkeypatch: pt.MonkeyPatch, tmp_path: Path) -> None:
+    import pandas as pd
+
+    from ..sensor_data_ingest import helpers
+    from ..sensor_data_ingest.helpers import Frames
+
+    class FakeWorksheet:
+        def __init__(self) -> None:
+            self.widths: dict[int, int] = {}
+
+        def set_column(self, first_col: int, last_col: int, width: int) -> None:
+            assert first_col == last_col
+            self.widths[first_col] = width
+
+    class FakeExcelWriter:
+        def __init__(self, path: Path) -> None:
+            self.sheets: dict[str, FakeWorksheet] = {}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+    writer: FakeExcelWriter | None = None
+
+    def make_writer(path: Path) -> FakeExcelWriter:
+        nonlocal writer
+        writer = FakeExcelWriter(path)
+        return writer
+
+    def fake_to_excel(
+        self: pd.DataFrame,
+        excel_writer: FakeExcelWriter,
+        index: bool,
+        sheet_name: str,
+        na_rep: str,
+    ) -> None:
+        excel_writer.sheets[sheet_name] = FakeWorksheet()
+
+    monkeypatch.setattr(helpers, 'file_cache', tmp_path)
+    monkeypatch.setattr(pd, 'ExcelWriter', make_writer)
+    monkeypatch.setattr(pd.DataFrame, 'to_excel', fake_to_excel)
+
+    rows = 12
+    data = pd.DataFrame({
+        helpers.timestamp_column: pd.date_range('2024-01-01', periods=rows, freq='s'),
+        helpers.seqno_column: range(1, rows + 1),
+        'V': [1.2345] * rows,
+    })
+    frames = Frames(data=data)
+
+    helpers.multi_df_to_excel(frames, 'output.xlsx', 'upload-id')
+
+    assert writer is not None
+    data_widths = writer.sheets[helpers.worksheet_names.data].widths
+    assert data_widths[0] == 19
+    assert data_widths[1] == max(len(helpers.seqno_column), len(str(rows)))
+    assert data_widths[2] == len('0.0000')
+
+
 def test_shutdown_cleanup_removes_active_upload_dirs(tmp_path) -> None:
     """Shutdown cleanup should remove each tracked upload directory without error when empty."""
     import importlib.util

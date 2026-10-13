@@ -649,17 +649,24 @@ def multi_df_to_excel(frames: Frames, filename: str, upload_id: str) -> str:
                 na_rep=data_na_repr if sheet == worksheet_names.data else '',
             )
 
-            # Automatically adjust column widths to fit all text, including the column header
-            # NOTE: This may be an expensive operation. Beware of large files!
-            # NOTE: This is only approximate; it's based on the number of characters in strings and numbers, not
-            #       what it actually looks like in Excel on the user's system.
             for column_index, column in enumerate(df.columns):
-                # The Link column contains nothing but single hyperlink characters, so only check the column header to set the width.
-                header: pd.Series = pd.Series([column])
-                to_check: pd.Series = (
-                    header if column == hyperlink_column else pd.concat([header, df[column]])
-                )
-                column_width: int = to_check.astype(str).str.len().max()
+                header_width: int = len(str(column))
+                if sheet == worksheet_names.data:
+                    if column == timestamp_column:
+                        value_width = len('yyyy-mm-dd HH:MM:SS')
+                    elif column == seqno_column:
+                        value_width = len(str(len(df[column])))
+                    else:
+                        value_width = len('0.0000')
+                    column_width = max(header_width, value_width)
+                else:
+                    # The Link column contains only short hyperlink characters.
+                    if column == hyperlink_column:
+                        column_width = header_width
+                    else:
+                        value_width = df[column].astype(str).str.len().max()
+                        column_width = max(header_width, value_width)
+
                 xl.sheets[sheet].set_column(column_index, column_index, column_width)
 
     logger.debug('Excel file written to %s.', storage_path)

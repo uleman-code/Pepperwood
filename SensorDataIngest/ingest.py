@@ -17,7 +17,8 @@ import dash_uploader_uppy5 as du
 FLASK_LOGGER: Final = 'werkzeug'
 
 # Initialize the configuration module before importing any other modules from this project.
-cfg.config_init(app_name=Path(__file__).stem)
+app_name = Path(__file__).stem
+cfg.config_init(app_name=app_name)
 cfg.logging_init()
 cfg.metadata_init()
 logging.getLogger(FLASK_LOGGER).setLevel(logging.WARNING)  # Suppress endless GET and POST logs from Flask
@@ -54,7 +55,7 @@ def untrack_upload_id(upload_id: str | None) -> None:
 
 def shutdown_cleanup():
     """Perform any cleanup tasks before the application shuts down."""
-    logging.info('Shutting down %s application.', Path(__file__).stem)
+    logging.info('Shutting down %s application.', app_name)
 
     for upload_id in sorted(ACTIVE_UPLOAD_IDS):
         upload_root = file_cache / upload_id

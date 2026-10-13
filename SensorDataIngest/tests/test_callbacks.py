@@ -52,3 +52,26 @@ def test_batch_done_waits_for_all_files() -> None:
             ['inline', 'none'],
             ['/download/upload-id/first.xlsx', None],
         )
+
+
+def test_setup_batch_builds_file_sections_before_save() -> None:
+    from ..sensor_data_ingest.callbacks import Context, setup_batch
+
+    result = setup_batch(
+        Context(files=['first.dat', 'second.dat'], unsaved=True),
+        [
+            {'name': 'first.dat', 'size': 1024},
+            {'name': 'second.dat', 'size': 2048},
+        ],
+        [['first.dat', 'first-base.xlsx'], ['second.dat', None]],
+    )
+
+    assert result[1] == ['2 files loaded. Click Save to process.']
+    sections = result[4]
+    assert [section.id for section in sections] == ['file-info-0', 'file-info-1']
+
+    first_text = sections[0].children.children[1].children
+    assert first_text[0].children == r'first.dat $\xrightarrow{+}$ first-base.xlsx'
+    assert first_text[1].children[0].children.startswith('Size: ')
+    assert sections[0].children.children[0].visible is False
+    assert sections[0].children.children[2].children is None
