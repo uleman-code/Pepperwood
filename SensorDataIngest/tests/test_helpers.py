@@ -86,6 +86,40 @@ def test_load_data_unsupported_extension() -> None:
     assert '.txt' in str(exc_info.value)
 
 
+def test_prepare_for_append_standardizes_each_input_before_append(monkeypatch: pt.MonkeyPatch) -> None:
+    import pandas as pd
+
+    from ..sensor_data_ingest import helpers
+    from ..sensor_data_ingest.helpers import Frames
+
+    monkeypatch.setattr(helpers, 'merge_metadata', lambda _frames: None)
+
+    def make_frames(start: str) -> Frames:
+        return Frames(
+            data=pd.DataFrame({
+                'raw_timestamp': pd.date_range(start, periods=2, freq='15min'),
+                'raw_sequence': [0, 1],
+                'Value': [1.0, 2.0],
+            }),
+            meta=pd.DataFrame({
+                helpers.meta_columns[0]: ['raw_timestamp', 'raw_sequence', 'Value'],
+            }),
+        )
+
+    base_frames = make_frames('2024-01-01')
+    new_frames = make_frames('2024-01-01 00:30')
+
+    assert helpers.prepare_for_append(base_frames) is None
+    assert helpers.prepare_for_append(new_frames) is None
+    assert helpers.timestamp_column in base_frames.data.columns
+    assert helpers.seqno_column in base_frames.data.columns
+    assert helpers.timestamp_column in new_frames.data.columns
+    assert helpers.seqno_column in new_frames.data.columns
+
+    combined, _ = helpers.append(base_frames, new_frames)
+    assert len(combined.data) == 4
+
+
 def test_multi_df_to_excel_uses_fixed_widths_for_data_sheet(monkeypatch: pt.MonkeyPatch, tmp_path: Path) -> None:
     import pandas as pd
 

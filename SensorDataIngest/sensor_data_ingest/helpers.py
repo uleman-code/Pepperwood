@@ -555,6 +555,27 @@ def _verify_standard_columns(frames: Frames) -> None:
 
 
 @log_func
+def prepare_for_append(frames: Frames) -> SiteIdNotFoundError | None:
+    """Apply metadata and standardize data columns before appending a file.
+
+    Site metadata is optional for appending, but standard timestamp and sequence columns
+    must be identified before append() compares and concatenates the data.
+
+    Returns the site-metadata error, if any, so callers can report incomplete metadata
+    while still proceeding when standard columns can be identified.
+    """
+    metadata_error: SiteIdNotFoundError | None = None
+    try:
+        merge_metadata(frames)
+    except SiteIdNotFoundError as err:
+        logger.info('Continuing with incomplete metadata: %s', err)
+        metadata_error = err
+
+    _verify_standard_columns(frames)
+    return metadata_error
+
+
+@log_func
 def _get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     """Determine the sampling interval for the site, from the static metadata or the configuration default.
 

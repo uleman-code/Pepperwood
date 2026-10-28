@@ -40,7 +40,7 @@ from . import helpers
 from . import layout
 from .helpers import Frames
 
-append_arrow: Final[str] = r'$\xrightarrow{+}$'     # Use Markdown with Latex to render arrow with plus sign
+append_arrow: Final[str] = r'$\xrightarrow{+}$'     # Use Markdown with LaTeX to render the append direction
 
 class QA_Status(StrEnum):
     NONE = auto()
@@ -794,6 +794,35 @@ def report_sanity_checks(
     return report, context, Serverside(frames, key='Frames')
 
 
+def _component_property(component: Any, property_name: str) -> Any:
+    if isinstance(component, dict):
+        return component.get('props', {}).get(property_name)
+    return getattr(component, property_name, None)
+
+
+def _file_section_details(section: Any) -> tuple[str, str] | None:
+    group = _component_property(section, 'children')
+    group_children = _component_property(group, 'children')
+    if not isinstance(group_children, (list, tuple)) or len(group_children) < 2:
+        return None
+
+    info_stack = group_children[1]
+    stack_children = _component_property(info_stack, 'children')
+    if not isinstance(stack_children, (list, tuple)) or len(stack_children) < 2:
+        return None
+
+    filename = _component_property(stack_children[0], 'children')
+    attributes_children = _component_property(stack_children[1], 'children')
+    if not isinstance(attributes_children, (list, tuple)) or not attributes_children:
+        return None
+
+    attributes = _component_property(attributes_children[0], 'children')
+    if not isinstance(filename, str) or not isinstance(attributes, str):
+        return None
+
+    return filename, attributes
+
+
 @blueprint.callback(
     Output('file-name', 'children', allow_duplicate=True),
     Output('file-attributes', 'children', allow_duplicate=True),
@@ -802,11 +831,13 @@ def report_sanity_checks(
     Output('batch-file-sections', 'children', allow_duplicate=True),
     Input('files-context', 'data'),
     State('select-file', 'uploadedFiles'),
-    # State('append-pairs', 'data'),
+    State('append-pairs', 'data'),
+    State('batch-file-sections', 'children'),
 )
 @log_func
 def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dict[str, str | int]]],
-                # append_pairs: list[list[str]]
+                append_pairs: list[list[str]],
+                batch_file_sections: list[dmc.CardSection] | None,
                ) -> tuple:
     """Set up for batch operation by starting the loop counter. Show a batch operation header.
 
@@ -826,18 +857,18 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         append_pairs    List of matched pairs of files for Batch Append mode
 
     Returns:
-        file-name/children          (str) Reuse for Batch mode operation header
-        file-attributes/children    (list[str]) Reuse for start and completion time of batch operation
-        append-batch/display        (str) Hide the Append Batch element once batch processing starts
-        next-file/data              (int) Set the next value for the loop counter
+        append-batch/display          (str) Hide the Append Batch element once batch processing starts
+        next-file/data                (int) Set the next value for the loop counter
+        batch-file-sections/children  (list[dmc.CardSection]) Show the list of files in the batch, with their sizes and matched append files
     """
 
-    if len(uploaded_files) <= 1:
+    if len(context.files) <= 1:
         logger.debug('No file or a single filename: not a batch.')
         raise PreventUpdate
     
     # When the batch is complete, the unsaved flag gets set to False.
-    if not context.unsaved:
+    is_append_batch: bool = bool(append_pairs)
+    if not context.unsaved and not (context.start_batch and is_append_batch):
         logger.debug('Batch already done. Do not start again.')
         raise PreventUpdate
 
@@ -845,20 +876,60 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
         logger.debug('Batch triggered by user; start operation.')
         start_time: str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         next_file: int = 0  # This triggers the start of the loop over file_counter
+        if is_append_batch:
+            section_details = [
+                _file_section_details(section) for section in batch_file_sections or []
+            ]
+            if len(section_details) == len(append_pairs) and all(section_details):
+                file_sections = [
+                    layout.make_file_info(
+                        index,
+                        filename=(
+                            f'{section_details[index][0]} {append_arrow} {Path(append_file).name}'
+                            if append_file
+                            else section_details[index][0]
+                        ),
+                        attributes=section_details[index][1],
+                    )
+                    for index, (_, append_file) in enumerate(append_pairs)
+                ]
+            else:
+                logger.info(
+                    'Building batch append file sections from current files; '
+                    'existing section details were unavailable.'
+                )
+                file_sections = [
+                    layout.make_file_info(
+                        index,
+                        filename=(
+                            f'{Path(file).name} {append_arrow} {Path(append_pairs[index][1]).name}'
+                            if append_pairs[index][1]
+                            else Path(file).name
+                        ),
+                        attributes=(
+                            f'Size: {hf.format_size(Path(file).stat().st_size)}'
+                            if Path(file).is_file()
+                            else 'Size unavailable'
+                        ),
+                    )
+                    for index, file in enumerate(context.files)
+                ]
+        else:
+            file_sections = no_update
         return (
             'Batch mode operation',
-            [f'{len(uploaded_files)} files. Started at {start_time}'],
+            [f'{len(context.files)} files. Started at {start_time}'],
             'none',
             next_file,
-            no_update,
+            file_sections,
         )
     else:
         logger.debug('Preparing file information while waiting for the user to click Save.')
         file_sections: list[dmc.CardSection] = []
         for index, uploaded_file in enumerate(uploaded_files):
             filename = uploaded_file['name']
-            # if append_pairs and append_pairs[index][1]:
-            #     filename += f' {append_arrow} {Path(append_pairs[index][1]).name}'
+            if append_pairs and append_pairs[index][1]:
+                filename += f' {append_arrow} {Path(append_pairs[index][1]).name}'
 
             file_sections.append(
                 layout.make_file_info(
@@ -975,7 +1046,12 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
    """
 
     is_append_batch: bool = bool(append_pairs)
+    is_matched_append: bool = (
+        is_append_batch and bool(append_pairs[file_counter][1])
+    )
     files: list[str] = context.files
+    metadata_prepared = False
+    metadata_error: helpers.SiteIdNotFoundError | None = None
 
     if (len(files) <= file_counter):  # We got here because there's a batch, so this should not happen
         logger.error(
@@ -1000,7 +1076,7 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
         return
 
     # If in Append mode, do the same with the base file and merge the two sets of DataFrames. Then run the sanity checks on the combined data.
-    if is_append_batch and append_pairs[file_counter][1]:
+    if is_matched_append:
         base_file: str = append_pairs[file_counter][1]
         try:
             base_frames = helpers.load_data(base_file)
@@ -1009,6 +1085,19 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
             logger.error('(%s) Base file Read Error:\n%s', file_counter, err)
             set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(f'Error reading base file {Path(base_file).name}:', c='red', ta='right'),
                                                                      dmc.Text(str(err), c='red', ta='right')]})
+            _done_no_save(file_counter)
+            return
+
+        try:
+            base_metadata_error = helpers.prepare_for_append(base_frames)
+            metadata_error = helpers.prepare_for_append(frames)
+            metadata_prepared = True
+            if base_metadata_error is not None:
+                logger.info('(%s) Base file has incomplete metadata: %s', file_counter, base_metadata_error)
+        except helpers.TimestampColumnNotFoundError as err:
+            logger.error('(%s) Cannot append files because a standard timestamp column could not be identified: %s',
+                         file_counter, err)
+            set_props(f'sanity-checks-{file_counter}', {'children': [dmc.Text(str(err), c='red', ta='right')]})
             _done_no_save(file_counter)
             return
 
@@ -1025,18 +1114,24 @@ def process_batch(file_counter: int, context: Context, append_pairs: list[list[s
 
     no_save = False
 
-    try:
-        helpers.merge_metadata(frames)
-    except helpers.SiteIdNotFoundError as err:
-        logger.info('Continuing with incomplete metadata: %s', err)
-        report += [dmc.Text(f'Incomplete metadata: {err}', c='red', ta='right')]
+    if metadata_prepared and metadata_error is not None:
+        report += [dmc.Text(f'Incomplete metadata: {metadata_error}', c='red', ta='right')]
+    elif not metadata_prepared:
+        try:
+            helpers.merge_metadata(frames)
+        except helpers.SiteIdNotFoundError as err:
+            logger.info('Continuing with incomplete metadata: %s', err)
+            report += [dmc.Text(f'Incomplete metadata: {err}', c='red', ta='right')]
 
     # Perform sanity/QA checks and report the results, except:
     #   If there already is a Notes DataFrame, then it was read in from a previously saved, and possibly edited, Excel file.
     #   In that case, neither make corrections to the data nor generate a new Notes worksheet.
-    if frames.notes.empty:
+    if frames.notes.empty or is_matched_append:
         try:
-            qa_report: list[dmc.Text] = _run_sanity_checks(frames, None)
+            qa_report: list[dmc.Text] = _run_sanity_checks(
+                frames,
+                qa_range if is_matched_append else None,
+            )
         except (helpers.DuplicateTimestampError, helpers.TimestampColumnNotFoundError) as err:
             no_save = True
             qa_report = [dmc.Text(str(err), c='red', ta='right')]
