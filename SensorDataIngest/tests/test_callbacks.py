@@ -35,6 +35,7 @@ def test_batch_done_starts_downloads_for_successful_files() -> None:
 
     assert result[0].unsaved is False
     assert result[0].start_batch is False
+    assert result[0].batch_completed is True
     assert [frame.src for frame in result[3]] == [
         '/download/upload-id/first.xlsx',
         '/download/upload-id/last.xlsx',
@@ -52,6 +53,23 @@ def test_batch_done_waits_for_all_files() -> None:
             ['inline', 'none'],
             ['/download/upload-id/first.xlsx', None],
         )
+
+
+def test_toggle_save_clear_locks_batch_controls_until_clear() -> None:
+    from ..sensor_data_ingest.callbacks import Context, toggle_save_clear
+
+    active_batch = Context(files=['first.dat', 'second.dat'], start_batch=True)
+    completed_batch = Context(
+        files=['first.dat', 'second.dat'],
+        unsaved=False,
+        batch_completed=True,
+    )
+    single_file = Context(files=['single.dat'], unsaved=False)
+
+    assert toggle_save_clear(active_batch) == (True, True, True, False)
+    assert toggle_save_clear(completed_batch) == (True, True, True, False)
+    assert toggle_save_clear(single_file) == (False, False, False, False)
+    assert toggle_save_clear(Context()) == (True, True, True, True)
 
 
 def test_setup_batch_builds_file_sections_before_save() -> None:

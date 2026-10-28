@@ -41,6 +41,7 @@ from . import layout
 from .helpers import Frames
 
 append_arrow: Final[str] = r'$\xrightarrow{+}$'     # Use Markdown with LaTeX to render the append direction
+not_appended: Final[str] = r'$\nrightarrow$'
 
 class QA_Status(StrEnum):
     NONE = auto()
@@ -57,6 +58,7 @@ class Context:
     qa_range: list[str] = field(default_factory=list)
     no_save: bool = False
     start_batch: bool = False
+    batch_completed: bool = False
 
 logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
@@ -397,7 +399,7 @@ def start_append_batch(uploaded_files: list[dict[str, str | int | dict[str, str 
     context.start_batch = True
     logger.debug('Append batch matched %s pair(s): %s',
                  len(append_pairs),
-                 [f'{Path(left).name} <- {Path(right).name}' for left, right in append_pairs])
+                 [f'{Path(left).name} -> {Path(right).name if right else "No match"}' for left, right in append_pairs])
     return context, append_pairs
 
 
@@ -624,8 +626,9 @@ def toggle_save_clear(context: Context) -> tuple:
     #              opens the browser's file-open dialog.
     # Batch: Append is a regular button (no drag-drop) that exposes a separate du.Upload component, which takes
     #        the file selection from there.
-    disable_save = num_files < 1 or do_not_save             # Enable unless nothing loaded or single bad file
-    disable_append_button = num_files < 1 or do_not_save    # Enable unless nothing loaded or single bad file
+    batch_locked = context.start_batch or context.batch_completed
+    disable_save = num_files < 1 or do_not_save or batch_locked
+    disable_append_button = num_files < 1 or do_not_save or batch_locked
     disable_append_file = num_files != 1 or do_not_save     # Enable only for a single file, unless that file is bad
     disable_clear = num_files < 1                           # Enable for any number of files
 
@@ -887,7 +890,7 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
                         filename=(
                             f'{section_details[index][0]} {append_arrow} {Path(append_file).name}'
                             if append_file
-                            else section_details[index][0]
+                            else f'{section_details[index][0]} {not_appended} Not appended; no matching file.'
                         ),
                         attributes=section_details[index][1],
                     )
@@ -904,7 +907,7 @@ def setup_batch(context: Context, uploaded_files: list[dict[str, str | int | dic
                         filename=(
                             f'{Path(file).name} {append_arrow} {Path(append_pairs[index][1]).name}'
                             if append_pairs[index][1]
-                            else Path(file).name
+                            else f'{Path(file).name} {not_appended} Not appended; no matching file.'
                         ),
                         attributes=(
                             f'Size: {hf.format_size(Path(file).stat().st_size)}'
@@ -1199,6 +1202,7 @@ def batch_done(context: Context, badges: list[str], download_urls: list[str | No
             logger.debug('Batch complete.')
             context.unsaved = False
             context.start_batch = False
+            context.batch_completed = True
             append_pairs = None
             end_time: Patch = Patch()
             end_time.append(f' \N{EM DASH} Complete at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')

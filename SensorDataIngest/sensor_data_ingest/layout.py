@@ -251,7 +251,7 @@ layout = dmc.AppShell(
                         data={
                             'files': [], 'unsaved': False, 'upload_id': '',
                             'qa_status': 'none', 'qa_range': [], 'no_save': False,
-                            'start_batch': False,
+                            'start_batch': False, 'batch_completed': False,
                         },
                     ),
                     dcc.Location(id='download-location', refresh=True),
