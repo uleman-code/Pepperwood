@@ -91,6 +91,7 @@ def serve_download(upload_id: str, filename: str):
         download_name=Path(filename).name,
         max_age=0,
     )
+    response.direct_passthrough = False
     response.call_on_close(lambda: storage_path.unlink(missing_ok=True))
     return response
 

@@ -257,7 +257,7 @@ def load_data(filename: str, contents: str | None = None) -> Frames:
         logger.error('Error reading file %s. %s', filename, err)
         raise BadFileError(str(err)) from err
 
-    if contents is None and file_cache in file_path.resolve().parents:
+    if contents is None and file_path.resolve().is_relative_to(file_cache.resolve()):
         file_path.unlink(missing_ok=True)  # Remove the file from the upload cache after reading it.
 
     logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)

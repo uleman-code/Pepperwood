@@ -213,10 +213,11 @@ def load_file(context: Context) -> tuple:
 def save_file(context: Context, frames: Frames | None) -> tuple:
     """If a single file is loaded save the data in an Excel (.XLSX) file. If multiple, trigger batch processing instead.
 
-    In response to a button click, take the data from the serverside frame store, download it to the browser, and have
-    the browser write it to a file, of the same name as the original but with a ".xlsx" extension. Depending
-    on the user's browser settings, this either silently saves the file in a pre-designated folder (e.g., Downloads)
-    or opens the OS-native Save File dialog, allowing the user to choose any folder (and change the filename, too).
+    In response to a button click or as part of a batch process, take the data from the serverside frame store and
+    write it to a server-side file, of the same name as the original but with a ".xlsx" extension; then trigger the browser
+    to download the file. Depending on the user's browser settings, this either silently saves the file in a pre-designated
+    folder (e.g., Downloads) or opens the OS-native Save File dialog, allowing the user to choose any folder (and change
+    the filename, too).
 
     NOTE: If the Save File dialog is opened, it's possible that the user clicks Cancel, in which case the file is not
           saved. There seems to be no way for the program to detect this. For now, this app assumes that the file
@@ -230,8 +231,9 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         frames         The four DataFrames (data, meta, site, notes) for one file
 
     Returns:
-        save-xlsx/data       (dict) Content and filename to be downloaded to the browser
-        files-context/data   (str)  Same as context parameter but with the unsaved flag set to False
+        download-location/href  (str)  URL for the browser to download the saved file
+        save-xlsx/data          (dict) Content and filename to be downloaded to the browser
+        files-context/data      (str)  Same as context parameter but with the unsaved flag set to False
     """
 
     files: list[str] = context.files
