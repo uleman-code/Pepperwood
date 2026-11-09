@@ -64,6 +64,12 @@ logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
 
 
+def _track_upload_id(upload_id: str | None) -> None:
+    lifecycle = sys.modules.get(cfg.program_name) or sys.modules.get('__main__')
+    if lifecycle is not None:
+        lifecycle.track_upload_id(upload_id)
+
+
 @decorator.decorator
 def log_func(fn: Callable, *args, **kwargs) -> Any:
     """Function entry and exit logger, capturing exceptions as well.
@@ -341,11 +347,7 @@ def files_uploaded(uploaded_files: list[dict[str, str | int | dict[str, str | in
     logger.debug('%s file(s) uploaded: %s', len(uploaded_files), ', '.join([f['name'] for f in uploaded_files]))
     context: Context = Context(files=files, unsaved=True, upload_id=uploaded_files[0]['upload_id'])
 
-    # If the app is running as a standalone script, the __main__ module is the lifecycle module. It's only
-    # registered under cfg.program_name if imported as a module.
-    lifecycle = sys.modules.get('__main__') or sys.modules.get(cfg.program_name)
-    if lifecycle is not None:
-        lifecycle.track_upload_id(context.upload_id)
+    _track_upload_id(context.upload_id)
 
     logger.debug('File cache upload ID is %s', context.upload_id)
     return context, show_data[:4], []
@@ -377,11 +379,7 @@ def start_append_batch(uploaded_files: list[dict[str, str | int | dict[str, str 
 
     upload_id: str = uploaded_files[0]['upload_id']
 
-    # If the app is running as a standalone script, the __main__ module is the lifecycle module. It's only
-    # registered under cfg.program_name if imported as a module.
-    lifecycle = sys.modules.get('__main__') or sys.modules.get(cfg.program_name)
-    if lifecycle is not None:
-        lifecycle.track_upload_id(upload_id)
+    _track_upload_id(upload_id)
 
     append_files: list[str] = [
         str(file_cache / upload_id / file['response']['filename'])

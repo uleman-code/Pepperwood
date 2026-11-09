@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import ModuleType
 
 import pytest as pt
 
@@ -53,6 +54,47 @@ def test_batch_done_waits_for_all_files() -> None:
             ['inline', 'none'],
             ['/download/upload-id/first.xlsx', None],
         )
+
+
+def test_track_upload_id_prefers_named_lifecycle_module(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    import sys
+
+    from ..sensor_data_ingest import callbacks
+
+    named_lifecycle = ModuleType('named_lifecycle')
+    standalone_lifecycle = ModuleType('__main__')
+    named_uploads: list[str] = []
+    standalone_uploads: list[str] = []
+    named_lifecycle.track_upload_id = named_uploads.append
+    standalone_lifecycle.track_upload_id = standalone_uploads.append
+    monkeypatch.setattr(callbacks.cfg, 'program_name', 'named_lifecycle')
+    monkeypatch.setitem(sys.modules, 'named_lifecycle', named_lifecycle)
+    monkeypatch.setitem(sys.modules, '__main__', standalone_lifecycle)
+
+    callbacks._track_upload_id('module-upload')
+
+    assert named_uploads == ['module-upload']
+    assert standalone_uploads == []
+
+
+def test_track_upload_id_falls_back_to_main_module(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    import sys
+
+    from ..sensor_data_ingest import callbacks
+
+    standalone_lifecycle = ModuleType('__main__')
+    standalone_uploads: list[str] = []
+    standalone_lifecycle.track_upload_id = standalone_uploads.append
+    monkeypatch.setattr(callbacks.cfg, 'program_name', 'missing_lifecycle')
+    monkeypatch.setitem(sys.modules, '__main__', standalone_lifecycle)
+
+    callbacks._track_upload_id('script-upload')
+
+    assert standalone_uploads == ['script-upload']
 
 
 def test_toggle_save_clear_locks_batch_controls_until_clear() -> None:
