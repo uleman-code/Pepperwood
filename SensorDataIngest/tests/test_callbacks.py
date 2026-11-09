@@ -56,7 +56,7 @@ def test_batch_done_waits_for_all_files() -> None:
         )
 
 
-def test_track_upload_id_prefers_named_lifecycle_module(
+def test_lifecycle_upload_tracker_prefers_named_module(
     monkeypatch: pt.MonkeyPatch,
 ) -> None:
     import sys
@@ -73,13 +73,15 @@ def test_track_upload_id_prefers_named_lifecycle_module(
     monkeypatch.setitem(sys.modules, 'named_lifecycle', named_lifecycle)
     monkeypatch.setitem(sys.modules, '__main__', standalone_lifecycle)
 
-    callbacks._track_upload_id('module-upload')
+    tracker = callbacks._get_lifecycle_upload_tracker()
+    assert tracker is not None
+    tracker('module-upload')
 
     assert named_uploads == ['module-upload']
     assert standalone_uploads == []
 
 
-def test_track_upload_id_falls_back_to_main_module(
+def test_lifecycle_upload_tracker_falls_back_to_main_module(
     monkeypatch: pt.MonkeyPatch,
 ) -> None:
     import sys
@@ -92,9 +94,24 @@ def test_track_upload_id_falls_back_to_main_module(
     monkeypatch.setattr(callbacks.cfg, 'program_name', 'missing_lifecycle')
     monkeypatch.setitem(sys.modules, '__main__', standalone_lifecycle)
 
-    callbacks._track_upload_id('script-upload')
+    tracker = callbacks._get_lifecycle_upload_tracker()
+    assert tracker is not None
+    tracker('script-upload')
 
     assert standalone_uploads == ['script-upload']
+
+
+def test_track_upload_id_uses_cached_tracker(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    from ..sensor_data_ingest import callbacks
+
+    tracked_uploads: list[str] = []
+    monkeypatch.setattr(callbacks, '_lifecycle_upload_tracker', tracked_uploads.append)
+
+    callbacks._track_upload_id('cached-upload')
+
+    assert tracked_uploads == ['cached-upload']
 
 
 def test_toggle_save_clear_locks_batch_controls_until_clear() -> None:

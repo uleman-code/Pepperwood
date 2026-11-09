@@ -64,10 +64,18 @@ logger: logging.Logger = logging.getLogger(f'{cfg.program_name}.{__name__}')
 ee_logger: logging.Logger = logging.getLogger(f'{cfg.program_name}_ee.{__name__}')
 
 
-def _track_upload_id(upload_id: str | None) -> None:
+def _get_lifecycle_upload_tracker() -> Callable[[str | None], None] | None:
     lifecycle = sys.modules.get(cfg.program_name) or sys.modules.get('__main__')
-    if lifecycle is not None:
-        lifecycle.track_upload_id(upload_id)
+    tracker = getattr(lifecycle, 'track_upload_id', None)
+    return tracker if callable(tracker) else None
+
+
+_lifecycle_upload_tracker = _get_lifecycle_upload_tracker()
+
+
+def _track_upload_id(upload_id: str | None) -> None:
+    if _lifecycle_upload_tracker is not None:
+        _lifecycle_upload_tracker(upload_id)
 
 
 @decorator.decorator
