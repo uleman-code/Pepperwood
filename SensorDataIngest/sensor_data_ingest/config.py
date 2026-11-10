@@ -7,7 +7,7 @@ from typing import Annotated, Any, Self
 import os
 from pathlib import Path
 from pydantic import BaseModel, BeforeValidator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 import logging
 from logging import handlers
@@ -96,6 +96,18 @@ class ApplicationCfg(BaseSettings):
     # BaseSettings (as opposed to BaseModel) looks for environment variables.
     # TODO: Is there any way around hardcoding the 'INGEST_' prefix here?
     model_config: SettingsConfigDict = SettingsConfigDict(cli_parse_args=False, env_prefix='INGEST_')
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Allow environment variables to override values loaded from the TOML file."""
+        return env_settings, init_settings, dotenv_settings, file_secret_settings
 
     config_file: Path
     site_metadata_file: Path = Path('./site_metadata.csv')
@@ -219,6 +231,8 @@ def config_init(app_name: str) -> None:
 
     config_raw['application']['config_file'] = str(config_file)
     config = Config.model_validate(config_raw)
+    assert config.application is not None, 'Application configuration is not set.'
+    config.application = ApplicationCfg(**config_raw['application'])
     # config = config.model_dump()  # Expose the configuration settings as a standard dictionary
     config_is_set = True
 

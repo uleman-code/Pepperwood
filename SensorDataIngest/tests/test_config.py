@@ -13,6 +13,19 @@ def test_load_good_config(monkeypatch: pt.MonkeyPatch) -> None:
 
     assert isinstance(cfg.config, Config)
 
+
+def test_environment_overrides_application_config(monkeypatch: pt.MonkeyPatch) -> None:
+    from ..sensor_data_ingest import config as cfg
+
+    this_module = Path(__file__)
+    test_file = this_module.parent.parent / 'test_files' / 'good_config.toml'
+    monkeypatch.setenv('INGEST_CONFIG_FILE', str(test_file))
+    monkeypatch.setenv('INGEST_CONSOLE_LOGGING_LEVEL', 'DEBUG')
+    cfg.config_init(app_name=this_module.stem)
+
+    assert cfg.config.application.console_logging_level == 10
+
+
 def test_load_bad_config(monkeypatch: pt.MonkeyPatch) -> None:
     """Test loading a bad configuration file."""
     from pathlib import Path
