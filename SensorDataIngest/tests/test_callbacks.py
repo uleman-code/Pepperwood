@@ -114,6 +114,87 @@ def test_track_upload_id_uses_cached_tracker(
     assert tracked_uploads == ['cached-upload']
 
 
+def test_report_sanity_checks_runs_only_once_without_notes(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    import pandas as pd
+    from dash.exceptions import PreventUpdate
+
+    from ..sensor_data_ingest import callbacks, helpers
+    from ..sensor_data_ingest.callbacks import Context, QA_Status, report_sanity_checks
+
+    frames = helpers.Frames(
+        data=pd.DataFrame({'timestamp': [1], 'seqno': [1], 'value': [1.0]}),
+        notes=pd.DataFrame(),
+    )
+    qa_calls: list[helpers.Frames] = []
+    monkeypatch.setattr(callbacks, '_run_sanity_checks', lambda data, _range: qa_calls.append(data) or [])
+    context = Context(files=['file.dat'], unsaved=True)
+
+    report, completed_context, _ = report_sanity_checks(None, context, frames)
+
+    assert completed_context.qa_status == QA_Status.COMPLETE
+    assert len(qa_calls) == 1
+
+    with pt.raises(PreventUpdate):
+        report_sanity_checks(report, completed_context, frames)
+
+    assert len(qa_calls) == 1
+
+
+def test_report_sanity_checks_skips_saved_data(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    import pandas as pd
+    from dash.exceptions import PreventUpdate
+
+    from ..sensor_data_ingest import callbacks, helpers
+    from ..sensor_data_ingest.callbacks import Context, report_sanity_checks
+
+    frames = helpers.Frames(
+        data=pd.DataFrame({'timestamp': [1], 'seqno': [1], 'value': [1.0]}),
+        notes=pd.DataFrame(),
+    )
+    monkeypatch.setattr(
+        callbacks,
+        '_run_sanity_checks',
+        lambda *_args: pt.fail('Sanity checks should not run after saving.'),
+    )
+
+    with pt.raises(PreventUpdate):
+        report_sanity_checks(None, Context(files=['file.dat'], unsaved=False), frames)
+
+
+def test_save_file_shows_badge_with_successful_save(
+    monkeypatch: pt.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    import pandas as pd
+
+    from ..sensor_data_ingest import callbacks, helpers
+    from ..sensor_data_ingest.callbacks import Context, QA_Status, save_file
+
+    frames = helpers.Frames(
+        data=pd.DataFrame({'timestamp': [1], 'seqno': [1], 'value': [1.0]}),
+        notes=pd.DataFrame(),
+    )
+    context = Context(
+        files=['file.dat'],
+        unsaved=True,
+        upload_id='upload-id',
+        qa_status=QA_Status.COMPLETE,
+    )
+    monkeypatch.setattr(callbacks, 'callback_context', SimpleNamespace(triggered_id='save-button'))
+    monkeypatch.setattr(callbacks.helpers, 'multi_df_to_excel', lambda *_args: '/download/file.xlsx')
+
+    result = save_file(context, frames)
+
+    assert result[0] == '/download/file.xlsx'
+    assert result[1].unsaved is False
+    assert result[2] == 'inline'
+
+
 def test_toggle_save_clear_locks_batch_controls_until_clear() -> None:
     from ..sensor_data_ingest.callbacks import Context, toggle_save_clear
 

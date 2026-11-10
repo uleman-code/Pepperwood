@@ -218,6 +218,7 @@ def load_file(context: Context) -> tuple:
 @blueprint.callback(
     Output('download-location', 'href'),
     Output('files-context', 'data', allow_duplicate=True),
+    Output('saved-badge', 'display', allow_duplicate=True),
     Trigger('save-button', 'n_clicks'),
     Input('files-context', 'data'),
     State('frame-store', 'data'),
@@ -246,8 +247,8 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
 
     Returns:
         download-location/href  (str)  URL for the browser to download the saved file
-        save-xlsx/data          (dict) Content and filename to be downloaded to the browser
         files-context/data      (str)  Same as context parameter but with the unsaved flag set to False
+        saved-badge/display     (str)  Show the Saved badge after a successful single-file save
     """
 
     files: list[str] = context.files
@@ -255,7 +256,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
     if callback_context.triggered_id == 'save-button' and len(files) > 1:
         logger.debug('Save requested for multiple files; kick off batch process.')
         context.start_batch = True
-        return no_update, context
+        return no_update, context, no_update
 
     # The only time we want to respond to a context-change trigger is when we're in append mode and the QA checks have completed.
     if callback_context.triggered_id == 'files-context' and context.qa_status != QA_Status.APPEND_COMPLETE:
@@ -281,7 +282,7 @@ def save_file(context: Context, frames: Frames | None) -> tuple:
         context.no_save = False
 
         logger.debug(f'File "{outfile}" saved.')
-        return download_url, context
+        return download_url, context, 'inline'
     else:
         logger.debug('File not ready to be saved (QA pending); skip saving.')
         raise PreventUpdate
@@ -762,6 +763,14 @@ def report_sanity_checks(
     if not frames or frames.data.empty:
         logger.debug('No data loaded. Clear the sanity check reports.')
         return [], no_update, no_update
+
+    if not context.unsaved:
+        logger.debug('Data is already saved. Do not rerun sanity checks.')
+        raise PreventUpdate
+
+    if context.qa_status in (QA_Status.COMPLETE, QA_Status.APPEND_COMPLETE):
+        logger.debug('Sanity checks already completed. Do not rerun them.')
+        raise PreventUpdate
 
     if not frames.notes.empty and context.qa_status == QA_Status.NONE:
         logger.debug('Notes worksheet already populated. Do nothing.')
