@@ -242,7 +242,7 @@ def load_data(filename: str, contents: str | None = None) -> Frames:
                         # Reconstitute any Links column upon write. This avoids having to keep track of whether the input file
                         # is a .dat or .xlsx, whether notes were newly generated or appended, etc.
                         if hyperlink_column in frames.notes.columns:
-                            frames.notes.drop(columns=hyperlink_column, inplace=True)
+                            frames.notes = frames.notes.drop(columns=hyperlink_column)
                     else:
                         logger.info(
                             'No Notes worksheet in this file. Will perform QA and write new worksheet upon save.'
@@ -550,8 +550,8 @@ def _verify_standard_columns(frames: Frames) -> None:
             pass
     
     # These are no-ops if no renamer was ever constructed.
-    names.replace(renamer, inplace=True)
-    frames.data.rename(columns=renamer, inplace=True)
+    frames.meta[meta_columns[0]] = names.replace(renamer)
+    frames.data = frames.data.rename(columns=renamer)
 
 
 @log_func
