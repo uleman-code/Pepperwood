@@ -149,7 +149,7 @@ class MetadataCfg(BaseModel):
     default_sampling_interval: Annotated[float, BeforeValidator(prepare_sampling_interval)]
     input_variable_meta_columns: list[str]     # From the input file; combine with static metadata
     input_site_meta_columns: list[str]         # From the input file; combine with static metadata
-    input_site_id_column: str
+    input_site_id_column: list[str]
     meta_site_id_column: str
     input_units_column: str
     input_description_column: str
@@ -163,7 +163,7 @@ class MetadataCfg(BaseModel):
     def validate_site_id_columns(self) -> Self:
         """Ensure that input and metadata column names don't collide."""
 
-        if self.input_site_id_column == self.meta_site_id_column:
+        if self.meta_site_id_column in self.input_site_id_column:
             raise ValueError('Input and metadata site ID column names must be different.')
         
         if self.input_column_name_column == self.meta_field_column:

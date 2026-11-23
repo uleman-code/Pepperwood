@@ -51,6 +51,23 @@ def test_load_data_good_xlsx() -> None:
     assert frames.notes.shape == (0, 5)
 
 
+def test_merge_metadata_accepts_legacy_site_id_column_name() -> None:
+    import pandas as pd
+
+    from ..sensor_data_ingest.helpers import load_data, merge_metadata, _get_sampling_interval
+
+    test_file = Path(__file__).parent.parent / 'test_files' / 'good_data.dat'
+    frames = load_data(str(test_file))
+    site_id = frames.station.at[0, 'Station Name']
+    frames.station = frames.station.rename(columns={'Station Name': 'SiteId'})
+
+    merge_metadata(frames)
+
+    assert frames.station.at[0, 'SiteId'] == site_id
+    assert pd.notna(frames.station.at[0, 'Site ID'])
+    assert _get_sampling_interval(frames.station) == pd.Timedelta('15min')
+
+
 def test_load_data_missing_file() -> None:
     """Test that load_data raises FileNotFoundError for a non-existent file."""
     from ..sensor_data_ingest.helpers import load_data

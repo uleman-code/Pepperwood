@@ -65,8 +65,8 @@ input_site_meta_columns = [
     "Data Logger Program Signature",
     "Table Name",
 ]
-# The following two values must not be the same.
-input_site_id_column = "Station Name"
+# Site ID column names to accept, in preference order (current name first, then legacy names).
+input_site_id_column = ["Station Name", "StationName", "SiteId"]
 meta_site_id_column = "Site ID"
 
 input_units_column = "Units"

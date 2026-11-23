@@ -104,7 +104,7 @@ default_sampling_interval: pd.Timedelta = pd.Timedelta(cfg.config.metadata.defau
                                                        unit='seconds')   # To be overridden by site metadata
 meta_columns: list[str] = cfg.config.metadata.input_variable_meta_columns
 station_columns: list[str] = cfg.config.metadata.input_site_meta_columns
-input_site_id_column: str = cfg.config.metadata.input_site_id_column
+input_site_id_columns: list[str] = cfg.config.metadata.input_site_id_column
 meta_site_id_column: str = cfg.config.metadata.meta_site_id_column
 units_column: str = cfg.config.metadata.input_units_column
 description_column: str = cfg.config.metadata.input_description_column
@@ -263,6 +263,18 @@ def load_data(filename: str, contents: str | None = None) -> Frames:
     logger.debug('DataFrames for %s, %s, and %s data populated.', worksheet_names.data, worksheet_names.meta, worksheet_names.station)
     return frames
 
+
+def _find_input_site_id_column(df_site: pd.DataFrame) -> str:
+    """Return the configured site ID column name present in the station data."""
+    for column in input_site_id_columns:
+        if column in df_site.columns:
+            return column
+
+    raise KeyError(
+        f'None of the configured input site ID columns {input_site_id_columns} '
+        f'were found in station data columns {list(df_site.columns)}.'
+    )
+
 @log_func
 def clear_file_cache(upload_id: str = '') -> None:
     """Call after processing or clearing all files to empty the upload-file cache.
@@ -416,8 +428,9 @@ def merge_metadata(frames: Frames) -> None:
     if len(df_site.columns) > len(station_columns):
         df_site.drop(columns=df_meta_sites.columns, index=df_site.index[1:], inplace=True, errors='ignore')
 
-    site_id_dat: str = df_site.at[0, input_site_id_column]
-    df_site['normalized_site_id'] = df_site[input_site_id_column].apply(cfg.normalize_name)
+    site_id_column = _find_input_site_id_column(df_site)
+    site_id_dat: str = df_site.at[0, site_id_column]
+    df_site['normalized_site_id'] = df_site[site_id_column].apply(cfg.normalize_name)
     df_site = df_site.merge(df_meta_sites, on='normalized_site_id', how='left')
     
     if pd.isna(df_site.at[0, meta_site_id_column]):
@@ -502,7 +515,7 @@ def find_standard_column_match(frames: list[pd.DataFrame], standard_column: str,
                         )
 
             matches = [k for k, v in 
-                        {c: aliases[aliases == cfg.normalize_name(c)].get(0) for c in candidates}.items()
+                        {c: next(iter(aliases[aliases == cfg.normalize_name(c)]), None) for c in candidates}.items()
                         if v is not None]
             if len(matches) == 1:
                 renamer: dict[str, str] = {matches[0]: standard_column}
@@ -599,7 +612,7 @@ def _get_sampling_interval(df_site: pd.DataFrame) -> pd.Timedelta:
     except KeyError:        # Metadata does not have the interval column (because no matching static metadata was found)
         has_interval_value = False
 
-    site_id: str = df_site.at[0, input_site_id_column]        # For logging purposes
+    site_id: str = df_site.at[0, _find_input_site_id_column(df_site)]  # For logging purposes
 
     sampling_interval: pd.Timedelta | None
     if has_interval_value:      # Try interpreting as integer minutes first
