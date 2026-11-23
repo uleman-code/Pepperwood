@@ -200,22 +200,22 @@ def load_data(filename: str, contents: str | None = None) -> Frames:
                 else:
                     buffer = io.BytesIO(b64decoded)
 
-                # The meta/columns and station/meta worksheets column names may evolve, such that the names of
-                # an older file, saved by an older version of this app, may not match the current names as
-                # specified in the configuration settings. Always use the current names.
+                # Prefer configured worksheet names, allowing the legacy station worksheet name.
                 with pd.ExcelFile(buffer) as xl:
                     sheet_names: list[str] = xl.sheet_names
                     logger.debug('Excel worksheets found: %s', sheet_names)
-                    
+
+                    station_sheet_name = worksheet_names.station
+                    if station_sheet_name not in sheet_names and 'Site' in sheet_names:
+                        station_sheet_name = 'Site'
+
                     if (len(sheet_names) < 3 or
-                        len(set(sheet_names)
-                            .intersection(list(
-                                               asdict(worksheet_names)
-                                               .values()
-                                              )[:3]
-                                         )
-                           ) < 3
-                       ):
+                        len(set(sheet_names).intersection((
+                            worksheet_names.data,
+                            worksheet_names.meta,
+                            station_sheet_name,
+                        ))) < 3
+                    ):
                         logger.error('Expected at least three worksheets named %s.',
                                      ', '.join(list(asdict(worksheet_names).values())[:3]))
                         raise BadFileError(
@@ -230,7 +230,7 @@ def load_data(filename: str, contents: str | None = None) -> Frames:
                     # which is not a problem in most columns but creates inconsistency in the Aliases column.
                     frames.meta = pd.read_excel(xl, sheet_name=worksheet_names.meta, dtype=str).fillna({aliases_column: ''})
                     # frames.meta.columns = meta_columns
-                    frames.station = pd.read_excel(xl, sheet_name=worksheet_names.station)
+                    frames.station = pd.read_excel(xl, sheet_name=station_sheet_name)
                     # frames.station.columns = station_columns
 
                     if worksheet_names.notes in sheet_names:

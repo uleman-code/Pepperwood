@@ -51,6 +51,23 @@ def test_load_data_good_xlsx() -> None:
     assert frames.notes.shape == (0, 5)
 
 
+def test_load_data_legacy_site_worksheet(tmp_path: Path) -> None:
+    """Test loading an older Excel file with the legacy station worksheet name."""
+    import pandas as pd
+
+    from ..sensor_data_ingest.helpers import aliases_column, load_data
+
+    test_file = tmp_path / 'legacy_data.xlsx'
+    with pd.ExcelWriter(test_file) as writer:
+        pd.DataFrame().to_excel(writer, sheet_name='Data', index=False)
+        pd.DataFrame({aliases_column: []}).to_excel(writer, sheet_name='Columns', index=False)
+        pd.DataFrame({'Station Name': ['legacy-site']}).to_excel(writer, sheet_name='Site', index=False)
+
+    frames = load_data(str(test_file))
+
+    assert frames.station.at[0, 'Station Name'] == 'legacy-site'
+
+
 def test_merge_metadata_accepts_legacy_site_id_column_name() -> None:
     import pandas as pd
 
