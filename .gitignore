@@ -2,7 +2,7 @@
 *.dll
 __pycache__
 testing.ipynb
-uv.lock
+# uv.lock
 ~*
 # *.spec
 .DS_Store
